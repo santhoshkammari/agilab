@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
@@ -107,9 +108,8 @@ class ChatApp(App):
             welcome_text.append("✻ ", style=ORANGE_COLORS[17])
             welcome_text.append("Welcome to ")
             welcome_text.append("Plaude Pode", style="bold orange1")
-            welcome_text.append("!\n\n")
-            welcome_text.append("/help for help, /status for your current setup\n\n")
-            welcome_text.append("cwd: /home/ntlpt59/master/own/claude/claude/components")
+            welcome_text.append("!\n\n/help for help, /status for your current setup\n\n")
+            welcome_text.append(f"cwd: {Path(__file__).parent}")
 
             # Use border style from orange mapping (18 = Aesthetic Orange)
             welcome_panel = Panel(
