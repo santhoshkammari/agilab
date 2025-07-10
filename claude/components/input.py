@@ -41,13 +41,29 @@ class ChatApp(App):
         height: 1fr;
         padding: 1;
         background: transparent;
+        overflow-y: hidden;
     }
 
     #input_area {
         height: auto;
-        dock: bottom;
         border: round grey;
         background: transparent;
+    }
+
+    #footer {
+        height: 1;
+        dock: bottom;
+        background: transparent;
+    }
+
+    #footer-left {
+        width: 50%;
+        text-align: left;
+    }
+
+    #footer-right {
+        width: 50%;
+        text-align: right;
     }
 
     Input {
@@ -65,7 +81,7 @@ class ChatApp(App):
 
     def compose(self) -> ComposeResult:
         # Main chat display area
-        with ScrollableContainer(id="chat_area"):
+        with Vertical(id="chat_area"):
             # Create welcome panel with Rich styling
             welcome_text = Text()
             welcome_text.append("🔥 Welcome to ", style="bold")
@@ -85,6 +101,10 @@ class ChatApp(App):
         with Horizontal(id="input_area"):
             yield Label("> ")
             yield Input(placeholder="Type your message here...", compact=True)
+        # Footer
+        with Horizontal(id="footer"):
+            yield Static("auto accept-on", id="footer-left")
+            yield Static("Try claude doctor or npm i -g @anthropic-ai/claude-code", id="footer-right")
 
     def on_ready(self) -> None:
         """Called when the app is ready - focus the input"""
@@ -100,8 +120,6 @@ class ChatApp(App):
             chat_area.mount(Static(f"\n● {message}", classes="message"))
             # Clear the input
             event.input.clear()
-            # Scroll to bottom to show latest message
-            chat_area.scroll_end(animate=False)
 
 
 if __name__ == "__main__":
