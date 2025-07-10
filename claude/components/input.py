@@ -2,6 +2,32 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Input, Static, Label
 from textual import on
+from rich.panel import Panel
+from rich.text import Text
+
+# Orange color mapping from chart
+ORANGE_COLORS = {
+    0: "#8A3324",   # Burnt Amber
+    1: "#B06500",   # Ginger  
+    2: "#CD7F32",   # Bronze
+    3: "#D78C3D",   # Rustic Orange
+    4: "#FF6E00",   # Hot Orange
+    5: "#FF9913",   # Goldfish
+    6: "#FFAD00",   # Neon Orange
+    7: "#FFBD31",   # Bumblebee Orange
+    8: "#D16002",   # Marmalade
+    9: "#E77D22",   # Pepper Orange
+    10: "#E89149",  # Jasper Orange
+    11: "#EABD8C",  # Dark Topaz
+    12: "#ED9121",  # Carrot
+    13: "#FDAE44",  # Safflower Orange
+    14: "#FAB972",  # Calm Orange
+    15: "#FED8B1",  # Light Orange
+    16: "#CC5500",  # Burnt Orange
+    17: "#E27A53",  # Dusty Orange
+    18: "#F4AB6A",  # Aesthetic Orange
+    19: "#FEE8D6"   # Orange Paper
+}
 
 
 class ChatApp(App):
@@ -40,7 +66,21 @@ class ChatApp(App):
     def compose(self) -> ComposeResult:
         # Main chat display area
         with ScrollableContainer(id="chat_area"):
-            yield Static("Welcome to the chat! Type something below and press Enter.\n", classes="message")
+            # Create welcome panel with Rich styling
+            welcome_text = Text()
+            welcome_text.append("🔥 Welcome to ", style="bold")
+            welcome_text.append("Plaude Pode", style="bold orange1")
+            welcome_text.append("!\n\n")
+            welcome_text.append("/help for help, /status for your current setup\n\n")
+            welcome_text.append("cwd: /home/ntlpt59/master/own/claude/claude/components")
+            
+            # Use border style from orange mapping (18 = Aesthetic Orange)
+            welcome_panel = Panel(
+                welcome_text,
+                border_style=ORANGE_COLORS[17],
+                expand=False
+            )
+            yield Static(welcome_panel, classes="message")
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
@@ -57,7 +97,7 @@ class ChatApp(App):
         if message:  # Only process non-empty messages
             # Add the message to chat area
             chat_area = self.query_one("#chat_area")
-            chat_area.mount(Static(f"● {message}\n", classes="message"))
+            chat_area.mount(Static(f"\n● {message}", classes="message"))
             # Clear the input
             event.input.clear()
             # Scroll to bottom to show latest message
