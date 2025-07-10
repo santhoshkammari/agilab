@@ -13,7 +13,6 @@ class ChatApp(App):
 
     #chat_area {
         height: 1fr;
-        border: solid $primary;
         padding: 1;
         background: transparent;
     }
@@ -41,11 +40,15 @@ class ChatApp(App):
     def compose(self) -> ComposeResult:
         # Main chat display area
         with ScrollableContainer(id="chat_area"):
-            yield Static("Welcome to the chat! Type something below and press Enter.", classes="message")
+            yield Static("Welcome to the chat! Type something below and press Enter.\n", classes="message")
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
             yield Input(placeholder="Type your message here...", compact=True)
+
+    def on_ready(self) -> None:
+        """Called when the app is ready - focus the input"""
+        self.query_one(Input).focus()
 
     @on(Input.Submitted)
     def handle_message(self, event: Input.Submitted) -> None:
@@ -54,7 +57,7 @@ class ChatApp(App):
         if message:  # Only process non-empty messages
             # Add the message to chat area
             chat_area = self.query_one("#chat_area")
-            chat_area.mount(Static(f"● {message}", classes="message"))
+            chat_area.mount(Static(f"● {message}\n", classes="message"))
             # Clear the input
             event.input.clear()
             # Scroll to bottom to show latest message
