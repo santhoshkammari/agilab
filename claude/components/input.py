@@ -1,6 +1,6 @@
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
-from textual.widgets import Input, Static
+from textual.widgets import Input, Static, Label
 from textual import on
 
 
@@ -44,6 +44,7 @@ class ChatApp(App):
             yield Static("Welcome to the chat! Type something below and press Enter.", classes="message")
         # Input area at bottom
         with Horizontal(id="input_area"):
+            yield Label("> ")
             yield Input(placeholder="Type your message here...", compact=True)
 
     @on(Input.Submitted)
