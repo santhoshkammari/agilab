@@ -122,7 +122,7 @@ class ChatApp(App):
             yield Input(placeholder="Type your message here...", compact=True, value="read /home/ntlpt59/master/own/claude/claude/core/input.py")
         # Footer
         with Horizontal(id="footer"):
-            yield Static("⏵⏵ auto-accept edits on", id="footer-right")
+            yield Static("⏵⏵ auto-accept edits on   ", id="footer-right")
 
 
     def on_ready(self) -> None:
