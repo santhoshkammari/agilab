@@ -118,7 +118,7 @@ class ChatApp(App):
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
-            yield Input(placeholder="Type your message here...", compact=True,value="read app.py")
+            yield Input(placeholder="Type your message here...", compact=True, value="read app.py")
         # Footer
         with Horizontal(id="footer"):
             yield Static("⏵⏵ auto-accept edits on", id="footer-right")
@@ -219,7 +219,7 @@ class ChatApp(App):
                         
                         # Simulate tool execution completion after some time
                         # In real implementation, this would be triggered by actual tool completion
-                        self.set_timer(2, lambda: self.complete_tool_execution(tool_id))
+                        self.set_timer(2, lambda: self.complete_tool_execution(tool_id,tool_args,'read done'))
 
         except Exception as e:
             error_text = f"🤖 **Error**: {str(e)}"
@@ -260,23 +260,29 @@ class ChatApp(App):
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
         
     
-    def complete_tool_execution(self, tool_id: str, result: str = ""):
+    def complete_tool_execution(self, tool_id: str, tool_args,result: str = ""):
         """Mark tool execution as completed with green dot"""
         if tool_id in self.tool_widgets:
             from rich.text import Text
             widget = self.tool_widgets[tool_id]
             tool_info = tool_id.split('_')[0].title()
             status_indicator = self.query_one("#status_indicator")
+            chat_area = self.query_one("#chat_area")
             
             # Create rich text with green dot and bold tool name
             tool_text = Text()
             tool_text.append("● ", style="dim #5cf074")
             tool_text.append(tool_info, style="bold")
-            tool_text.append("(completed)", style="default")
-            
+            tool_text.append(f"({tool_args})", style="default")
+
             widget.update(tool_text)
             widget.remove_class("tool-executing")
             widget.add_class("tool-completed")
+            
+            # Add result text after tool completion
+            if result:
+                result_text = f" ⎿ {result}"
+                chat_area.mount(Static(result_text))
             
             # Clear status bar
             status_indicator.update("")
