@@ -219,7 +219,7 @@ class ChatApp(App):
                         
                         # Simulate tool execution completion after some time
                         # In real implementation, this would be triggered by actual tool completion
-                        self.set_timer(2, lambda: self.complete_tool_execution(tool_id,tool_args,'read done'))
+                        self.set_timer(2, lambda: self.complete_tool_execution(tool_id,tool_args,'Read 297 lines'))
 
         except Exception as e:
             error_text = f"🤖 **Error**: {str(e)}"
@@ -228,8 +228,9 @@ class ChatApp(App):
             return
 
         # Create final markdown widget with collected content
-        markdown_widget = Markdown("● " + response_text.strip(), classes="ai-response")
-        chat_area.mount(markdown_widget)
+        if response_text.strip():
+            markdown_widget = Markdown("● " + response_text.strip(), classes="ai-response")
+            chat_area.mount(markdown_widget)
         
         # Ensure scroll to end after markdown rendering
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
@@ -269,20 +270,19 @@ class ChatApp(App):
             status_indicator = self.query_one("#status_indicator")
             chat_area = self.query_one("#chat_area")
             
-            # Create rich text with green dot and bold tool name
+            # Create rich text with green dot and bold tool name, and result on same widget
             tool_text = Text()
             tool_text.append("● ", style="dim #5cf074")
             tool_text.append(tool_info, style="bold")
             tool_text.append(f"({tool_args})", style="default")
+            
+            # Add result text on next line if available
+            if result and result.strip():
+                tool_text.append(f"\n  ⎿ {result}\n", style="default")
 
             widget.update(tool_text)
             widget.remove_class("tool-executing")
             widget.add_class("tool-completed")
-            
-            # Add result text after tool completion
-            if result:
-                result_text = f" ⎿ {result}"
-                chat_area.mount(Static(result_text))
             
             # Clear status bar
             status_indicator.update("")
