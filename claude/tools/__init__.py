@@ -41,7 +41,7 @@ tools_dict = {
     'read_notebook': _claude_tools.notebook_read.read_notebook,
     'edit_notebook_cell': _claude_tools.notebook_edit.edit_cell,
     'web_fetch': _claude_tools.web_fetch.fetch_url,
-    'web_search': _web_tools.search,
+    'web_search': _web_tools.web_search,
     'todo_read': _claude_tools.todo_read.read_todos,
     'todo_write': _claude_tools.todo_write.write_todos,
     'task_execute': _claude_tools.task.execute_task

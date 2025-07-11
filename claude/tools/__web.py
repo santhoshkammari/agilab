@@ -60,7 +60,7 @@ class WebSearchTool:
         self.browser = PlaywrightBrowser(headless=False)
         self.search_provider = search_provider
 
-    async def search(self, query: str, num_results: int = 10) -> List[Dict[str, str]]:
+    async def web_search(self, query: str, num_results: int = 10) -> List[Dict[str, str]]:
         """Perform a web search and return results"""
         try:
             # Navigate to search engine
