@@ -103,6 +103,8 @@ class ChatApp(App):
     
     Markdown {
         background: transparent;
+        padding: 0;
+        margin: 0;
     }
     
     .streaming {
@@ -159,7 +161,7 @@ class ChatApp(App):
         if message:  # Only process non-empty messages
             # Add the message to chat area
             chat_area = self.query_one("#chat_area")
-            chat_area.mount(Static(f"\n> {message}\n", classes="message"))
+            chat_area.mount(Static(f"> {message}\n", classes="message"))
             # Clear the input
             event.input.clear()
 
@@ -214,7 +216,7 @@ class ChatApp(App):
                         thinking_mode = False
                         # Clear status indicator and start normal content
                         status_indicator.update("")
-                        self.current_streaming_widget.update("\n● " + response_text)
+                        self.current_streaming_widget.update("● " + response_text)
                         continue
                     
                     # If in thinking mode, show flower animation in status bar
@@ -225,7 +227,7 @@ class ChatApp(App):
                     else:
                         # Normal streaming
                         response_text += content
-                        self.current_streaming_widget.update("\n● " + response_text.strip())
+                        self.current_streaming_widget.update("● " + response_text.strip())
                         await asyncio.sleep(0.001)
                     
                     chat_area.scroll_end(animate=False)
@@ -242,7 +244,7 @@ class ChatApp(App):
 
     async def _stream_ollama_response(self, query: str):
         """Convert synchronous Ollama generator to async generator"""
-        for chunk in self.llm(prompt=query, model="qwen3:4b", tools=tools):
+        for chunk in self.llm(prompt=query+"/no_think", model="qwen3:4b", tools=tools):
             yield chunk
             await asyncio.sleep(0)  # Yield control to event loop
 
