@@ -47,7 +47,7 @@ class ChatApp(App):
         height: 1fr;
         padding: 1;
         background: transparent;
-        overflow-y: hidden;
+        overflow-y: auto;
     }
 
     #input_area {
@@ -159,11 +159,12 @@ class ChatApp(App):
         # Stream the response using Ollama
         response_text = "\n● "
         try:
-            for chunk in self.llm(prompt=query, model="qwen2.5:7b-instruct", tools=tools):
+            for chunk in self.llm(prompt=query, model="qwen3:4b", tools=tools):
                 content = chunk['message']['content']
                 if content:
                     response_text += content
                     self.current_streaming_widget.update(response_text)
+                    chat_area.scroll_end(animate=False)
                     self.refresh()
                     await asyncio.sleep(0.001)
         except Exception as e:
