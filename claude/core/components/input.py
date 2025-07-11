@@ -3,7 +3,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
-from textual.widgets import Input, Static, Label
+from textual.widgets import Input, Static, Label, Markdown
 from textual import on
 from rich.panel import Panel
 from rich.text import Text
@@ -57,6 +57,17 @@ class ChatApp(App):
         background: transparent;
     }
 
+    #status_bar {
+        height: 1;
+        background: transparent;
+        padding: 0 1;
+    }
+
+    #status_indicator {
+        color: #E27A53;
+        text-style: bold;
+    }
+
     #footer {
         height: 1;
         dock: bottom;
@@ -90,6 +101,10 @@ class ChatApp(App):
         background: transparent;
     }
     
+    Markdown {
+        background: transparent;
+    }
+    
     .streaming {
         background: transparent;
         color: #E77D22;
@@ -119,6 +134,9 @@ class ChatApp(App):
                 expand=False
             )
             yield Static(welcome_panel, classes="message")
+        # Status bar above input
+        with Horizontal(id="status_bar"):
+            yield Static("✻ Ready", id="status_indicator")
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
@@ -141,7 +159,7 @@ class ChatApp(App):
         if message:  # Only process non-empty messages
             # Add the message to chat area
             chat_area = self.query_one("#chat_area")
-            chat_area.mount(Static(f"\n> {message}", classes="message"))
+            chat_area.mount(Static(f"\n> {message}\n", classes="message"))
             # Clear the input
             event.input.clear()
 
@@ -151,31 +169,82 @@ class ChatApp(App):
             self.call_later(self.start_ai_response, message)
 
     async def start_ai_response(self, query: str):
-        """Start streaming AI response using Ollama"""
+        """Start streaming AI response using Ollama with markdown rendering"""
         chat_area = self.query_one("#chat_area")
+        status_indicator = self.query_one("#status_indicator")
 
-        # Create a new widget for the AI response
-        self.current_streaming_widget = Static("", classes="ai-response")
+        # Create a new markdown widget for the AI response
+        self.current_streaming_widget = Markdown("", classes="ai-response")
         chat_area.mount(self.current_streaming_widget)
 
         # Stream the response using Ollama
-        response_text = "\n● "
+        response_text = ""
+        thinking_mode = False
+        flower_chars = ["✻", "✺", "✵", "✴", "❋", "❊", "❉", "❈", "❇", "❆", "❅", "❄"]
+        flower_index = 0
+        thinking_messages = [
+            "contemplating...",
+            "pondering...",
+            "considering...",
+            "reflecting...",
+            "processing...",
+            "analyzing...",
+            "brainstorming...",
+            "meditating...",
+            "deliberating...",
+            "reasoning..."
+        ]
+        import random
+        thinking_message = random.choice(thinking_messages)
+        
+        # Clear ready status
+        status_indicator.update("")
+        
         try:
-            for chunk in self.llm(prompt=query, model="qwen3:4b", tools=tools):
+            async for chunk in self._stream_ollama_response(query):
                 content = chunk['message']['content']
                 if content:
-                    response_text += content
-                    self.current_streaming_widget.update(response_text)
+                    # Check for thinking mode start
+                    if '<think>' in content:
+                        thinking_mode = True
+                        continue
+                    
+                    # Check for thinking mode end
+                    if '</think>' in content:
+                        thinking_mode = False
+                        # Clear status indicator and start normal content
+                        status_indicator.update("")
+                        self.current_streaming_widget.update("\n● " + response_text)
+                        continue
+                    
+                    # If in thinking mode, show flower animation in status bar
+                    if thinking_mode:
+                        flower_index = (flower_index + 1) % len(flower_chars)
+                        status_indicator.update(f"{flower_chars[flower_index]} {thinking_message}")
+                        await asyncio.sleep(0.1)
+                    else:
+                        # Normal streaming
+                        response_text += content
+                        self.current_streaming_widget.update("\n● " + response_text.strip())
+                        await asyncio.sleep(0.001)
+                    
                     chat_area.scroll_end(animate=False)
-                    self.refresh()
-                    await asyncio.sleep(0.001)
+                    
         except Exception as e:
-            error_text = f"\n🤖 Error: {str(e)}"
+            error_text = f"🤖 **Error**: {str(e)}"
             self.current_streaming_widget.update(error_text)
+            status_indicator.update("")
 
-        # Mark streaming as complete
+        # Mark streaming as complete and clear status
         self.current_streaming_widget.remove_class("streaming")
         self.current_streaming_widget = None
+        status_indicator.update("")
+
+    async def _stream_ollama_response(self, query: str):
+        """Convert synchronous Ollama generator to async generator"""
+        for chunk in self.llm(prompt=query, model="qwen3:4b", tools=tools):
+            yield chunk
+            await asyncio.sleep(0)  # Yield control to event loop
 
 
 if __name__ == "__main__":
