@@ -10,30 +10,7 @@ from rich.text import Text
 
 from claude.tools import tools
 from claude.llm import Ollama
-
-# Orange color mapping from chart
-ORANGE_COLORS = {
-    0: "#8A3324",  # Burnt Amber
-    1: "#B06500",  # Ginger
-    2: "#CD7F32",  # Bronze
-    3: "#D78C3D",  # Rustic Orange
-    4: "#FF6E00",  # Hot Orange
-    5: "#FF9913",  # Goldfish
-    6: "#FFAD00",  # Neon Orange
-    7: "#FFBD31",  # Bumblebee Orange
-    8: "#D16002",  # Marmalade
-    9: "#E77D22",  # Pepper Orange
-    10: "#E89149",  # Jasper Orange
-    11: "#EABD8C",  # Dark Topaz
-    12: "#ED9121",  # Carrot
-    13: "#FDAE44",  # Safflower Orange
-    14: "#FAB972",  # Calm Orange
-    15: "#FED8B1",  # Light Orange
-    16: "#CC5500",  # Burnt Orange
-    17: "#E27A53",  # Dusty Orange
-    18: "#F4AB6A",  # Aesthetic Orange
-    19: "#FEE8D6"  # Orange Paper
-}
+from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words
 
 
 class ChatApp(App):
@@ -118,19 +95,10 @@ class ChatApp(App):
         self.llm = Ollama(host="http://192.168.170.76:11434")
 
     def compose(self) -> ComposeResult:
-        # Main chat display area
         with ScrollableContainer(id="chat_area"):
-            # Create welcome panel with Rich styling
-            welcome_text = Text()
-            welcome_text.append("✻ ", style=ORANGE_COLORS[17])
-            welcome_text.append("Welcome to ")
-            welcome_text.append("Plaude Pode", style="bold orange1")
-            welcome_text.append("!\n\n/help for help, /status for your current setup\n\n")
-            welcome_text.append(f"cwd: {Path(__file__).parent}")
-
-            # Use border style from orange mapping (18 = Aesthetic Orange)
             welcome_panel = Panel(
-                welcome_text,
+                renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold orange1]Plaude Pode[/]!\n\n"
+                                 f"/help for help, /status for your current setup\n\ncwd: {Path(__file__).parent}"),
                 border_style=ORANGE_COLORS[17],
                 expand=False
             )
@@ -144,8 +112,6 @@ class ChatApp(App):
             yield Input(placeholder="Type your message here...", compact=True)
         # Footer
         with Horizontal(id="footer"):
-            # yield Static("auto accept-on", id="footer-left")
-            # yield Static("Try claude doctor or npm i -g @anthropic-ai/claude-code", id="footer-right")
             yield Static("⏵⏵ auto-accept edits on", id="footer-right")
 
 
@@ -180,21 +146,13 @@ class ChatApp(App):
         thinking_mode = False
         flower_chars = ["✻", "✺", "✵", "✴", "❋", "❊", "❉", "❈", "❇", "❆", "❅", "❄"]
         flower_index = 0
-        thinking_messages = [
-            "Contemplating...",
-            "Pondering...",
-            "Considering...",
-            "Reflecting...",
-            "Processing...",
-            "Analyzing...",
-            "Brainstorming...",
-            "Meditating...",
-            "Deliberating...",
-            "Reasoning..."
-        ]
+        
+        # Generate contextual thinking words based on user input
+        thinking_words = get_contextual_thinking_words(query)
+        thinking_word_index = 0
+        
         import random
         import time
-        thinking_message = random.choice(thinking_messages)
         
         # Track start time for elapsed seconds
         start_time = time.time()
@@ -222,16 +180,24 @@ class ChatApp(App):
                     # If in thinking mode, show flower animation in status bar
                     if thinking_mode:
                         flower_index = (flower_index + 1) % len(flower_chars)
-                        status_indicator.update(f"{flower_chars[flower_index]} {thinking_message}")
-                        await asyncio.sleep(0.1)
+                        # Change thinking word every 5 flower cycles to slow it down
+                        if flower_index % 5 == 0:
+                            thinking_word_index = (thinking_word_index + 1) % len(thinking_words)
+                        current_thinking_word = thinking_words[thinking_word_index]
+                        status_indicator.update(f"{flower_chars[flower_index]} {current_thinking_word}")
+                        await asyncio.sleep(0.3)
                     else:
                         # Collect content but don't render markdown yet
                         response_text += content
                         elapsed_seconds = int(time.time() - start_time)
                         flower_index = (flower_index + 1) % len(flower_chars)
-                        status_indicator.update(f"{flower_chars[flower_index]} {thinking_message} [grey]({elapsed_seconds}s)[/grey]")
+                        # Change thinking word every 5 flower cycles to slow it down
+                        if flower_index % 5 == 0:
+                            thinking_word_index = (thinking_word_index + 1) % len(thinking_words)
+                        current_thinking_word = thinking_words[thinking_word_index]
+                        status_indicator.update(f"{flower_chars[flower_index]} {current_thinking_word} [grey]({elapsed_seconds}s)[/grey]")
                         #await asyncio.sleep(0.001)
-                        await asyncio.sleep(0.2) # mimicing large language model
+                        await asyncio.sleep(0.4) # mimicing large language model
                     
         except Exception as e:
             error_text = f"🤖 **Error**: {str(e)}"
