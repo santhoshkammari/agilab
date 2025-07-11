@@ -3,10 +3,11 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
-from textual.widgets import Input, Static, Label, Markdown, ProgressBar
+from textual.widgets import Input, Static, Label, ProgressBar
 from textual import on
 from rich.panel import Panel
 from rich.text import Text
+from rich.markdown import Markdown
 
 from claude.tools import tools, tools_dict
 from claude.llm import Ollama
@@ -78,11 +79,6 @@ class ChatApp(App):
         background: transparent;
     }
     
-    Markdown {
-        background: transparent;
-        padding: 0;
-        margin: 0;
-    }
     
     .streaming {
         background: transparent;
@@ -103,6 +99,10 @@ class ChatApp(App):
         self.llm = Ollama(host="http://192.168.170.76:11434")
         self.tool_widgets = {}  # Track tool execution widgets
         self.cwd = cwd
+        # Initialize conversation history with system prompt
+        self.conversation_history = [
+            {"role": "system", "content": SYSTEM_PROMPT.format(cwd=self.cwd)}
+        ]
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="chat_area"):
@@ -134,20 +134,22 @@ class ChatApp(App):
     def handle_message(self, event: Input.Submitted) -> None:
         """Handle when user submits a message"""
         query = event.value.strip()
-        messages = [
-            {"role":"system","content":SYSTEM_PROMPT.format(cwd=self.cwd)},
-            {"role":"user","content":query + "/no_think",}
-        ]
         if query:  # Only process non-empty messages
+            # Add user message to conversation history
+            self.conversation_history.append({
+                "role": "user", 
+                "content": query + "/no_think"
+            })
+            
             # Add the message to chat area
             chat_area = self.query_one("#chat_area")
-            chat_area.mount(Static(f"> {query}\n", classes="message"))
+            chat_area.mount(Static(f"\n> {query}\n", classes="message"))
             # Clear the input
             event.input.clear()
 
             chat_area.scroll_end(animate=False)
             self.refresh()
-            self.call_later(self.start_ai_response, query,messages)
+            self.call_later(self.start_ai_response, query, self.conversation_history.copy())
 
     async def start_ai_response(self, query: str, messages: list):
         """Start AI response using Ollama chat method with tool call handling"""
@@ -185,6 +187,9 @@ class ChatApp(App):
             
             # Handle tool calls if present
             if response.message.tool_calls:
+                # Add assistant message with tool calls to history
+                self.conversation_history.append(response.message)
+                
                 for tc in response.message.tool_calls:
                     tool_name = tc.function.name.split('_')[0].title()
                     tool_args = list(tc.function.arguments.values())[0] if tc.function.arguments else ""
@@ -199,9 +204,8 @@ class ChatApp(App):
                     # Give time for user to see the tool completion
                     await asyncio.sleep(0.1)
                     
-                    # Add tool result to messages
-                    messages.append(response.message)
-                    messages.append({
+                    # Add tool result to conversation history
+                    self.conversation_history.append({
                         'role': 'tool',
                         'content': str(result),
                         'tool_name': tc.function.name
@@ -209,17 +213,17 @@ class ChatApp(App):
                     
                     # Add user message asking for code explanation/summary
                     if tc.function.name == 'read_file':
-                        messages.append({
+                        self.conversation_history.append({
                             'role': 'user',
                             'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key components/features, 3) Short conclusion line. Keep it concise like Claude Code style.'
                         })
                     elif tc.function.name == 'list_directory':
-                        messages.append({
+                        self.conversation_history.append({
                             'role': 'user', 
                             'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key contents, 3) Short summary line. Keep it concise.'
                         })
                     else:
-                        messages.append({
+                        self.conversation_history.append({
                             'role': 'user',
                             'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key results, 3) Short conclusion. Keep it concise.'
                         })
@@ -228,7 +232,7 @@ class ChatApp(App):
                 animation_task = asyncio.create_task(self.animate_thinking_status(query, "Processing tool results..."))
                 
                 loop = asyncio.get_event_loop()
-                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model="qwen3_14b_q6k", tools=tools,
+                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model="qwen3_14b_q6k", tools=tools,
                     num_ctx=8000))
                 
                 # Stop thinking animation
@@ -243,16 +247,32 @@ class ChatApp(App):
                     # Remove thinking content before displaying
                     clean_content = self.remove_thinking_content(final_response.message.content)
                     if clean_content.strip():
-                        markdown_widget = Markdown("● " + clean_content.strip(), classes="ai-response")
+                        # Use rich Markdown for better rendering
+                        markdown_content = Markdown("● " + clean_content.strip())
+                        markdown_widget = Static(markdown_content, classes="ai-response")
                         chat_area.mount(markdown_widget)
+                        
+                        # Add assistant response to conversation history
+                        self.conversation_history.append({
+                            "role": "assistant",
+                            "content": clean_content.strip()
+                        })
             else:
                 # No tool calls, just display the response
                 if response.message.content and response.message.content.strip():
                     # Remove thinking content before displaying
                     clean_content = self.remove_thinking_content(response.message.content)
                     if clean_content.strip():
-                        markdown_widget = Markdown("● " + clean_content.strip(), classes="ai-response")
+                        # Use rich Markdown for better rendering
+                        markdown_content = Markdown("● " + clean_content.strip())
+                        markdown_widget = Static(markdown_content, classes="ai-response")
                         chat_area.mount(markdown_widget)
+                        
+                        # Add assistant response to conversation history
+                        self.conversation_history.append({
+                            "role": "assistant",
+                            "content": clean_content.strip()
+                        })
                     
         except Exception as e:
             error_text = f"🤖 **Error**: {str(e)}"
