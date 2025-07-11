@@ -137,12 +137,12 @@ class ToolLogger:
     def debug(self, message: str, **kwargs):
         if kwargs:
             message += f" {kwargs}"
-        self.logger.debug(message)
+        # self.logger.debug(message)
     
     def info(self, message: str, **kwargs):
         if kwargs:
             message += f" {kwargs}"
-        self.logger.info(message)
+        # self.logger.info(message)
     
     def warn(self, message: str, **kwargs):
         if kwargs:

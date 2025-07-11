@@ -206,12 +206,30 @@ class ChatApp(App):
                         'content': str(result),
                         'tool_name': tc.function.name
                     })
+                    
+                    # Add user message asking for code explanation/summary
+                    if tc.function.name == 'read_file':
+                        messages.append({
+                            'role': 'user',
+                            'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key components/features, 3) Short conclusion line. Keep it concise like Claude Code style.'
+                        })
+                    elif tc.function.name == 'list_directory':
+                        messages.append({
+                            'role': 'user', 
+                            'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key contents, 3) Short summary line. Keep it concise.'
+                        })
+                    else:
+                        messages.append({
+                            'role': 'user',
+                            'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key results, 3) Short conclusion. Keep it concise.'
+                        })
                 
                 # Make another LLM call with tool results
                 animation_task = asyncio.create_task(self.animate_thinking_status(query, "Processing tool results..."))
                 
                 loop = asyncio.get_event_loop()
-                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model="qwen3:4b", tools=tools))
+                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model="qwen3_14b_q6k", tools=tools,
+                    num_ctx=8000))
                 
                 # Stop thinking animation
                 animation_task.cancel()
@@ -360,8 +378,8 @@ class ChatApp(App):
 
     def remove_thinking_content(self, content: str) -> str:
         """Remove <think>...</think> content from the response"""
-        # Split by </think> and return the last part
-        return content.split('</think>')[-1]
+        # Split by </think> and return the last part, properly stripped
+        return content.split('</think>')[-1].strip()
 
     async def animate_thinking_status(self, query: str, base_message: str):
         """Animate the thinking status with flowers and contextual words"""
