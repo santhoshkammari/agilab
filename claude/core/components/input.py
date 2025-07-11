@@ -153,6 +153,7 @@ class ChatApp(App):
     def on_ready(self) -> None:
         """Called when the app is ready - focus the input"""
         self.query_one(Input).focus()
+        self.theme="gruvbox"
 
     @on(Input.Submitted)
     def handle_message(self, event: Input.Submitted) -> None:
@@ -228,9 +229,9 @@ class ChatApp(App):
                         # Normal streaming
                         response_text += content
                         self.current_streaming_widget.update("● " + response_text.strip())
+                        # Force scroll to end after content update
+                        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
                         await asyncio.sleep(0.001)
-                    
-                    chat_area.scroll_end(animate=False)
                     
         except Exception as e:
             error_text = f"🤖 **Error**: {str(e)}"
