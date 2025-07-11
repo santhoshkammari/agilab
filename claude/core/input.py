@@ -284,6 +284,9 @@ class ChatApp(App):
             widget.remove_class("tool-executing")
             widget.add_class("tool-completed")
             
+            # Scroll to end after tool completion
+            self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+            
             # Clear status bar
             status_indicator.update("")
             
