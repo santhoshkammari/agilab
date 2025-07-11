@@ -163,6 +163,7 @@ class ChatApp(App):
         try:
             async for chunk in self._stream_ollama_response(query):
                 content = chunk['message']['content']
+                tool_calls = chunk.message.tool_calls
                 if content:
                     # Check for thinking mode start
                     if '<think>' in content:
@@ -197,8 +198,11 @@ class ChatApp(App):
                         current_thinking_word = thinking_words[thinking_word_index]
                         status_indicator.update(f"{flower_chars[flower_index]} {current_thinking_word} [grey]({elapsed_seconds}s)[/grey]")
                         #await asyncio.sleep(0.001)
-                        await asyncio.sleep(0.4) # mimicing large language model
-                    
+                        #await asyncio.sleep(0.4) # mimicing large language model
+                elif tool_calls:
+                    for tc in tool_calls:
+                        response_text+=tc.function.name.split('_')[0].title() + f"({list(tc.function.arguments.values())[0]})\n"
+
         except Exception as e:
             error_text = f"🤖 **Error**: {str(e)}"
             chat_area.mount(Static(error_text, classes="ai-response"))
