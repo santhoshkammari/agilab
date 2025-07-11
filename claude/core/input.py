@@ -3,7 +3,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
-from textual.widgets import Input, Static, Label, Markdown
+from textual.widgets import Input, Static, Label, Markdown, ProgressBar
 from textual import on
 from rich.panel import Panel
 from rich.text import Text
@@ -88,11 +88,20 @@ class ChatApp(App):
         background: transparent;
         color: #E77D22;
     }
+    
+    .tool-executing {
+        background: transparent;
+    }
+    
+    .tool-completed {
+        background: transparent;
+    }
     """
 
     def __init__(self):
         super().__init__()
         self.llm = Ollama(host="http://192.168.170.76:11434")
+        self.tool_widgets = {}  # Track tool execution widgets
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="chat_area"):
@@ -109,7 +118,7 @@ class ChatApp(App):
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
-            yield Input(placeholder="Type your message here...", compact=True)
+            yield Input(placeholder="Type your message here...", compact=True,value="read app.py")
         # Footer
         with Horizontal(id="footer"):
             yield Static("⏵⏵ auto-accept edits on", id="footer-right")
@@ -201,7 +210,16 @@ class ChatApp(App):
                         #await asyncio.sleep(0.4) # mimicing large language model
                 elif tool_calls:
                     for tc in tool_calls:
-                        response_text+=tc.function.name.split('_')[0].title() + f"({list(tc.function.arguments.values())[0]})\n"
+                        tool_name = tc.function.name.split('_')[0].title()
+                        tool_args = list(tc.function.arguments.values())[0] if tc.function.arguments else ""
+                        tool_id = f"{tc.function.name}_{id(tc)}"
+                        
+                        # Create tool widget with animation
+                        await self.create_tool_widget(tool_name, tool_args, tool_id)
+                        
+                        # Simulate tool execution completion after some time
+                        # In real implementation, this would be triggered by actual tool completion
+                        self.set_timer(2, lambda: self.complete_tool_execution(tool_id))
 
         except Exception as e:
             error_text = f"🤖 **Error**: {str(e)}"
@@ -218,6 +236,53 @@ class ChatApp(App):
         
         # Reset status to empty
         status_indicator.update("")
+    
+    async def create_tool_widget(self, tool_name: str, tool_args: str, tool_id: str):
+        """Create a widget for tool execution"""
+        from rich.text import Text
+        chat_area = self.query_one("#chat_area")
+        status_indicator = self.query_one("#status_indicator")
+        
+        # Create rich text with grey dot and bold tool name
+        tool_text = Text()
+        tool_text.append("● ", style="bright_black")
+        tool_text.append(tool_name.title(), style="bold")
+        tool_text.append(f"({tool_args})", style="default")
+        
+        tool_widget = Static(tool_text, classes="tool-executing")
+        chat_area.mount(tool_widget)
+        self.tool_widgets[tool_id] = tool_widget
+        
+        # Update status bar to show tool progress
+        status_indicator.update(f"● Executing {tool_name.title()}...")
+        
+        # Scroll to end
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+        
+    
+    def complete_tool_execution(self, tool_id: str, result: str = ""):
+        """Mark tool execution as completed with green dot"""
+        if tool_id in self.tool_widgets:
+            from rich.text import Text
+            widget = self.tool_widgets[tool_id]
+            tool_info = tool_id.split('_')[0].title()
+            status_indicator = self.query_one("#status_indicator")
+            
+            # Create rich text with green dot and bold tool name
+            tool_text = Text()
+            tool_text.append("● ", style="dim #5cf074")
+            tool_text.append(tool_info, style="bold")
+            tool_text.append("(completed)", style="default")
+            
+            widget.update(tool_text)
+            widget.remove_class("tool-executing")
+            widget.add_class("tool-completed")
+            
+            # Clear status bar
+            status_indicator.update("")
+            
+            # Remove from tracking
+            del self.tool_widgets[tool_id]
 
     async def _stream_ollama_response(self, query: str):
         """Convert synchronous Ollama generator to async generator"""
