@@ -149,23 +149,18 @@ class ChatApp(App):
             self.refresh()
             self.call_later(self.start_ai_response, query,messages)
 
-    async def start_ai_response(self, query: str,messages:list):
-        """Start streaming AI response using Ollama with markdown rendering"""
+    async def start_ai_response(self, query: str, messages: list):
+        """Start AI response using Ollama chat method with tool call handling"""
         chat_area = self.query_one("#chat_area")
         status_indicator = self.query_one("#status_indicator")
-
-        # Stream the response using Ollama
-        response_text = ""
-        thinking_mode = False
+        
+        import time
         flower_chars = ["✻", "✺", "✵", "✴", "❋", "❊", "❉", "❈", "❇", "❆", "❅", "❄"]
         flower_index = 0
         
         # Generate contextual thinking words based on user input
         thinking_words = get_contextual_thinking_words(query)
         thinking_word_index = 0
-        
-        import random
-        import time
         
         # Track start time for elapsed seconds
         start_time = time.time()
@@ -174,66 +169,79 @@ class ChatApp(App):
         status_indicator.update("● Generating response...")
         
         try:
-            async for chunk in self._stream_ollama_response(query,messages=messages):
-                content = chunk['message']['content']
-                tool_calls = chunk.message.tool_calls
-                if content:
-                    # Check for thinking mode start
-                    if '<think>' in content:
-                        thinking_mode = True
-                        continue
+            # Start thinking animation and make the LLM call in a separate thread
+            animation_task = asyncio.create_task(self.animate_thinking_status(query, "Generating response..."))
+            
+            # Make the LLM call using chat method in a separate thread
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model="qwen3:4b", tools=tools))
+            
+            # Stop thinking animation
+            animation_task.cancel()
+            try:
+                await animation_task
+            except asyncio.CancelledError:
+                pass
+            
+            # Handle tool calls if present
+            if response.message.tool_calls:
+                for tc in response.message.tool_calls:
+                    tool_name = tc.function.name.split('_')[0].title()
+                    tool_args = list(tc.function.arguments.values())[0] if tc.function.arguments else ""
+                    tool_id = f"{tc.function.name}_{id(tc)}"
                     
-                    # Check for thinking mode end
-                    if '</think>' in content:
-                        thinking_mode = False
-                        # Update status for normal content generation
-                        elapsed_seconds = int(time.time() - start_time)
-                        status_indicator.update(f"● Generating response... {elapsed_seconds}s")
-                        continue
+                    # Create tool widget with animation
+                    await self.create_tool_widget(tool_name, tool_args, tool_id)
                     
-                    # If in thinking mode, show flower animation in status bar
-                    if thinking_mode:
-                        flower_index = (flower_index + 1) % len(flower_chars)
-                        # Change thinking word every 5 flower cycles to slow it down
-                        if flower_index % 5 == 0:
-                            thinking_word_index = (thinking_word_index + 1) % len(thinking_words)
-                        current_thinking_word = thinking_words[thinking_word_index]
-                        status_indicator.update(f"{flower_chars[flower_index]} {current_thinking_word}")
-                        await asyncio.sleep(0.3)
-                    else:
-                        # Collect content but don't render markdown yet
-                        response_text += content
-                        elapsed_seconds = int(time.time() - start_time)
-                        flower_index = (flower_index + 1) % len(flower_chars)
-                        # Change thinking word every 5 flower cycles to slow it down
-                        if flower_index % 5 == 0:
-                            thinking_word_index = (thinking_word_index + 1) % len(thinking_words)
-                        current_thinking_word = thinking_words[thinking_word_index]
-                        status_indicator.update(f"{flower_chars[flower_index]} {current_thinking_word} [grey]({elapsed_seconds}s)[/grey]")
-                        #await asyncio.sleep(0.001)
-                        #await asyncio.sleep(0.4) # mimicing large language model
-                elif tool_calls:
-                    for tc in tool_calls:
-                        tool_name = tc.function.name.split('_')[0].title()
-                        tool_args = list(tc.function.arguments.values())[0] if tc.function.arguments else ""
-                        tool_id = f"{tc.function.name}_{id(tc)}"
-                        
-                        # Create tool widget with animation
-                        await self.create_tool_widget(tool_name, tool_args, tool_id)
-                        
-                        # Execute the actual tool
-                        await self.execute_tool(tc, tool_id, tool_args)
-
+                    # Execute the actual tool
+                    result = await self.execute_tool_and_get_result(tc, tool_id, tool_args)
+                    
+                    # Give time for user to see the tool completion
+                    await asyncio.sleep(0.1)
+                    
+                    # Add tool result to messages
+                    messages.append(response.message)
+                    messages.append({
+                        'role': 'tool',
+                        'content': str(result),
+                        'tool_name': tc.function.name
+                    })
+                
+                # Make another LLM call with tool results
+                animation_task = asyncio.create_task(self.animate_thinking_status(query, "Processing tool results..."))
+                
+                loop = asyncio.get_event_loop()
+                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model="qwen3:4b", tools=tools))
+                
+                # Stop thinking animation
+                animation_task.cancel()
+                try:
+                    await animation_task
+                except asyncio.CancelledError:
+                    pass
+                
+                # Display the final response
+                if final_response.message.content and final_response.message.content.strip():
+                    # Remove thinking content before displaying
+                    clean_content = self.remove_thinking_content(final_response.message.content)
+                    if clean_content.strip():
+                        markdown_widget = Markdown("● " + clean_content.strip(), classes="ai-response")
+                        chat_area.mount(markdown_widget)
+            else:
+                # No tool calls, just display the response
+                if response.message.content and response.message.content.strip():
+                    # Remove thinking content before displaying
+                    clean_content = self.remove_thinking_content(response.message.content)
+                    if clean_content.strip():
+                        markdown_widget = Markdown("● " + clean_content.strip(), classes="ai-response")
+                        chat_area.mount(markdown_widget)
+                    
         except Exception as e:
             error_text = f"🤖 **Error**: {str(e)}"
+            chat_area.mount(Static(error_text, classes="ai-response"))
             status_indicator.update("")
             return
 
-        # Create final markdown widget with collected content
-        if response_text.strip():
-            markdown_widget = Markdown("● " + response_text.strip(), classes="ai-response")
-            chat_area.mount(markdown_widget)
-        
         # Ensure scroll to end after markdown rendering
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
         
@@ -287,6 +295,36 @@ class ChatApp(App):
                 
         except Exception as e:
             self.complete_tool_execution(tool_id, tool_args, f"error: {str(e)}")
+            
+    async def execute_tool_and_get_result(self, tool_call, tool_id: str, tool_args: str):
+        """Execute the actual tool and return the result"""
+        try:
+            tool_name = tool_call.function.name
+            
+            # Get the tool method from the tools dictionary
+            if tool_name in tools_dict:
+                tool_method = tools_dict[tool_name]
+                result = await tool_method(**tool_call.function.arguments)
+                
+                # Generate appropriate result text based on tool and result
+                if tool_name == "read_file" and isinstance(result, dict) and 'lines' in result:
+                    result_text = f"Read {result['lines']} lines"
+                elif tool_name == "list_directory":
+                    result_text = f"Listed {len(result)} items"
+                else:
+                    result_text = "done"
+                    
+                self.complete_tool_execution(tool_id, tool_args, result_text)
+                return result
+            else:
+                result_text = f"Unknown tool: {tool_name}"
+                self.complete_tool_execution(tool_id, tool_args, result_text)
+                return result_text
+                
+        except Exception as e:
+            error_msg = f"error: {str(e)}"
+            self.complete_tool_execution(tool_id, tool_args, error_msg)
+            return error_msg
     
     def complete_tool_execution(self, tool_id: str, tool_args,result: str = ""):
         """Mark tool execution as completed with green dot"""
@@ -320,11 +358,41 @@ class ChatApp(App):
             # Remove from tracking
             del self.tool_widgets[tool_id]
 
-    async def _stream_ollama_response(self, query: str,messages:list):
-        """Convert synchronous Ollama generator to async generator"""
-        for chunk in self.llm(messages=messages,model="qwen3:4b", tools=tools,):
-            yield chunk
-            await asyncio.sleep(0)  # Yield control to event loop
+    def remove_thinking_content(self, content: str) -> str:
+        """Remove <think>...</think> content from the response"""
+        # Split by </think> and return the last part
+        return content.split('</think>')[-1]
+
+    async def animate_thinking_status(self, query: str, base_message: str):
+        """Animate the thinking status with flowers and contextual words"""
+        import time
+        flower_chars = ["✻", "✺", "✵", "✴", "❋", "❊", "❉", "❈", "❇", "❆", "❅", "❄"]
+        flower_index = 0
+        
+        # Generate contextual thinking words based on user input
+        thinking_words = get_contextual_thinking_words(query)
+        thinking_word_index = 0
+        
+        status_indicator = self.query_one("#status_indicator")
+        start_time = time.time()
+        
+        try:
+            while True:
+                elapsed_seconds = int(time.time() - start_time)
+                flower_index = (flower_index + 1) % len(flower_chars)
+                
+                # Change thinking word every 5 flower cycles to slow it down
+                if flower_index % 5 == 0:
+                    thinking_word_index = (thinking_word_index + 1) % len(thinking_words)
+                
+                current_thinking_word = thinking_words[thinking_word_index]
+                status_indicator.update(f"{flower_chars[flower_index]} {current_thinking_word} [grey]({elapsed_seconds}s)[/grey]")
+                
+                await asyncio.sleep(0.3)
+        except asyncio.CancelledError:
+            status_indicator.update("")
+            raise
+
 
 
 if __name__ == "__main__":
