@@ -48,6 +48,7 @@ class ChatApp(App):
         padding: 1;
         background: transparent;
         overflow-y: auto;
+        scrollbar-size: 0 0;
     }
 
     #input_area {
@@ -145,6 +146,7 @@ class ChatApp(App):
             event.input.clear()
 
             chat_area.scroll_end(animate=False)
+            self.refresh()
             # Start AI response streaming
             self.call_later(self.start_ai_response, message)
 
