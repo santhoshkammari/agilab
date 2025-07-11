@@ -217,9 +217,8 @@ class ChatApp(App):
                         # Create tool widget with animation
                         await self.create_tool_widget(tool_name, tool_args, tool_id)
                         
-                        # Simulate tool execution completion after some time
-                        # In real implementation, this would be triggered by actual tool completion
-                        self.set_timer(2, lambda: self.complete_tool_execution(tool_id,tool_args,'Read 297 lines'))
+                        # Execute the actual tool
+                        await self.execute_tool(tc, tool_id, tool_args)
 
         except Exception as e:
             error_text = f"🤖 **Error**: {str(e)}"
@@ -260,6 +259,31 @@ class ChatApp(App):
         # Scroll to end
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
         
+    
+    async def execute_tool(self, tool_call, tool_id: str, tool_args: str):
+        """Execute the actual tool and complete the execution"""
+        try:
+            # Find the tool function from the tools list
+            tool_function = None
+            for tool in tools:
+                if tool.__name__ == tool_call.function.name:
+                    tool_function = tool
+                    break
+            
+            if tool_function:
+                # Execute the tool with the arguments
+                result = tool_function(**tool_call.function.arguments)
+                if result and isinstance(result, str):
+                    line_count = len(result.split('\n'))
+                    result_text = f"Read {line_count} lines"
+                else:
+                    result_text = "done"
+                self.complete_tool_execution(tool_id, tool_args, result_text)
+            else:
+                self.complete_tool_execution(tool_id, tool_args, "done")
+                
+        except Exception as e:
+            self.complete_tool_execution(tool_id, tool_args, f"error: {str(e)}")
     
     def complete_tool_execution(self, tool_id: str, tool_args,result: str = ""):
         """Mark tool execution as completed with green dot"""
