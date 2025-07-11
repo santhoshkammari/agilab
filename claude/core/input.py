@@ -133,20 +133,23 @@ class ChatApp(App):
     @on(Input.Submitted)
     def handle_message(self, event: Input.Submitted) -> None:
         """Handle when user submits a message"""
-        message = event.value.strip()
-        if message:  # Only process non-empty messages
+        query = event.value.strip()
+        messages = [
+            {"role":"system","content":SYSTEM_PROMPT.format(cwd=self.cwd)},
+            {"role":"user","content":query + "/no_think",}
+        ]
+        if query:  # Only process non-empty messages
             # Add the message to chat area
             chat_area = self.query_one("#chat_area")
-            chat_area.mount(Static(f"> {message}\n", classes="message"))
+            chat_area.mount(Static(f"> {query}\n", classes="message"))
             # Clear the input
             event.input.clear()
 
             chat_area.scroll_end(animate=False)
             self.refresh()
-            # Start AI response streaming
-            self.call_later(self.start_ai_response, message)
+            self.call_later(self.start_ai_response, query,messages)
 
-    async def start_ai_response(self, query: str):
+    async def start_ai_response(self, query: str,messages:list):
         """Start streaming AI response using Ollama with markdown rendering"""
         chat_area = self.query_one("#chat_area")
         status_indicator = self.query_one("#status_indicator")
@@ -171,7 +174,7 @@ class ChatApp(App):
         status_indicator.update("● Generating response...")
         
         try:
-            async for chunk in self._stream_ollama_response(query):
+            async for chunk in self._stream_ollama_response(query,messages=messages):
                 content = chunk['message']['content']
                 tool_calls = chunk.message.tool_calls
                 if content:
@@ -317,10 +320,9 @@ class ChatApp(App):
             # Remove from tracking
             del self.tool_widgets[tool_id]
 
-    async def _stream_ollama_response(self, query: str):
+    async def _stream_ollama_response(self, query: str,messages:list):
         """Convert synchronous Ollama generator to async generator"""
-        for chunk in self.llm(prompt=query+"/no_think", model="qwen3:4b", tools=tools,
-                              system_prompt=SYSTEM_PROMPT.format(cwd=self.cwd)):
+        for chunk in self.llm(messages=messages,model="qwen3:4b", tools=tools,):
             yield chunk
             await asyncio.sleep(0)  # Yield control to event loop
 
