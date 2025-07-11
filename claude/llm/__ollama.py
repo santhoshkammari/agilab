@@ -10,7 +10,7 @@ class Ollama:
 
     def __call__(
         self,
-        prompt: str,
+        prompt: str="",
         system_prompt: Optional[str] = None,
         schema: Optional[Union[Dict[str, Any], BaseModel]] = None,
         messages: Optional[list] = None,
