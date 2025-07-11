@@ -636,7 +636,7 @@ class LSTool:
             # Sort by name
             files.sort(key=lambda x: x.name.lower())
             
-            logger.info(f"Listed {len(files)} items")
+            # logger.info(f"Listed {len(files)} items")
             return files
             
         except Exception as e:

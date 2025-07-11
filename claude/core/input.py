@@ -8,9 +8,9 @@ from textual import on
 from rich.panel import Panel
 from rich.text import Text
 
-from claude.tools import tools
+from claude.tools import tools, tools_dict
 from claude.llm import Ollama
-from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words
+from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words, SYSTEM_PROMPT
 
 
 class ChatApp(App):
@@ -98,16 +98,17 @@ class ChatApp(App):
     }
     """
 
-    def __init__(self):
+    def __init__(self,cwd):
         super().__init__()
         self.llm = Ollama(host="http://192.168.170.76:11434")
         self.tool_widgets = {}  # Track tool execution widgets
+        self.cwd = cwd
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="chat_area"):
             welcome_panel = Panel(
                 renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold orange1]Plaude Pode[/]!\n\n"
-                                 f"/help for help, /status for your current setup\n\ncwd: {Path(__file__).parent}"),
+                                 f"/help for help, /status for your current setup\n\ncwd: {self.cwd}"),
                 border_style=ORANGE_COLORS[17],
                 expand=False
             )
@@ -118,7 +119,7 @@ class ChatApp(App):
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
-            yield Input(placeholder="Type your message here...", compact=True, value="read app.py")
+            yield Input(placeholder="Type your message here...", compact=True, value="read /home/ntlpt59/master/own/claude/claude/core/input.py")
         # Footer
         with Horizontal(id="footer"):
             yield Static("⏵⏵ auto-accept edits on", id="footer-right")
@@ -222,7 +223,6 @@ class ChatApp(App):
 
         except Exception as e:
             error_text = f"🤖 **Error**: {str(e)}"
-            chat_area.mount(Static(error_text, classes="ai-response"))
             status_indicator.update("")
             return
 
@@ -263,24 +263,24 @@ class ChatApp(App):
     async def execute_tool(self, tool_call, tool_id: str, tool_args: str):
         """Execute the actual tool and complete the execution"""
         try:
-            # Find the tool function from the tools list
-            tool_function = None
-            for tool in tools:
-                if tool.__name__ == tool_call.function.name:
-                    tool_function = tool
-                    break
+            tool_name = tool_call.function.name
             
-            if tool_function:
-                # Execute the tool with the arguments
-                result = tool_function(**tool_call.function.arguments)
-                if result and isinstance(result, str):
-                    line_count = len(result.split('\n'))
-                    result_text = f"Read {line_count} lines"
+            # Get the tool method from the tools dictionary
+            if tool_name in tools_dict:
+                tool_method = tools_dict[tool_name]
+                result = await tool_method(**tool_call.function.arguments)
+                
+                # Generate appropriate result text based on tool and result
+                if tool_name == "read_file" and isinstance(result, dict) and 'lines' in result:
+                    result_text = f"Read {result['lines']} lines"
+                elif tool_name == "list_directory":
+                    result_text = f"Listed {len(result)} items"
                 else:
                     result_text = "done"
-                self.complete_tool_execution(tool_id, tool_args, result_text)
             else:
-                self.complete_tool_execution(tool_id, tool_args, "done")
+                result_text = f"Unknown tool: {tool_name}"
+            
+            self.complete_tool_execution(tool_id, tool_args, result_text)
                 
         except Exception as e:
             self.complete_tool_execution(tool_id, tool_args, f"error: {str(e)}")
@@ -319,7 +319,8 @@ class ChatApp(App):
 
     async def _stream_ollama_response(self, query: str):
         """Convert synchronous Ollama generator to async generator"""
-        for chunk in self.llm(prompt=query+"/no_think", model="qwen3:4b", tools=tools):
+        for chunk in self.llm(prompt=query+"/no_think", model="qwen3:4b", tools=tools,
+                              system_prompt=SYSTEM_PROMPT.format(cwd=self.cwd)):
             yield chunk
             await asyncio.sleep(0)  # Yield control to event loop
 
