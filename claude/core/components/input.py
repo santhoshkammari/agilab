@@ -116,7 +116,6 @@ class ChatApp(App):
     def __init__(self):
         super().__init__()
         self.llm = Ollama(host="http://192.168.170.76:11434")
-        self.current_streaming_widget = None
 
     def compose(self) -> ComposeResult:
         # Main chat display area
@@ -138,7 +137,7 @@ class ChatApp(App):
             yield Static(welcome_panel, classes="message")
         # Status bar above input
         with Horizontal(id="status_bar"):
-            yield Static("✻ Ready", id="status_indicator")
+            yield Static("", id="status_indicator")
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
@@ -176,32 +175,32 @@ class ChatApp(App):
         chat_area = self.query_one("#chat_area")
         status_indicator = self.query_one("#status_indicator")
 
-        # Create a new markdown widget for the AI response
-        self.current_streaming_widget = Markdown("", classes="ai-response")
-        chat_area.mount(self.current_streaming_widget)
-
         # Stream the response using Ollama
         response_text = ""
         thinking_mode = False
         flower_chars = ["✻", "✺", "✵", "✴", "❋", "❊", "❉", "❈", "❇", "❆", "❅", "❄"]
         flower_index = 0
         thinking_messages = [
-            "contemplating...",
-            "pondering...",
-            "considering...",
-            "reflecting...",
-            "processing...",
-            "analyzing...",
-            "brainstorming...",
-            "meditating...",
-            "deliberating...",
-            "reasoning..."
+            "Contemplating...",
+            "Pondering...",
+            "Considering...",
+            "Reflecting...",
+            "Processing...",
+            "Analyzing...",
+            "Brainstorming...",
+            "Meditating...",
+            "Deliberating...",
+            "Reasoning..."
         ]
         import random
+        import time
         thinking_message = random.choice(thinking_messages)
         
-        # Clear ready status
-        status_indicator.update("")
+        # Track start time for elapsed seconds
+        start_time = time.time()
+        
+        # Set initial status
+        status_indicator.update("● Generating response...")
         
         try:
             async for chunk in self._stream_ollama_response(query):
@@ -215,9 +214,9 @@ class ChatApp(App):
                     # Check for thinking mode end
                     if '</think>' in content:
                         thinking_mode = False
-                        # Clear status indicator and start normal content
-                        status_indicator.update("")
-                        self.current_streaming_widget.update("● " + response_text)
+                        # Update status for normal content generation
+                        elapsed_seconds = int(time.time() - start_time)
+                        status_indicator.update(f"● Generating response... {elapsed_seconds}s")
                         continue
                     
                     # If in thinking mode, show flower animation in status bar
@@ -226,21 +225,28 @@ class ChatApp(App):
                         status_indicator.update(f"{flower_chars[flower_index]} {thinking_message}")
                         await asyncio.sleep(0.1)
                     else:
-                        # Normal streaming
+                        # Collect content but don't render markdown yet
                         response_text += content
-                        self.current_streaming_widget.update("● " + response_text.strip())
-                        # Force scroll to end after content update
-                        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
-                        await asyncio.sleep(0.001)
+                        elapsed_seconds = int(time.time() - start_time)
+                        flower_index = (flower_index + 1) % len(flower_chars)
+                        status_indicator.update(f"{flower_chars[flower_index]} {thinking_message} [grey]({elapsed_seconds}s)[/grey]")
+                        #await asyncio.sleep(0.001)
+                        await asyncio.sleep(0.2) # mimicing large language model
                     
         except Exception as e:
             error_text = f"🤖 **Error**: {str(e)}"
-            self.current_streaming_widget.update(error_text)
+            chat_area.mount(Static(error_text, classes="ai-response"))
             status_indicator.update("")
+            return
 
-        # Mark streaming as complete and clear status
-        self.current_streaming_widget.remove_class("streaming")
-        self.current_streaming_widget = None
+        # Create final markdown widget with collected content
+        markdown_widget = Markdown("● " + response_text.strip(), classes="ai-response")
+        chat_area.mount(markdown_widget)
+        
+        # Ensure scroll to end after markdown rendering
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+        
+        # Reset status to empty
         status_indicator.update("")
 
     async def _stream_ollama_response(self, query: str):
