@@ -5,6 +5,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Input, Static, Label, ProgressBar, OptionList
 from textual import on
+from textual.binding import Binding
 from rich.panel import Panel
 from rich.text import Text
 from rich.markdown import Markdown
@@ -12,6 +13,7 @@ from rich.markdown import Markdown
 from claude.tools import tools, tools_dict
 from claude.llm import Ollama
 from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words, SYSTEM_PROMPT
+from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
 
 #host="http://192.168.170.76:11434"
 host=None
@@ -21,6 +23,11 @@ MODEL= "qwen3:0.6b"
 
 class ChatApp(App):
     """Simple chat interface with message display and input"""
+    
+    BINDINGS = [
+        Binding("shift+tab", "cycle_mode", "Cycle Mode", priority=True),
+    ]
+    
     CSS = """
     Screen {
         background: transparent;
@@ -63,6 +70,17 @@ class ChatApp(App):
 
     #footer-right {
         text-align: right;
+    }
+    
+    .mode-bypass {
+        color: #fabd2f;
+    }
+    
+    .mode-plan {
+        color: #458588;
+    }
+    
+    .mode-auto-edit {
         color: #915FF0;
     }
 
@@ -144,17 +162,21 @@ class ChatApp(App):
         self.llm = Ollama(host=host)
         self.tool_widgets = {}  # Track tool execution widgets
         self.cwd = cwd
-        # Initialize conversation history with system prompt
-        self.conversation_history = [
-            {"role": "system", "content": SYSTEM_PROMPT.format(cwd=self.cwd)}
-        ]
+        
         # Permission system state
         self.pending_tool_call = None
         self.auto_approve_tools = set()  # Tools that user chose "don't ask again" for
         self.waiting_for_permission = False
         
-        # Permission modes: 'default', 'auto-accept-edits', 'bypass-permissions'
+        # Permission modes: 'default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode'
         self.permission_mode = 'default'
+        self.modes = ['default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode']
+        self.current_mode_index = 0
+        
+        # Initialize conversation history with system prompt
+        self.conversation_history = [
+            {"role": "system", "content": self.get_system_prompt()}
+        ]
         
         # Tools that don't need permission in default mode
         self.no_permission_tools = {'read_file', 'list_directory'}
@@ -190,7 +212,7 @@ class ChatApp(App):
             yield Input(placeholder="Type your message here...", compact=True, value="read /home/ntlpt59/master/own/claude/claude/core/input.py")
         # Footer
         with Horizontal(id="footer"):
-            yield Static("⏵⏵ auto-accept edits on   ", id="footer-right")
+            yield Static(self.get_mode_display(), id="footer-right")
 
 
     def on_ready(self) -> None:
@@ -199,6 +221,11 @@ class ChatApp(App):
         self.theme="gruvbox"
         # Hide permission area initially
         self.query_one("#permission_area").display = False
+        
+        # Set initial mode styling (default has no class, so no color)
+        footer_right = self.query_one("#footer-right")
+        if self.permission_mode == 'auto-accept-edits':
+            footer_right.add_class("mode-auto-edit")
 
     @on(OptionList.OptionSelected, "#permission_options")
     def handle_permission_choice(self, event: OptionList.OptionSelected) -> None:
@@ -225,6 +252,10 @@ class ChatApp(App):
             chat_area.mount(Static(f"\n> I don't want you to execute the {self.pending_tool_call.function.name} tool. Please suggest an alternative.\n", classes="message"))
             self.pending_tool_call = None
             self.call_later(self.start_ai_response, "tool_rejected", self.conversation_history.copy())
+
+    def action_cycle_mode(self) -> None:
+        """Action to cycle through modes"""
+        self.cycle_mode()
 
     @on(Input.Submitted)
     def handle_message(self, event: Input.Submitted) -> None:
@@ -317,10 +348,56 @@ class ChatApp(App):
         }
         return tool_names.get(tool_name, tool_name.replace('_', ' ').title())
 
+    def get_system_prompt(self):
+        """Get the appropriate system prompt based on current mode"""
+        if self.permission_mode == 'plan-mode':
+            return PLAN_MODE_PROMPT.format(cwd=self.cwd)
+        else:
+            return DEFAULT_MODE_PROMPT.format(cwd=self.cwd)
+
+    def get_mode_display(self):
+        """Get the display text and style for current mode"""
+        if self.permission_mode == 'default':
+            return ""
+        elif self.permission_mode == 'auto-accept-edits':
+            return "⏵⏵ auto-accept edits on   "
+        elif self.permission_mode == 'bypass-permissions':
+            return "Bypassing Permissions   "
+        elif self.permission_mode == 'plan-mode':
+            return "⏸ plan mode on   "
+        
+    def cycle_mode(self):
+        """Cycle to the next permission mode"""
+        self.current_mode_index = (self.current_mode_index + 1) % len(self.modes)
+        old_mode = self.permission_mode
+        self.permission_mode = self.modes[self.current_mode_index]
+        
+        # Update footer
+        footer_right = self.query_one("#footer-right")
+        footer_right.update(self.get_mode_display())
+        
+        # Remove all mode classes and add the current one
+        footer_right.remove_class("mode-bypass", "mode-plan", "mode-auto-edit")
+        if self.permission_mode == 'bypass-permissions':
+            footer_right.add_class("mode-bypass")
+        elif self.permission_mode == 'plan-mode':
+            footer_right.add_class("mode-plan")
+        elif self.permission_mode == 'auto-accept-edits':
+            footer_right.add_class("mode-auto-edit")
+        
+        # Update system prompt in conversation history if mode changed
+        if old_mode != self.permission_mode:
+            self.conversation_history[0] = {
+                "role": "system", 
+                "content": self.get_system_prompt()
+            }
+
     def needs_permission(self, tool_name):
         """Check if a tool needs permission based on current mode"""
         if self.permission_mode == 'bypass-permissions':
             return False
+        elif self.permission_mode == 'plan-mode':
+            return True  # Plan mode doesn't use tools, so always ask
         elif self.permission_mode == 'auto-accept-edits':
             # Auto-approve read/list/edit tools, ask for others
             if tool_name in self.no_permission_tools or tool_name in self.auto_accept_edit_tools:
@@ -383,7 +460,9 @@ class ChatApp(App):
         animation_task = asyncio.create_task(self.animate_thinking_status("tool_result", "Processing tool results..."))
         
         loop = asyncio.get_event_loop()
-        final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=MODEL, tools=tools, num_ctx=NUM_CTX))
+        # Pass no tools in plan mode
+        tools_to_use = None if self.permission_mode == 'plan-mode' else tools
+        final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=MODEL, tools=tools_to_use, num_ctx=NUM_CTX))
         
         # Stop thinking animation
         animation_task.cancel()
@@ -442,7 +521,9 @@ class ChatApp(App):
             
             # Make the LLM call using chat method in a separate thread
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model=MODEL ,num_ctx = NUM_CTX,tools=tools))
+            # Pass no tools in plan mode
+            tools_to_use = None if self.permission_mode == 'plan-mode' else tools
+            response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model=MODEL ,num_ctx = NUM_CTX,tools=tools_to_use))
             
             # Stop thinking animation
             animation_task.cancel()
@@ -508,7 +589,9 @@ class ChatApp(App):
                 animation_task = asyncio.create_task(self.animate_thinking_status(query, "Processing tool results..."))
                 
                 loop = asyncio.get_event_loop()
-                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=MODEL, tools=tools,
+                # Pass no tools in plan mode
+                tools_to_use = None if self.permission_mode == 'plan-mode' else tools
+                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=MODEL, tools=tools_to_use,
                     num_ctx = NUM_CTX))
                 
                 # Stop thinking animation
