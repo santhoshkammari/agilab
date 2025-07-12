@@ -14,11 +14,7 @@ from claude.tools import tools, tools_dict
 from claude.llm import Ollama
 from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words, SYSTEM_PROMPT
 from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
-
-#host="http://192.168.170.76:11434"
-host=None
-NUM_CTX = 2048
-MODEL= "qwen3:0.6b"
+from claude.core.config import config
 
 
 class ChatApp(App):
@@ -159,7 +155,7 @@ class ChatApp(App):
 
     def __init__(self,cwd):
         super().__init__()
-        self.llm = Ollama(host=host)
+        self.llm = Ollama(host=config.host)
         self.tool_widgets = {}  # Track tool execution widgets
         self.cwd = cwd
         
@@ -462,7 +458,7 @@ class ChatApp(App):
         loop = asyncio.get_event_loop()
         # Pass no tools in plan mode
         tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-        final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=MODEL, tools=tools_to_use, num_ctx=NUM_CTX))
+        final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=config.model, tools=tools_to_use, num_ctx=config.num_ctx))
         
         # Stop thinking animation
         animation_task.cancel()
@@ -523,7 +519,7 @@ class ChatApp(App):
             loop = asyncio.get_event_loop()
             # Pass no tools in plan mode
             tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-            response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model=MODEL ,num_ctx = NUM_CTX,tools=tools_to_use))
+            response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model=config.model, num_ctx=config.num_ctx, tools=tools_to_use))
             
             # Stop thinking animation
             animation_task.cancel()
@@ -591,8 +587,7 @@ class ChatApp(App):
                 loop = asyncio.get_event_loop()
                 # Pass no tools in plan mode
                 tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=MODEL, tools=tools_to_use,
-                    num_ctx = NUM_CTX))
+                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=config.model, tools=tools_to_use, num_ctx=config.num_ctx))
                 
                 # Stop thinking animation
                 animation_task.cancel()
