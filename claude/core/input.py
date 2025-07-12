@@ -204,7 +204,7 @@ class ChatApp(App):
         ]
         
         # Tools that don't need permission in default mode
-        self.no_permission_tools = {'read_file', 'list_directory'}
+        self.no_permission_tools = {'read_file', 'list_directory', 'web_search'}
         
         # Tools that are auto-approved in auto-accept-edits mode
         self.auto_accept_edit_tools = {'write_file', 'edit_file', 'multi_edit_file'}
