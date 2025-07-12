@@ -137,10 +137,6 @@ class ChatApp(App):
         text-style: bold;
     }
     
-    .option-list--option-hover {
-        background: #3c3836;
-        color: #ebdbb2;
-    }
     """
 
     def __init__(self,cwd):
@@ -154,9 +150,17 @@ class ChatApp(App):
         ]
         # Permission system state
         self.pending_tool_call = None
-        self.permission_granted = False
         self.auto_approve_tools = set()  # Tools that user chose "don't ask again" for
         self.waiting_for_permission = False
+        
+        # Permission modes: 'default', 'auto-accept-edits', 'bypass-permissions'
+        self.permission_mode = 'default'
+        
+        # Tools that don't need permission in default mode
+        self.no_permission_tools = {'read_file', 'list_directory'}
+        
+        # Tools that are auto-approved in auto-accept-edits mode
+        self.auto_accept_edit_tools = {'write_file', 'edit_file', 'multi_edit_file'}
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="chat_area"):
@@ -202,18 +206,15 @@ class ChatApp(App):
         choice_index = event.option_index
         
         if choice_index == 0:  # Yes
-            self.permission_granted = True
             self.hide_permission_widget()
             self.call_later(self.execute_pending_tool)
         elif choice_index == 1:  # Yes, and don't ask again
             if self.pending_tool_call:
                 tool_name = self.pending_tool_call.function.name
                 self.auto_approve_tools.add(tool_name)
-            self.permission_granted = True
             self.hide_permission_widget()
             self.call_later(self.execute_pending_tool)
         elif choice_index == 2:  # No
-            self.permission_granted = False
             self.hide_permission_widget()
             # Add user message asking what to do instead
             self.conversation_history.append({
@@ -257,10 +258,30 @@ class ChatApp(App):
         
         # Update permission message
         tool_name = tool_call.function.name
+        tool_display_name = self.get_tool_display_name(tool_name)
         tool_args = list(tool_call.function.arguments.values())[0] if tool_call.function.arguments else ""
         
         permission_msg = self.query_one("#permission_message")
-        permission_msg.update(f"Do you want to make this edit to {tool_name}({tool_args})?")
+        if tool_name == 'bash_execute':
+            permission_msg.update(f"Bash command\n{tool_args}\nDo you want to proceed?")
+            # Update option list for bash commands
+            option_list = self.query_one("#permission_options")
+            option_list.clear_options()
+            option_list.add_options([
+                "1. Yes",
+                f"2. Yes, and don't ask again for rm commands in {self.cwd}",
+                "3. No, and tell Claude what to do differently (esc)"
+            ])
+        else:
+            permission_msg.update(f"Do you want to make this edit to {tool_display_name}({tool_args})?")
+            # Reset to default options for non-bash tools
+            option_list = self.query_one("#permission_options")
+            option_list.clear_options()
+            option_list.add_options([
+                "1. Yes",
+                "2. Yes, and don't ask again this session",
+                "3. No, and tell Claude what to do differently"
+            ])
         
         # Show permission area and hide input
         self.query_one("#permission_area").display = True
@@ -278,16 +299,49 @@ class ChatApp(App):
         self.query_one("#input_area").display = True
         self.query_one(Input).focus()
 
+    def get_tool_display_name(self, tool_name):
+        """Get user-friendly display name for tools"""
+        tool_names = {
+            'read_file': 'Read',
+            'write_file': 'Write', 
+            'edit_file': 'Edit',
+            'multi_edit_file': 'MultiEdit',
+            'bash_execute': 'Bash',
+            'glob_find_files': 'Glob',
+            'grep_search': 'Grep',
+            'list_directory': 'LS',
+            'web_fetch': 'WebFetch',
+            'web_search': 'WebSearch',
+            'todo_read': 'TodoRead',
+            'todo_write': 'TodoWrite'
+        }
+        return tool_names.get(tool_name, tool_name.replace('_', ' ').title())
+
+    def needs_permission(self, tool_name):
+        """Check if a tool needs permission based on current mode"""
+        if self.permission_mode == 'bypass-permissions':
+            return False
+        elif self.permission_mode == 'auto-accept-edits':
+            # Auto-approve read/list/edit tools, ask for others
+            if tool_name in self.no_permission_tools or tool_name in self.auto_accept_edit_tools:
+                return False
+            return tool_name not in self.auto_approve_tools
+        else:  # default mode
+            # Only read_file and list_directory don't need permission
+            if tool_name in self.no_permission_tools:
+                return False
+            return tool_name not in self.auto_approve_tools
+
     async def execute_pending_tool(self):
         """Execute the pending tool after permission is granted"""
-        if self.pending_tool_call and self.permission_granted:
+        if self.pending_tool_call:
             tool_call = self.pending_tool_call
-            tool_name = tool_call.function.name.split('_')[0].title()
+            tool_display_name = self.get_tool_display_name(tool_call.function.name)
             tool_args = list(tool_call.function.arguments.values())[0] if tool_call.function.arguments else ""
             tool_id = f"{tool_call.function.name}_{id(tool_call)}"
             
             # Create tool widget with animation
-            await self.create_tool_widget(tool_name, tool_args, tool_id)
+            await self.create_tool_widget(tool_display_name, tool_args, tool_id)
             
             # Execute the actual tool
             result = await self.execute_tool_and_get_result(tool_call, tool_id, tool_args)
@@ -321,7 +375,6 @@ class ChatApp(App):
             
             # Continue with LLM response
             self.pending_tool_call = None
-            self.permission_granted = False
             self.call_later(self.continue_ai_response)
 
     async def continue_ai_response(self):
@@ -407,14 +460,14 @@ class ChatApp(App):
                 tc = response.message.tool_calls[0]
                 tool_name = tc.function.name
                 
-                # Check if tool needs permission and wasn't auto-approved
-                if tool_name in ['read_file', 'list_directory'] and tool_name not in self.auto_approve_tools:
+                # Check if tool needs permission based on current mode
+                if self.needs_permission(tool_name):
                     # Show permission widget and wait for user decision
                     self.show_permission_widget(tc)
                     return
                 else:
                     # Auto-approved or doesn't need permission - execute directly
-                    tool_display_name = tc.function.name.split('_')[0].title()
+                    tool_display_name = self.get_tool_display_name(tc.function.name)
                     tool_args = list(tc.function.arguments.values())[0] if tc.function.arguments else ""
                     tool_id = f"{tc.function.name}_{id(tc)}"
                     
@@ -530,33 +583,7 @@ class ChatApp(App):
         
         # Scroll to end
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
-        
     
-    async def execute_tool(self, tool_call, tool_id: str, tool_args: str):
-        """Execute the actual tool and complete the execution"""
-        try:
-            tool_name = tool_call.function.name
-            
-            # Get the tool method from the tools dictionary
-            if tool_name in tools_dict:
-                tool_method = tools_dict[tool_name]
-                result = await tool_method(**tool_call.function.arguments)
-                
-                # Generate appropriate result text based on tool and result
-                if tool_name == "read_file" and isinstance(result, dict) and 'lines' in result:
-                    result_text = f"Read {result['lines']} lines"
-                elif tool_name == "list_directory":
-                    result_text = f"Listed {len(result)} items"
-                else:
-                    result_text = "done"
-            else:
-                result_text = f"Unknown tool: {tool_name}"
-            
-            self.complete_tool_execution(tool_id, tool_args, result_text)
-                
-        except Exception as e:
-            self.complete_tool_execution(tool_id, tool_args, f"error: {str(e)}")
-            
     async def execute_tool_and_get_result(self, tool_call, tool_id: str, tool_args: str):
         """Execute the actual tool and return the result"""
         try:
@@ -661,4 +688,3 @@ if __name__ == "__main__":
     cwd = sys.argv[1] if len(sys.argv) > 1 else "/home/ntlpt59/master/own/claude/claude/core"
     app = ChatApp(cwd)
     app.run()
-    print("hai")
