@@ -151,6 +151,32 @@ class ChatApp(App):
         text-style: bold;
     }
     
+    #command_palette {
+        height: auto;
+        background: transparent;
+        border: round #915FF0;
+        padding: 1;
+        margin: 0;
+    }
+    
+    #command_palette_message {
+        color: #a89984;
+        text-style: italic;
+        padding: 0 0 1 0;
+        background: transparent;
+    }
+    
+    #command_options {
+        background: transparent;
+        border: none;
+        height: auto;
+        scrollbar-size: 0 0;
+    }
+    
+    #command_options:focus {
+        border: none;
+    }
+    
     """
 
     def __init__(self,cwd):
@@ -163,6 +189,9 @@ class ChatApp(App):
         self.pending_tool_call = None
         self.auto_approve_tools = set()  # Tools that user chose "don't ask again" for
         self.waiting_for_permission = False
+        
+        # Command palette state
+        self.waiting_for_command = False
         
         # Permission modes: 'default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode'
         self.permission_mode = 'default'
@@ -202,6 +231,17 @@ class ChatApp(App):
                 id="permission_options"
             )
         
+        # Command palette (initially hidden)
+        with Vertical(id="command_palette"):
+            yield Static("Command Palette - Select an option:", id="command_palette_message")
+            yield OptionList(
+                "/host <url> - Set LLM host URL",
+                "/think - Enable thinking mode", 
+                "/no-think - Disable thinking mode",
+                "/status - Show current configuration",
+                id="command_options"
+            )
+        
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
@@ -217,11 +257,29 @@ class ChatApp(App):
         self.theme="gruvbox"
         # Hide permission area initially
         self.query_one("#permission_area").display = False
+        # Hide command palette initially
+        self.query_one("#command_palette").display = False
         
         # Set initial mode styling (default has no class, so no color)
         footer_right = self.query_one("#footer-right")
         if self.permission_mode == 'auto-accept-edits':
             footer_right.add_class("mode-auto-edit")
+
+    def on_key(self, event) -> None:
+        """Handle key events for command palette"""
+        # Only show command palette if we're not waiting for permission and input is focused
+        if (event.character == "/" and 
+            not self.waiting_for_permission and 
+            not self.waiting_for_command and 
+            self.query_one(Input).has_focus):
+            # Clear input field to prevent "/" from being typed
+            self.query_one(Input).clear()
+            self.show_command_palette()
+            event.prevent_default()
+        # Handle escape to hide command palette
+        elif event.key == "escape" and self.waiting_for_command:
+            self.hide_command_palette()
+            event.prevent_default()
 
     @on(OptionList.OptionSelected, "#permission_options")
     def handle_permission_choice(self, event: OptionList.OptionSelected) -> None:
@@ -249,6 +307,25 @@ class ChatApp(App):
             self.pending_tool_call = None
             self.call_later(self.start_ai_response, "tool_rejected", self.conversation_history.copy())
 
+    @on(OptionList.OptionSelected, "#command_options")
+    def handle_command_choice(self, event: OptionList.OptionSelected) -> None:
+        """Handle command choice from command palette"""
+        choice_index = event.option_index
+        self.hide_command_palette()
+        
+        if choice_index == 0:  # /host <url>
+            # For now, show a message that this needs manual input
+            chat_area = self.query_one("#chat_area")
+            chat_area.mount(Static("\n> Use /host <url> in the input to set host URL\n", classes="message"))
+        elif choice_index == 1:  # /think
+            self.toggle_think_mode(True)
+        elif choice_index == 2:  # /no-think  
+            self.toggle_think_mode(False)
+        elif choice_index == 3:  # /status
+            self.show_status()
+        elif choice_index == 4:  # /clear
+            self.clear_conversation()
+
     def action_cycle_mode(self) -> None:
         """Action to cycle through modes"""
         self.cycle_mode()
@@ -256,16 +333,48 @@ class ChatApp(App):
     @on(Input.Submitted)
     def handle_message(self, event: Input.Submitted) -> None:
         """Handle when user submits a message"""
-        # Don't process input if waiting for permission
-        if self.waiting_for_permission:
+        # Don't process input if waiting for permission or command
+        if self.waiting_for_permission or self.waiting_for_command:
             return
             
         query = event.value.strip()
         if query:  # Only process non-empty messages
+            # Handle command shortcuts
+            if query.startswith("/host "):
+                host_url = query[6:].strip()
+                config.set_host(host_url)
+                chat_area = self.query_one("#chat_area")
+                chat_area.mount(Static(f"\n✓ Host set to: {config.get_host_display()}\n", classes="message"))
+                # Reinitialize LLM with new host
+                self.llm = Ollama(host=config.host)
+                event.input.clear()
+                self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+                return
+            elif query == "/think":
+                self.toggle_think_mode(True)
+                event.input.clear()
+                return
+            elif query == "/no-think":
+                self.toggle_think_mode(False)
+                event.input.clear()
+                return
+            elif query == "/status":
+                self.show_status()
+                event.input.clear()
+                return
+            elif query == "/clear":
+                self.clear_conversation()
+                event.input.clear()
+                return
             # Add user message to conversation history
+            # Only add /no_think if thinking is disabled
+            content = query
+            if not config.thinking_enabled:
+                content += "/no_think"
+            
             self.conversation_history.append({
                 "role": "user", 
-                "content": query + "/no_think"
+                "content": content
             })
             
             # Add the message to chat area
@@ -326,6 +435,106 @@ class ChatApp(App):
         self.query_one("#input_area").display = True
         self.query_one(Input).focus()
 
+    def show_command_palette(self):
+        """Show command palette and hide input"""
+        self.waiting_for_command = True
+        
+        # Update command options with current state
+        command_options = self.query_one("#command_options")
+        thinking_status = "enabled" if config.thinking_enabled else "disabled"
+        
+        command_options.clear_options()
+        command_options.add_options([
+            f"/host <url> - Set LLM host (current: {config.get_host_display()})",
+            f"/think - Enable thinking (current: {thinking_status})", 
+            f"/no-think - Disable thinking (current: {thinking_status})",
+            f"/status - Show configuration",
+            f"/clear - Clear conversation history"
+        ])
+        
+        # Show command palette and hide input
+        self.query_one("#command_palette").display = True
+        self.query_one("#input_area").display = False
+        
+        # Focus command options and highlight first option
+        command_options.focus()
+        command_options.highlighted = 0
+
+    def hide_command_palette(self):
+        """Hide command palette and show input"""
+        self.waiting_for_command = False
+        self.query_one("#command_palette").display = False
+        self.query_one("#input_area").display = True
+        self.query_one(Input).focus()
+
+    def toggle_think_mode(self, enable_thinking: bool):
+        """Toggle thinking mode on/off by updating system prompt"""
+        chat_area = self.query_one("#chat_area")
+        
+        # Update config
+        config.thinking_enabled = enable_thinking
+        
+        # Update conversation history with new system prompt
+        self.conversation_history[0] = {
+            "role": "system",
+            "content": self.get_system_prompt()
+        }
+        
+        # Show feedback message
+        if enable_thinking:
+            chat_area.mount(Static("\n✓ Thinking mode enabled\n", classes="message"))
+        else:
+            chat_area.mount(Static("\n✓ Thinking mode disabled\n", classes="message"))
+        
+        # Scroll to end
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
+    def show_status(self):
+        """Show current configuration status"""
+        chat_area = self.query_one("#chat_area")
+        
+        thinking_status = "enabled" if hasattr(config, 'thinking_enabled') and config.thinking_enabled else "disabled"
+        status_text = f"""
+Current Configuration:
+- Host: {config.get_host_display()}
+- Model: {config.model}
+- Context: {config.num_ctx}
+- Thinking: {thinking_status}
+- Permission Mode: {self.permission_mode}
+"""
+        chat_area.mount(Static(status_text, classes="message"))
+        
+        # Scroll to end
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
+    def clear_conversation(self):
+        """Clear conversation history and chat area"""
+        chat_area = self.query_one("#chat_area")
+        
+        # Clear all widgets from chat area
+        for widget in chat_area.children:
+            widget.remove()
+        
+        # Reset conversation history to just system prompt
+        self.conversation_history = [
+            {"role": "system", "content": self.get_system_prompt()}
+        ]
+        
+        # Add welcome message back
+        welcome_panel = Panel(
+            renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold orange1]Plaude Pode[/]!\n\n"
+                             f"/help for help, /status for your current setup\n\ncwd: {self.cwd}"),
+            border_style=ORANGE_COLORS[17],
+            expand=False
+        )
+        chat_area.mount(Static(welcome_panel, classes="message"))
+        
+        # Add confirmation message
+        chat_area.mount(Static("\n✓ Conversation cleared\n", classes="message"))
+        
+        # Scroll to end
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
     def get_tool_display_name(self, tool_name):
         """Get user-friendly display name for tools"""
         tool_names = {
@@ -347,9 +556,15 @@ class ChatApp(App):
     def get_system_prompt(self):
         """Get the appropriate system prompt based on current mode"""
         if self.permission_mode == 'plan-mode':
-            return PLAN_MODE_PROMPT.format(cwd=self.cwd)
+            base_prompt = PLAN_MODE_PROMPT.format(cwd=self.cwd)
         else:
-            return DEFAULT_MODE_PROMPT.format(cwd=self.cwd)
+            base_prompt = DEFAULT_MODE_PROMPT.format(cwd=self.cwd)
+        
+        # Add thinking control based on config
+        if not config.thinking_enabled:
+            base_prompt += "\n\nIMPORTANT: Do not include any thinking or reasoning in your responses. Provide direct, concise answers only."
+        
+        return base_prompt
 
     def get_mode_display(self):
         """Get the display text and style for current mode"""
