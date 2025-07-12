@@ -13,6 +13,11 @@ from claude.tools import tools, tools_dict
 from claude.llm import Ollama
 from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words, SYSTEM_PROMPT
 
+#host="http://192.168.170.76:11434"
+host=None
+NUM_CTX = 2048
+MODEL= "qwen3:0.6b"
+
 
 class ChatApp(App):
     """Simple chat interface with message display and input"""
@@ -96,7 +101,7 @@ class ChatApp(App):
 
     def __init__(self,cwd):
         super().__init__()
-        self.llm = Ollama(host="http://192.168.170.76:11434")
+        self.llm = Ollama(host=host)
         self.tool_widgets = {}  # Track tool execution widgets
         self.cwd = cwd
         # Initialize conversation history with system prompt
@@ -176,7 +181,7 @@ class ChatApp(App):
             
             # Make the LLM call using chat method in a separate thread
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model="qwen3:4b", tools=tools))
+            response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model=MODEL ,num_ctx = NUM_CTX,tools=tools))
             
             # Stop thinking animation
             animation_task.cancel()
@@ -232,8 +237,8 @@ class ChatApp(App):
                 animation_task = asyncio.create_task(self.animate_thinking_status(query, "Processing tool results..."))
                 
                 loop = asyncio.get_event_loop()
-                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model="qwen3_14b_q6k", tools=tools,
-                    num_ctx=8000))
+                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=MODEL, tools=tools,
+                    num_ctx = NUM_CTX))
                 
                 # Stop thinking animation
                 animation_task.cancel()
