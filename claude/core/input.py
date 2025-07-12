@@ -3,7 +3,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
-from textual.widgets import Input, Static, Label, ProgressBar
+from textual.widgets import Input, Static, Label, ProgressBar, OptionList
 from textual import on
 from rich.panel import Panel
 from rich.text import Text
@@ -97,6 +97,50 @@ class ChatApp(App):
     .tool-completed {
         background: transparent;
     }
+    
+    #permission_area {
+        height: auto;
+        background: #1e1e1e;
+        border: solid #444444;
+        padding: 1;
+        margin: 0;
+    }
+    
+    #permission_message {
+        color: #ffffff;
+        text-style: bold;
+        padding: 0 0 1 0;
+        background: transparent;
+    }
+    
+    #permission_options {
+        background: #1e1e1e;
+        border: none;
+        height: auto;
+        scrollbar-size: 0 0;
+    }
+    
+    #permission_options:focus {
+        border: none;
+    }
+    
+    .option-list--option {
+        background: transparent;
+        color: #d4d4d4;
+        padding: 0 1;
+        height: 1;
+    }
+    
+    .option-list--option-highlighted {
+        background: #0078d4;
+        color: white;
+        text-style: bold;
+    }
+    
+    .option-list--option-hover {
+        background: #2a2a2a;
+        color: white;
+    }
     """
 
     def __init__(self,cwd):
@@ -108,6 +152,11 @@ class ChatApp(App):
         self.conversation_history = [
             {"role": "system", "content": SYSTEM_PROMPT.format(cwd=self.cwd)}
         ]
+        # Permission system state
+        self.pending_tool_call = None
+        self.permission_granted = False
+        self.auto_approve_tools = set()  # Tools that user chose "don't ask again" for
+        self.waiting_for_permission = False
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="chat_area"):
@@ -121,6 +170,16 @@ class ChatApp(App):
         # Status bar above input
         with Horizontal(id="status_bar"):
             yield Static("", id="status_indicator")
+        # Permission area (initially hidden)
+        with Vertical(id="permission_area"):
+            yield Static("", id="permission_message")
+            yield OptionList(
+                "1. Yes",
+                "2. Yes, and don't ask again this session", 
+                "3. No, and tell Claude what to do differently",
+                id="permission_options"
+            )
+        
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
@@ -134,10 +193,45 @@ class ChatApp(App):
         """Called when the app is ready - focus the input"""
         self.query_one(Input).focus()
         self.theme="gruvbox"
+        # Hide permission area initially
+        self.query_one("#permission_area").display = False
+
+    @on(OptionList.OptionSelected, "#permission_options")
+    def handle_permission_choice(self, event: OptionList.OptionSelected) -> None:
+        """Handle permission choice from OptionList"""
+        choice_index = event.option_index
+        
+        if choice_index == 0:  # Yes
+            self.permission_granted = True
+            self.hide_permission_widget()
+            self.call_later(self.execute_pending_tool)
+        elif choice_index == 1:  # Yes, and don't ask again
+            if self.pending_tool_call:
+                tool_name = self.pending_tool_call.function.name
+                self.auto_approve_tools.add(tool_name)
+            self.permission_granted = True
+            self.hide_permission_widget()
+            self.call_later(self.execute_pending_tool)
+        elif choice_index == 2:  # No
+            self.permission_granted = False
+            self.hide_permission_widget()
+            # Add user message asking what to do instead
+            self.conversation_history.append({
+                "role": "user",
+                "content": f"I don't want you to execute the {self.pending_tool_call.function.name} tool. Please suggest an alternative approach or ask me what you should do instead."
+            })
+            chat_area = self.query_one("#chat_area")
+            chat_area.mount(Static(f"\n> I don't want you to execute the {self.pending_tool_call.function.name} tool. Please suggest an alternative.\n", classes="message"))
+            self.pending_tool_call = None
+            self.call_later(self.start_ai_response, "tool_rejected", self.conversation_history.copy())
 
     @on(Input.Submitted)
     def handle_message(self, event: Input.Submitted) -> None:
         """Handle when user submits a message"""
+        # Don't process input if waiting for permission
+        if self.waiting_for_permission:
+            return
+            
         query = event.value.strip()
         if query:  # Only process non-empty messages
             # Add user message to conversation history
@@ -155,6 +249,120 @@ class ChatApp(App):
             chat_area.scroll_end(animate=False)
             self.refresh()
             self.call_later(self.start_ai_response, query, self.conversation_history.copy())
+
+    def show_permission_widget(self, tool_call):
+        """Show permission widget and hide input"""
+        self.pending_tool_call = tool_call
+        self.waiting_for_permission = True
+        
+        # Update permission message
+        tool_name = tool_call.function.name
+        tool_args = list(tool_call.function.arguments.values())[0] if tool_call.function.arguments else ""
+        
+        permission_msg = self.query_one("#permission_message")
+        permission_msg.update(f"Do you want to make this edit to {tool_name}({tool_args})?")
+        
+        # Show permission area and hide input
+        self.query_one("#permission_area").display = True
+        self.query_one("#input_area").display = False
+        
+        # Focus option list and highlight first option
+        option_list = self.query_one("#permission_options")
+        option_list.focus()
+        option_list.highlighted = 0
+
+    def hide_permission_widget(self):
+        """Hide permission widget and show input"""
+        self.waiting_for_permission = False
+        self.query_one("#permission_area").display = False
+        self.query_one("#input_area").display = True
+        self.query_one(Input).focus()
+
+    async def execute_pending_tool(self):
+        """Execute the pending tool after permission is granted"""
+        if self.pending_tool_call and self.permission_granted:
+            tool_call = self.pending_tool_call
+            tool_name = tool_call.function.name.split('_')[0].title()
+            tool_args = list(tool_call.function.arguments.values())[0] if tool_call.function.arguments else ""
+            tool_id = f"{tool_call.function.name}_{id(tool_call)}"
+            
+            # Create tool widget with animation
+            await self.create_tool_widget(tool_name, tool_args, tool_id)
+            
+            # Execute the actual tool
+            result = await self.execute_tool_and_get_result(tool_call, tool_id, tool_args)
+            
+            # Give time for user to see the tool completion
+            await asyncio.sleep(0.1)
+            
+            # Add tool result to conversation history
+            self.conversation_history.append({
+                'role': 'tool',
+                'content': str(result),
+                'tool_name': tool_call.function.name
+            })
+            
+            # Add user message asking for code explanation/summary
+            if tool_call.function.name == 'read_file':
+                self.conversation_history.append({
+                    'role': 'user',
+                    'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key components/features, 3) Short conclusion line. Keep it concise like Claude Code style.'
+                })
+            elif tool_call.function.name == 'list_directory':
+                self.conversation_history.append({
+                    'role': 'user', 
+                    'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key contents, 3) Short summary line. Keep it concise.'
+                })
+            else:
+                self.conversation_history.append({
+                    'role': 'user',
+                    'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key results, 3) Short conclusion. Keep it concise.'
+                })
+            
+            # Continue with LLM response
+            self.pending_tool_call = None
+            self.permission_granted = False
+            self.call_later(self.continue_ai_response)
+
+    async def continue_ai_response(self):
+        """Continue AI response after tool execution"""
+        # Make another LLM call with tool results
+        animation_task = asyncio.create_task(self.animate_thinking_status("tool_result", "Processing tool results..."))
+        
+        loop = asyncio.get_event_loop()
+        final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=MODEL, tools=tools, num_ctx=NUM_CTX))
+        
+        # Stop thinking animation
+        animation_task.cancel()
+        try:
+            await animation_task
+        except asyncio.CancelledError:
+            pass
+        
+        # Display the final response
+        if final_response.message.content and final_response.message.content.strip():
+            # Remove thinking content before displaying
+            clean_content = self.remove_thinking_content(final_response.message.content)
+            if clean_content.strip():
+                # Use rich Markdown for better rendering
+                markdown_content = Markdown("● " + clean_content.strip())
+                markdown_widget = Static(markdown_content, classes="ai-response")
+                chat_area = self.query_one("#chat_area")
+                chat_area.mount(markdown_widget)
+                
+                # Add assistant response to conversation history
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": clean_content.strip()
+                })
+        
+        # Reset status
+        status_indicator = self.query_one("#status_indicator")
+        status_indicator.update("")
+        
+        # Ensure scroll to end
+        chat_area = self.query_one("#chat_area")
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
 
     async def start_ai_response(self, query: str, messages: list):
         """Start AI response using Ollama chat method with tool call handling"""
@@ -195,13 +403,23 @@ class ChatApp(App):
                 # Add assistant message with tool calls to history
                 self.conversation_history.append(response.message)
                 
-                for tc in response.message.tool_calls:
-                    tool_name = tc.function.name.split('_')[0].title()
+                # Process first tool call (handle one at a time for permissions)
+                tc = response.message.tool_calls[0]
+                tool_name = tc.function.name
+                
+                # Check if tool needs permission and wasn't auto-approved
+                if tool_name in ['read_file', 'list_directory'] and tool_name not in self.auto_approve_tools:
+                    # Show permission widget and wait for user decision
+                    self.show_permission_widget(tc)
+                    return
+                else:
+                    # Auto-approved or doesn't need permission - execute directly
+                    tool_display_name = tc.function.name.split('_')[0].title()
                     tool_args = list(tc.function.arguments.values())[0] if tc.function.arguments else ""
                     tool_id = f"{tc.function.name}_{id(tc)}"
                     
                     # Create tool widget with animation
-                    await self.create_tool_widget(tool_name, tool_args, tool_id)
+                    await self.create_tool_widget(tool_display_name, tool_args, tool_id)
                     
                     # Execute the actual tool
                     result = await self.execute_tool_and_get_result(tc, tool_id, tool_args)
@@ -439,5 +657,8 @@ class ChatApp(App):
 
 
 if __name__ == "__main__":
-    app = ChatApp()
+    import sys
+    cwd = sys.argv[1] if len(sys.argv) > 1 else "/home/ntlpt59/master/own/claude/claude/core"
+    app = ChatApp(cwd)
     app.run()
+    print("hai")
