@@ -137,12 +137,12 @@ class ToolLogger:
     def debug(self, message: str, **kwargs):
         if kwargs:
             message += f" {kwargs}"
-        self.logger.debug(message)
+        # self.logger.debug(message)
     
     def info(self, message: str, **kwargs):
         if kwargs:
             message += f" {kwargs}"
-        self.logger.info(message)
+        # self.logger.info(message)
     
     def warn(self, message: str, **kwargs):
         if kwargs:
@@ -234,7 +234,7 @@ class TaskAgent:
             'write': WriteTool()
         }
     
-    async def execute_task(self, description: str, instructions: str) -> Dict[str, Any]:
+    async def task_execute(self, description: str, instructions: str) -> Dict[str, Any]:
         """Execute a complex task with multiple steps"""
         logger.info(f"Executing task: {description}")
         
@@ -636,7 +636,7 @@ class LSTool:
             # Sort by name
             files.sort(key=lambda x: x.name.lower())
             
-            logger.info(f"Listed {len(files)} items")
+            # logger.info(f"Listed {len(files)} items")
             return files
             
         except Exception as e:
@@ -1259,7 +1259,7 @@ class TodoStorage:
     async def save_todos(self, todos: List[TodoItem]) -> None:
         """Save todos to storage"""
         try:
-            data = [asdict(todo) for todo in todos]
+            data = [todo.model_dump() for todo in todos]
             
             async with aiofiles.open(self.storage_path, 'w') as f:
                 await f.write(json.dumps(data, indent=2))
@@ -1275,7 +1275,7 @@ class TodoReadTool:
     def __init__(self, storage_path: str = None):
         self.storage = TodoStorage(storage_path)
     
-    async def read_todos(self) -> List[Dict[str, Any]]:
+    async def todo_read(self) -> List[Dict[str, Any]]:
         """Read the current todo list"""
         logger.info("Reading todo list")
         
@@ -1290,7 +1290,7 @@ class TodoWriteTool:
     def __init__(self, storage_path: str = None):
         self.storage = TodoStorage(storage_path)
     
-    async def write_todos(self, todos: List[str]) -> Dict[str, Any]:
+    async def todo_write(self, todos: List[str]) -> Dict[str, Any]:
         """Write/update the todo list"""
         logger.info(f"Writing {len(todos)} todos")
         

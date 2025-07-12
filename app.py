@@ -1,5 +1,9 @@
-from claude.core.components.input import ChatApp
+from pathlib import Path
+
+from claude.core.input import ChatApp
+import logging
+logging.basicConfig(level=logging.WARNING)
 
 if __name__ == "__main__":
-    app = ChatApp()
+    app = ChatApp(cwd=str(Path(__file__).parent))
     app.run()
