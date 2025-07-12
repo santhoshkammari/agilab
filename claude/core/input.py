@@ -367,14 +367,9 @@ class ChatApp(App):
                 event.input.clear()
                 return
             # Add user message to conversation history
-            # Only add /no_think if thinking is disabled
-            content = query
-            if not config.thinking_enabled:
-                content += "/no_think"
-            
             self.conversation_history.append({
                 "role": "user", 
-                "content": content
+                "content": query
             })
             
             # Add the message to chat area
@@ -560,9 +555,9 @@ Current Configuration:
         else:
             base_prompt = DEFAULT_MODE_PROMPT.format(cwd=self.cwd)
         
-        # Add thinking control based on config
+        # Add /no_think token when thinking is disabled
         if not config.thinking_enabled:
-            base_prompt += "\n\nIMPORTANT: Do not include any thinking or reasoning in your responses. Provide direct, concise answers only."
+            base_prompt += "/no_think"
         
         return base_prompt
 
