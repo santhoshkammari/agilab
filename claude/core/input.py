@@ -132,7 +132,7 @@ class ChatApp(App):
     }
     
     .option-list--option-highlighted {
-        background: #504945;
+        background: transparent;
         color: #fabd2f;
         text-style: bold;
     }
