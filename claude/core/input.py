@@ -100,21 +100,21 @@ class ChatApp(App):
     
     #permission_area {
         height: auto;
-        background: #1e1e1e;
-        border: solid #444444;
+        background: transparent;
+        border: round #458588;
         padding: 1;
         margin: 0;
     }
     
     #permission_message {
-        color: #ffffff;
-        text-style: bold;
+        color: #a89984;
+        text-style: italic;
         padding: 0 0 1 0;
         background: transparent;
     }
     
     #permission_options {
-        background: #1e1e1e;
+        background: transparent;
         border: none;
         height: auto;
         scrollbar-size: 0 0;
@@ -126,20 +126,20 @@ class ChatApp(App):
     
     .option-list--option {
         background: transparent;
-        color: #d4d4d4;
+        color: #a89984;
         padding: 0 1;
         height: 1;
     }
     
     .option-list--option-highlighted {
-        background: #0078d4;
-        color: white;
+        background: #504945;
+        color: #fabd2f;
         text-style: bold;
     }
     
     .option-list--option-hover {
-        background: #2a2a2a;
-        color: white;
+        background: #3c3836;
+        color: #ebdbb2;
     }
     """
 
