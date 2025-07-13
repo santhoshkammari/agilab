@@ -24,6 +24,12 @@ from claude.llm.messages import (
 from claude.llm.ollama.chat import ChatOllama
 from claude.llm.openrouter.chat import ChatOpenRouter
 
+# Google GenAI import
+try:
+    from claude.llm.google_genai.chat import ChatGoogleGenAI
+except ImportError:
+    ChatGoogleGenAI = None
+
 # Optional imports - only import if dependencies are available
 try:
     from claude.llm.anthropic.chat import ChatAnthropic
@@ -61,6 +67,7 @@ __all__ = [
 	'BaseChatModel',
 	'ChatOllama',
 	'ChatOpenRouter',
+	'ChatGoogleGenAI',
 	# Optional chat models
 	'ChatAnthropic',
 	'ChatGoogle',

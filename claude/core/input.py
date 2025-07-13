@@ -11,7 +11,7 @@ from rich.text import Text
 from rich.markdown import Markdown
 
 from claude.tools import tools, tools_dict
-from claude.llm import ChatOllama, ChatOpenRouter, SystemMessage, UserMessage, AssistantMessage, BaseMessage
+from claude.llm import ChatOllama, ChatOpenRouter, ChatGoogleGenAI, SystemMessage, UserMessage, AssistantMessage, BaseMessage
 from claude.llm.compat import LLMCompatibilityWrapper
 from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words, SYSTEM_PROMPT
 from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
@@ -620,9 +620,16 @@ class ChatApp(App):
             model = provider_config.get("model", "google/gemini-2.0-flash-exp:free")
             raw_llm = ChatOpenRouter(model=model, api_key=api_key)
             return LLMCompatibilityWrapper(raw_llm)
+        elif config.provider == "google":
+            api_key = provider_config.get("api_key", "")
+            model = provider_config.get("model", "gemini-2.5-flash")
+            temperature = provider_config.get("temperature", 0.7)
+            thinking_budget = provider_config.get("thinking_budget", 0)
+            raw_llm = ChatGoogleGenAI(model=model, api_key=api_key, temperature=temperature, thinking_budget=thinking_budget)
+            return LLMCompatibilityWrapper(raw_llm)
         else:
-            # Fallback to ollama
-            raw_llm = ChatOllama(model="qwen3:4b", host="http://localhost:11434")
+            # Fallback to google
+            raw_llm = ChatGoogleGenAI(model="gemini-2.5-flash", api_key="AIzaSyBb8wTvVw9e25aX8XK-eBuu1JzDEPCdqUE", thinking_budget=0)
             return LLMCompatibilityWrapper(raw_llm)
 
     def show_provider_selection(self):
@@ -637,9 +644,10 @@ class ChatApp(App):
             f"\n📡 Current Provider: {config.get_provider_display()}",
             f"Configuration: {current_config}",
             "\nAvailable providers:",
+            "  • google - Google Generative AI (Gemini models)",
             "  • ollama - Local Ollama server",
             "  • openrouter - OpenRouter API (multiple models)",
-            "\nUse: /provider <name> to switch (e.g., /provider openrouter)\n"
+            "\nUse: /provider <name> to switch (e.g., /provider google)\n"
         ]
         
         chat_area.mount(Static("\n".join(status_lines), classes="message"))

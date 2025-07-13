@@ -6,12 +6,12 @@ class Config:
     """Application configuration settings."""
     
     def __init__(self):
-        # Provider selection (ollama, openrouter)
-        self.provider = "ollama"  # Default to ollama
+        # Provider selection (ollama, openrouter, google)
+        self.provider = "google"  # Default to google
         
         # Legacy settings (for backward compatibility)
         self.host = None  # None means localhost:11434
-        self.model = "qwen3:4b"
+        self.model = "gemini-2.5-flash"
         self.num_ctx = 2048
         self.thinking_enabled = False  # Default to thinking disabled
         
@@ -28,6 +28,13 @@ class Config:
                 "model": "google/gemini-2.0-flash-exp:free",
                 "num_ctx": 4096,
                 "temperature": 0.7
+            },
+            "google": {
+                "api_key": "AIzaSyBb8wTvVw9e25aX8XK-eBuu1JzDEPCdqUE",
+                "model": "gemini-2.5-flash",
+                "num_ctx": 4096,
+                "temperature": 0.7,
+                "thinking_budget": 0  # Disable thinking for speed
             }
         }
     
@@ -45,6 +52,10 @@ class Config:
             self.num_ctx = provider_config["num_ctx"]
         elif provider == "openrouter":
             self.host = "https://openrouter.ai/api/v1"
+            self.model = provider_config["model"]
+            self.num_ctx = provider_config["num_ctx"]
+        elif provider == "google":
+            self.host = "https://generativelanguage.googleapis.com"
             self.model = provider_config["model"]
             self.num_ctx = provider_config["num_ctx"]
     
@@ -86,6 +97,8 @@ class Config:
             return host
         elif self.provider == "openrouter":
             return "https://openrouter.ai/api/v1"
+        elif self.provider == "google":
+            return "https://generativelanguage.googleapis.com"
         return self.host if self.host else "http://localhost:11434"
     
     def get_provider_display(self) -> str:
