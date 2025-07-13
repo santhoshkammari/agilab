@@ -11,9 +11,8 @@ from rich.text import Text
 from rich.markdown import Markdown
 
 from claude.tools import tools, tools_dict
-from claude.llm import Ollama
-from claude.llm.__vllm import VLLM
-from claude.llm.__oai import OAI
+from claude.llm import ChatOllama, ChatOpenRouter, SystemMessage, UserMessage, AssistantMessage, BaseMessage
+from claude.llm.compat import LLMCompatibilityWrapper
 from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words, SYSTEM_PROMPT
 from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
 from claude.core.config import config
@@ -612,29 +611,19 @@ class ChatApp(App):
         provider_config = config.get_current_config()
         
         if config.provider == "ollama":
-            host = provider_config.get("host", "localhost:11434")
-            # Handle None host for ollama (means localhost:11434)
-            ollama_host = None if host == "localhost:11434" else host
-            return Ollama(host=ollama_host)
-        elif config.provider == "vllm":
-            host = provider_config.get("host", "http://localhost:8000")
-            port = 8000
-            if ":" in host:
-                host_part, port_part = host.rsplit(":", 1)
-                try:
-                    port = int(port_part)
-                    host = host_part
-                except ValueError:
-                    pass
-            return VLLM(host=host, port=port)
-        elif config.provider == "oai":
-            return OAI(
-                base_url=provider_config.get("base_url", "https://api.openai.com/v1"),
-                api_key=provider_config.get("api_key", "")
-            )
+            host = provider_config.get("host", "http://localhost:11434")
+            model = provider_config.get("model", "qwen3:4b")
+            raw_llm = ChatOllama(model=model, host=host)
+            return LLMCompatibilityWrapper(raw_llm)
+        elif config.provider == "openrouter":
+            api_key = provider_config.get("api_key", "")
+            model = provider_config.get("model", "google/gemini-2.0-flash-exp:free")
+            raw_llm = ChatOpenRouter(model=model, api_key=api_key)
+            return LLMCompatibilityWrapper(raw_llm)
         else:
             # Fallback to ollama
-            return Ollama(host=config.host)
+            raw_llm = ChatOllama(model="qwen3:4b", host="http://localhost:11434")
+            return LLMCompatibilityWrapper(raw_llm)
 
     def show_provider_selection(self):
         """Show provider selection dialog"""
@@ -649,9 +638,8 @@ class ChatApp(App):
             f"Configuration: {current_config}",
             "\nAvailable providers:",
             "  • ollama - Local Ollama server",
-            "  • vllm - vLLM OpenAI-compatible server", 
-            "  • oai - OpenAI-compatible APIs (OpenAI, OpenRouter, etc.)",
-            "\nUse: /provider <name> to switch (e.g., /provider oai)\n"
+            "  • openrouter - OpenRouter API (multiple models)",
+            "\nUse: /provider <name> to switch (e.g., /provider openrouter)\n"
         ]
         
         chat_area.mount(Static("\n".join(status_lines), classes="message"))
