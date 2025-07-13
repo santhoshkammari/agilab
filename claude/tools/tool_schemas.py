@@ -283,6 +283,27 @@ PREDEFINED_TOOL_SCHEMAS = {
                 "required": ["pattern"]
             }
         }
+    },
+    "fetch_url": {
+        "type": "function",
+        "function": {
+            "name": "fetch_url",
+            "description": "Fetch content from a URL and optionally process it with a prompt",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "URL to fetch content from"
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "Optional prompt to process the fetched content"
+                    }
+                },
+                "required": ["url"]
+            }
+        }
     }
 }
 

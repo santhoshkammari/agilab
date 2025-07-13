@@ -199,6 +199,9 @@ class ChatApp(App):
         self.pending_edit_tool_args = None
         self.waiting_for_edit_confirmation = False
         
+        # Agentic loop state for resuming after permissions
+        self.pending_agentic_state = None
+        
         # Permission modes: 'default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode'
         self.permission_mode = 'default'
         self.modes = ['default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode']
@@ -253,7 +256,7 @@ class ChatApp(App):
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
-            yield Input(placeholder="Type your message here...", compact=True, value="replace def simple_print(message): with def simple_print_message(message):")
+            yield Input(placeholder="Type your message here...", compact=True, value="websearch for latest AI news and then fetch the first URL to summarize")
         # Footer
         with Horizontal(id="footer"):
             yield Static(self.get_mode_display(), id="footer-right")
@@ -853,23 +856,7 @@ Current Configuration:
         if self.pending_tool_call:
             tool_call = self.pending_tool_call
             tool_display_name = self.get_tool_display_name(tool_call.function.name)
-            
-            # Handle arguments that might be string or dict
-            if tool_call.function.arguments:
-                if isinstance(tool_call.function.arguments, str):
-                    import json
-                    try:
-                        args_dict = json.loads(tool_call.function.arguments)
-                        tool_args = list(args_dict.values())[0] if args_dict else ""
-                    except (json.JSONDecodeError, IndexError):
-                        tool_args = tool_call.function.arguments
-                elif isinstance(tool_call.function.arguments, dict):
-                    tool_args = list(tool_call.function.arguments.values())[0] if tool_call.function.arguments else ""
-                else:
-                    tool_args = str(tool_call.function.arguments)
-            else:
-                tool_args = ""
-                
+            tool_args = self._extract_tool_args(tool_call.function.arguments)
             tool_id = f"{tool_call.function.name}_{id(tool_call)}"
             
             # Create tool widget with animation
@@ -881,34 +868,38 @@ Current Configuration:
             # Give time for user to see the tool completion
             await asyncio.sleep(0.1)
             
-            # Add tool result to conversation history
-            self.conversation_history.append({
-                'role': 'tool',
-                'content': str(result),
-                'tool_call_id': tool_call.id,
-                'name': tool_call.function.name
-            })
-            
-            # Add user message asking for code explanation/summary
-            if tool_call.function.name == 'read_file':
-                self.conversation_history.append({
-                    'role': 'user',
-                    'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key components/features, 3) Short conclusion line. Keep it concise like Claude Code style.'
-                })
-            elif tool_call.function.name == 'list_directory':
-                self.conversation_history.append({
-                    'role': 'user', 
-                    'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key contents, 3) Short summary line. Keep it concise.'
-                })
-            else:
-                self.conversation_history.append({
-                    'role': 'user',
-                    'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key results, 3) Short conclusion. Keep it concise.'
-                })
-            
-            # Continue with LLM response
+            # Clear pending tool
             self.pending_tool_call = None
-            self.call_later(self.continue_ai_response)
+            
+            # Check if we need to resume agentic loop
+            if self.pending_agentic_state:
+                # Add tool result to the pending state messages
+                self.pending_agentic_state['messages'].append({
+                    'role': 'tool',
+                    'content': str(result),
+                    'tool_call_id': tool_call.id,
+                    'name': tool_call.function.name
+                })
+                
+                # Resume agentic loop
+                state = self.pending_agentic_state
+                self.pending_agentic_state = None
+                await self.agentic_loop(
+                    state['query'], 
+                    state['messages'], 
+                    state['max_iterations'] - state['iteration']
+                )
+            else:
+                # Legacy single tool execution - add to conversation history
+                self.conversation_history.append({
+                    'role': 'tool',
+                    'content': str(result),
+                    'tool_call_id': tool_call.id,
+                    'name': tool_call.function.name
+                })
+                
+                # Continue with single LLM response
+                self.call_later(self.continue_ai_response)
 
     async def continue_ai_response(self):
         """Continue AI response after tool execution"""
@@ -953,173 +944,175 @@ Current Configuration:
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
 
     async def start_ai_response(self, query: str, messages: list):
-        """Start AI response using Ollama chat method with tool call handling"""
+        """Start AI response with proper agentic loop for tool calling"""
         chat_area = self.query_one("#chat_area")
         status_indicator = self.query_one("#status_indicator")
         
-        import time
-        flower_chars = ["✻", "✺", "✵", "✴", "❋", "❊", "❉", "❈", "❇", "❆", "❅", "❄"]
-        flower_index = 0
-        
-        # Generate contextual thinking words based on user input
-        thinking_words = get_contextual_thinking_words(query)
-        thinking_word_index = 0
-        
-        # Track start time for elapsed seconds
-        start_time = time.time()
-        
-        # Set initial status
-        status_indicator.update("● Generating response...")
-        
-    # try:
-        # Start thinking animation and make the LLM call in a separate thread
-        animation_task = asyncio.create_task(self.animate_thinking_status(query, "Generating response..."))
-
-        # Make the LLM call using chat method in a separate thread
-        loop = asyncio.get_event_loop()
-        # Pass no tools in plan mode
-        tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-        response = await loop.run_in_executor(None, lambda: self.llm.run(messages=messages, model=config.model, max_tokens=config.num_ctx, tools=tools_to_use))
-
-        # Stop thinking animation
-        animation_task.cancel()
-        try:
-            await animation_task
-        except asyncio.CancelledError:
-            pass
-
-        # Handle tool calls if present
-        if response.choices[0].message.tool_calls:
-            # Add assistant message with tool calls to history
-            self.conversation_history.append({
-                "role": "assistant",
-                "content": response.choices[0].message.content,
-                "tool_calls": response.choices[0].message.tool_calls
-            })
-
-            # Process first tool call (handle one at a time for permissions)
-            tc = response.choices[0].message.tool_calls[0]
-            tool_name = tc.function.name
-
-            # Check if tool needs permission based on current mode
-            if self.needs_permission(tool_name):
-                # Show permission widget and wait for user decision
-                self.show_permission_widget(tc)
-                return
-            else:
-                # Auto-approved or doesn't need permission - execute directly
-                tool_display_name = self.get_tool_display_name(tc.function.name)
-
-                # Handle arguments that might be string or dict
-                if tc.function.arguments:
-                    if isinstance(tc.function.arguments, str):
-                        import json
-                        try:
-                            args_dict = json.loads(tc.function.arguments)
-                            tool_args = list(args_dict.values())[0] if args_dict else ""
-                        except (json.JSONDecodeError, IndexError):
-                            tool_args = tc.function.arguments
-                    elif isinstance(tc.function.arguments, dict):
-                        tool_args = list(tc.function.arguments.values())[0] if tc.function.arguments else ""
-                    else:
-                        tool_args = str(tc.function.arguments)
-                else:
-                    tool_args = ""
-
-                tool_id = f"{tc.function.name}_{id(tc)}"
-
-                # Create tool widget with animation
-                await self.create_tool_widget(tool_display_name, tool_args, tool_id)
-
-                # Execute the actual tool
-                result = await self.execute_tool_and_get_result(tc, tool_id, tool_args)
-
-                # Give time for user to see the tool completion
-                await asyncio.sleep(0.1)
-
-                # Add tool result to conversation history
-                self.conversation_history.append({
-                    'role': 'tool',
-                    'content': str(result),
-                    'tool_call_id': tc.id,
-                    'name': tc.function.name
-                })
-
-                # Add user message asking for code explanation/summary
-                if tc.function.name == 'read_file':
-                    self.conversation_history.append({
-                        'role': 'user',
-                        'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key components/features, 3) Short conclusion line. Keep it concise like Claude Code style.'
-                    })
-                elif tc.function.name == 'list_directory':
-                    self.conversation_history.append({
-                        'role': 'user',
-                        'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key contents, 3) Short summary line. Keep it concise.'
-                    })
-                else:
-                    self.conversation_history.append({
-                        'role': 'user',
-                        'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key results, 3) Short conclusion. Keep it concise.'
-                    })
-
-            # Make another LLM call with tool results
-            animation_task = asyncio.create_task(self.animate_thinking_status(query, "Processing tool results..."))
-
-            loop = asyncio.get_event_loop()
-            # Pass no tools in plan mode
-            tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-            final_response = await loop.run_in_executor(None, lambda: self.llm.run(messages=self.conversation_history, model=config.model, tools=tools_to_use, max_tokens=config.num_ctx))
-
-            # Stop thinking animation
-            animation_task.cancel()
-            try:
-                await animation_task
-            except asyncio.CancelledError:
-                pass
-
-            # Display the final response
-            if final_response.choices[0].message.content and final_response.choices[0].message.content.strip():
-                # Remove thinking content before displaying
-                clean_content = self.remove_thinking_content(final_response.choices[0].message.content)
-                if clean_content.strip():
-                    # Use rich Markdown for better rendering
-                    markdown_content = Markdown("● " + clean_content.strip())
-                    markdown_widget = Static(markdown_content, classes="ai-response")
-                    chat_area.mount(markdown_widget)
-
-                    # Add assistant response to conversation history
-                    self.conversation_history.append({
-                        "role": "assistant",
-                        "content": clean_content.strip()
-                    })
-        else:
-            # No tool calls, just display the response
-            if response.choices[0].message.content and response.choices[0].message.content.strip():
-                # Remove thinking content before displaying
-                clean_content = self.remove_thinking_content(response.choices[0].message.content)
-                if clean_content.strip():
-                    # Use rich Markdown for better rendering
-                    markdown_content = Markdown("● " + clean_content.strip())
-                    markdown_widget = Static(markdown_content, classes="ai-response")
-                    chat_area.mount(markdown_widget)
-
-                    # Add assistant response to conversation history
-                    self.conversation_history.append({
-                        "role": "assistant",
-                        "content": clean_content.strip()
-                    })
-
-        # except Exception as e:
-        #     error_text = f"🤖 **Error**: {str(e)}"
-        #     chat_area.mount(Static(error_text, classes="ai-response"))
-        #     status_indicator.update("")
-        #     return
-
-        # Ensure scroll to end after markdown rendering
-        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+        # Start agentic loop
+        await self.agentic_loop(query, messages.copy())
         
         # Reset status to empty
         status_indicator.update("")
+
+    async def agentic_loop(self, query: str, messages: list, max_iterations: int = 10):
+        """Main agentic loop that continues until no tool calls or max iterations"""
+        chat_area = self.query_one("#chat_area")
+        iteration = 0
+        
+        try:
+            while iteration < max_iterations:
+                iteration += 1
+                
+                # Make LLM call
+                animation_task = asyncio.create_task(
+                    self.animate_thinking_status(query, "Generating response...")
+                )
+                
+                loop = asyncio.get_event_loop()
+                tools_to_use = None if self.permission_mode == 'plan-mode' else tools
+                response = await loop.run_in_executor(
+                    None, 
+                    lambda: self.llm.run(
+                        messages=messages, 
+                        model=config.model, 
+                        max_tokens=config.num_ctx, 
+                        tools=tools_to_use
+                    )
+                )
+                
+                # Stop thinking animation
+                animation_task.cancel()
+                try:
+                    await animation_task
+                except asyncio.CancelledError:
+                    pass
+                
+                # Add assistant response to conversation
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": response.choices[0].message.content
+                }
+                if response.choices[0].message.tool_calls:
+                    assistant_msg["tool_calls"] = response.choices[0].message.tool_calls
+                messages.append(assistant_msg)
+                
+                # Check if there are tool calls
+                if response.choices[0].message.tool_calls:
+                    # Execute all tool calls
+                    tool_results = await self.execute_all_tools(response.choices[0].message.tool_calls)
+                    
+                    # If any tool needs permission and user hasn't granted it yet, stop here
+                    if any(result.get('needs_permission') for result in tool_results):
+                        # Store state for resuming later
+                        self.pending_agentic_state = {
+                            'query': query,
+                            'messages': messages,
+                            'iteration': iteration,
+                            'max_iterations': max_iterations
+                        }
+                        return
+                    
+                    # Add tool results to conversation
+                    for tool_result in tool_results:
+                        if 'tool_call_id' in tool_result:
+                            messages.append({
+                                'role': 'tool',
+                                'content': str(tool_result['result']),
+                                'tool_call_id': tool_result['tool_call_id'],
+                                'name': tool_result['tool_name']
+                            })
+                    
+                    # Continue loop for next iteration
+                    continue
+                else:
+                    # No tool calls - display final response and exit loop
+                    if response.choices[0].message.content and response.choices[0].message.content.strip():
+                        clean_content = self.remove_thinking_content(response.choices[0].message.content)
+                        if clean_content.strip():
+                            markdown_content = Markdown("● " + clean_content.strip())
+                            markdown_widget = Static(markdown_content, classes="ai-response")
+                            chat_area.mount(markdown_widget)
+                            
+                            # Update conversation history
+                            self.conversation_history = messages
+                    break
+            
+            # Max iterations reached
+            if iteration >= max_iterations:
+                chat_area.mount(Static(f"\n⚠ Max iterations ({max_iterations}) reached. Stopping agent loop.\n", classes="message"))
+                
+        except Exception as e:
+            error_text = f"🤖 **Error in agentic loop**: {str(e)}"
+            chat_area.mount(Static(error_text, classes="ai-response"))
+        
+        # Update conversation history and scroll
+        self.conversation_history = messages
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
+    async def execute_all_tools(self, tool_calls):
+        """Execute all tool calls and return results"""
+        results = []
+        chat_area = self.query_one("#chat_area")
+        
+        for tc in tool_calls:
+            tool_name = tc.function.name
+            
+            # Check if tool needs permission
+            if self.needs_permission(tool_name):
+                # Show permission widget and wait for user decision
+                self.show_permission_widget(tc)
+                results.append({'needs_permission': True, 'tool_call': tc})
+                return results  # Stop here and wait for permission
+            
+            # Execute tool without permission
+            tool_display_name = self.get_tool_display_name(tc.function.name)
+            tool_args = self._extract_tool_args(tc.function.arguments)
+            tool_id = f"{tc.function.name}_{id(tc)}"
+            
+            # Create tool widget and make sure it's visible
+            await self.create_tool_widget(tool_display_name, tool_args, tool_id)
+            
+            # Force immediate UI update and scroll
+            chat_area.scroll_end(animate=False)
+            self.refresh()
+            
+            # Small delay to show tool starting
+            await asyncio.sleep(0.2)
+            
+            # Execute tool
+            result = await self.execute_tool_and_get_result(tc, tool_id, tool_args)
+            
+            # Force UI update after tool completion
+            chat_area.scroll_end(animate=False)
+            self.refresh()
+            
+            # Give time for user to see completion before next tool
+            await asyncio.sleep(0.3)
+            
+            results.append({
+                'result': result,
+                'tool_call_id': tc.id,
+                'tool_name': tc.function.name,
+                'needs_permission': False
+            })
+        
+        return results
+
+    def _extract_tool_args(self, arguments):
+        """Extract tool arguments for display"""
+        if arguments:
+            if isinstance(arguments, str):
+                import json
+                try:
+                    args_dict = json.loads(arguments)
+                    return list(args_dict.values())[0] if args_dict else ""
+                except (json.JSONDecodeError, IndexError):
+                    return arguments
+            elif isinstance(arguments, dict):
+                return list(arguments.values())[0] if arguments else ""
+            else:
+                return str(arguments)
+        return ""
     
     async def create_tool_widget(self, tool_name: str, tool_args: str, tool_id: str):
         """Create a widget for tool execution"""
@@ -1266,7 +1259,10 @@ Current Configuration:
                     thinking_word_index = (thinking_word_index + 1) % len(thinking_words)
                 
                 current_thinking_word = thinking_words[thinking_word_index]
-                status_indicator.update(f"{flower_chars[flower_index]} {current_thinking_word} [grey]({elapsed_seconds}s)[/grey]")
+                
+                status_msg = f"{flower_chars[flower_index]} {current_thinking_word} [grey]({elapsed_seconds}s)[/grey]"
+                
+                status_indicator.update(status_msg)
                 
                 # Ensure scroll stays at bottom during long operations every few cycles
                 if flower_index % 10 == 0:

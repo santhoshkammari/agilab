@@ -42,7 +42,7 @@ tools_dict = {
     'list_directory': _claude_tools.ls.list_directory,
     # 'read_notebook': _claude_tools.notebook_read.read_notebook,
     # 'edit_notebook_cell': _claude_tools.notebook_edit.edit_cell,
-    'web_fetch': _claude_tools.web_fetch.fetch_url,
+    'fetch_url': _claude_tools.web_fetch.fetch_url,
     'web_search': _web_tools.web_search,
     'todo_read': _claude_tools.todo_read.todo_read,
     'todo_write': _claude_tools.todo_write.todo_write,
