@@ -884,7 +884,7 @@ Current Configuration:
         if self.pending_tool_call:
             tool_call = self.pending_tool_call
             tool_display_name = self.get_tool_display_name(tool_call.function.name)
-            tool_args = self._extract_tool_args(tool_call.function.arguments)
+            tool_args = self._extract_tool_args(tool_call.function.arguments, tool_call.function.name)
             tool_id = f"{tool_call.function.name}_{id(tool_call)}"
             
             # Create tool widget with animation
@@ -1094,7 +1094,7 @@ Current Configuration:
             
             # Execute tool without permission
             tool_display_name = self.get_tool_display_name(tc.function.name)
-            tool_args = self._extract_tool_args(tc.function.arguments)
+            tool_args = self._extract_tool_args(tc.function.arguments, tc.function.name)
             tool_id = f"{tc.function.name}_{id(tc)}"
             
             # Create tool widget and make sure it's visible
@@ -1126,8 +1126,12 @@ Current Configuration:
         
         return results
 
-    def _extract_tool_args(self, arguments):
+    def _extract_tool_args(self, arguments, tool_name=None):
         """Extract tool arguments for display"""
+        # Don't show arguments for todo tools - they're too verbose
+        if tool_name and tool_name.startswith('todo_'):
+            return ""
+            
         if arguments:
             if isinstance(arguments, str):
                 import json
