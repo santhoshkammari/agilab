@@ -12,6 +12,8 @@ from rich.markdown import Markdown
 
 from claude.tools import tools, tools_dict
 from claude.llm import Ollama
+from claude.llm.__vllm import VLLM
+from claude.llm.__oai import OAI
 from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words, SYSTEM_PROMPT
 from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
 from claude.core.config import config
@@ -181,7 +183,7 @@ class ChatApp(App):
 
     def __init__(self,cwd):
         super().__init__()
-        self.llm = Ollama(host=config.host)
+        self.llm = self._initialize_llm()
         self.tool_widgets = {}  # Track tool execution widgets
         self.cwd = cwd
         
@@ -242,9 +244,11 @@ class ChatApp(App):
             yield Static("Command Palette - Select an option:", id="command_palette_message")
             yield OptionList(
                 "/host <url> - Set LLM host URL",
+                "/provider - Switch LLM provider",
                 "/think - Enable thinking mode", 
                 "/no-think - Disable thinking mode",
                 "/status - Show current configuration",
+                "/clear - Clear conversation history",
                 id="command_options"
             )
         
@@ -401,13 +405,15 @@ class ChatApp(App):
             # For now, show a message that this needs manual input
             chat_area = self.query_one("#chat_area")
             chat_area.mount(Static("\n> Use /host <url> in the input to set host URL\n", classes="message"))
-        elif choice_index == 1:  # /think
+        elif choice_index == 1:  # /provider
+            self.show_provider_selection()
+        elif choice_index == 2:  # /think
             self.toggle_think_mode(True)
-        elif choice_index == 2:  # /no-think  
+        elif choice_index == 3:  # /no-think  
             self.toggle_think_mode(False)
-        elif choice_index == 3:  # /status
+        elif choice_index == 4:  # /status
             self.show_status()
-        elif choice_index == 4:  # /clear
+        elif choice_index == 5:  # /clear
             self.clear_conversation()
 
     def action_cycle_mode(self) -> None:
@@ -430,7 +436,7 @@ class ChatApp(App):
                 chat_area = self.query_one("#chat_area")
                 chat_area.mount(Static(f"\n✓ Host set to: {config.get_host_display()}\n", classes="message"))
                 # Reinitialize LLM with new host
-                self.llm = Ollama(host=config.host)
+                self.llm = self._initialize_llm()
                 event.input.clear()
                 self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
                 return
@@ -448,6 +454,15 @@ class ChatApp(App):
                 return
             elif query == "/clear":
                 self.clear_conversation()
+                event.input.clear()
+                return
+            elif query == "/provider":
+                self.show_provider_selection()
+                event.input.clear()
+                return
+            elif query.startswith("/provider "):
+                provider_name = query[10:].strip()
+                self.switch_provider(provider_name)
                 event.input.clear()
                 return
             # Add user message to conversation history
@@ -570,6 +585,7 @@ class ChatApp(App):
         command_options.clear_options()
         command_options.add_options([
             f"/host <url> - Set LLM host (current: {config.get_host_display()})",
+            f"/provider - Switch provider (current: {config.get_provider_display()})",
             f"/think - Enable thinking (current: {thinking_status})", 
             f"/no-think - Disable thinking (current: {thinking_status})",
             f"/status - Show configuration",
@@ -590,6 +606,81 @@ class ChatApp(App):
         self.query_one("#command_palette").display = False
         self.query_one("#input_area").display = True
         self.query_one(Input).focus()
+
+    def _initialize_llm(self):
+        """Initialize LLM based on current provider configuration"""
+        provider_config = config.get_current_config()
+        
+        if config.provider == "ollama":
+            host = provider_config.get("host", "localhost:11434")
+            # Handle None host for ollama (means localhost:11434)
+            ollama_host = None if host == "localhost:11434" else host
+            return Ollama(host=ollama_host)
+        elif config.provider == "vllm":
+            host = provider_config.get("host", "http://localhost:8000")
+            port = 8000
+            if ":" in host:
+                host_part, port_part = host.rsplit(":", 1)
+                try:
+                    port = int(port_part)
+                    host = host_part
+                except ValueError:
+                    pass
+            return VLLM(host=host, port=port)
+        elif config.provider == "oai":
+            return OAI(
+                base_url=provider_config.get("base_url", "https://api.openai.com/v1"),
+                api_key=provider_config.get("api_key", "")
+            )
+        else:
+            # Fallback to ollama
+            return Ollama(host=config.host)
+
+    def show_provider_selection(self):
+        """Show provider selection dialog"""
+        chat_area = self.query_one("#chat_area")
+        
+        # Create provider status message
+        current_provider = config.provider
+        current_config = config.get_current_config()
+        
+        status_lines = [
+            f"\n📡 Current Provider: {config.get_provider_display()}",
+            f"Configuration: {current_config}",
+            "\nAvailable providers:",
+            "  • ollama - Local Ollama server",
+            "  • vllm - vLLM OpenAI-compatible server", 
+            "  • oai - OpenAI-compatible APIs (OpenAI, OpenRouter, etc.)",
+            "\nUse: /provider <name> to switch (e.g., /provider oai)\n"
+        ]
+        
+        chat_area.mount(Static("\n".join(status_lines), classes="message"))
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
+    def switch_provider(self, provider_name: str):
+        """Switch to a different LLM provider"""
+        chat_area = self.query_one("#chat_area")
+        
+        try:
+            # Set the new provider
+            config.set_provider(provider_name)
+            
+            # Reinitialize LLM with new provider
+            self.llm = self._initialize_llm()
+            
+            current_config = config.get_current_config()
+            chat_area.mount(Static(
+                f"\n✓ Switched to {config.get_provider_display()} provider\n"
+                f"Configuration: {current_config}\n", 
+                classes="message"
+            ))
+            
+        except ValueError as e:
+            chat_area.mount(Static(f"\n❌ {str(e)}\n", classes="message"))
+        except Exception as e:
+            chat_area.mount(Static(f"\n❌ Error switching provider: {str(e)}\n", classes="message"))
+        
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
 
     def toggle_think_mode(self, enable_thinking: bool):
         """Toggle thinking mode on/off by updating system prompt"""

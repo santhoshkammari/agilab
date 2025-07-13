@@ -8,6 +8,47 @@ except ImportError:
     from __util import convert_function_to_tool
 
 
+class MessageWrapper:
+    """Wrapper to make dict responses compatible with attribute access"""
+    def __init__(self, message_dict: dict):
+        self._data = message_dict
+    
+    @property
+    def content(self):
+        return self._data.get('content', '')
+    
+    @property
+    def role(self):
+        return self._data.get('role', 'assistant')
+    
+    @property
+    def tool_calls(self):
+        return self._data.get('tool_calls', None)
+
+
+class ResponseWrapper:
+    """Wrapper to make dict responses compatible with Ollama-style attribute access"""
+    def __init__(self, response_dict: dict):
+        self._data = response_dict
+        if 'message' in response_dict:
+            self.message = MessageWrapper(response_dict['message'])
+        else:
+            # Create empty message for compatibility
+            self.message = MessageWrapper({'content': '', 'role': 'assistant'})
+    
+    @property
+    def model(self):
+        return self._data.get('model', '')
+    
+    @property
+    def created_at(self):
+        return self._data.get('created_at', None)
+    
+    @property
+    def done(self):
+        return self._data.get('done', True)
+
+
 class OAI:
     def __init__(self, base_url: str = "https://api.openai.com/v1", api_key: str = None, **kwargs):
         """
@@ -208,12 +249,12 @@ class OAI:
         num_ctx: int = None,
         seed: Optional[int] = None,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> ResponseWrapper:
         """
         Non-streaming chat completion
         
         Returns:
-            Dict[str, Any]: Complete response in Ollama format
+            ResponseWrapper: Complete response with attribute access compatibility
         """
         # Use __call__ with stream=False and get the single response
         for response in self.__call__(
@@ -229,4 +270,4 @@ class OAI:
             stream=False,
             **kwargs
         ):
-            return response
+            return ResponseWrapper(response)
