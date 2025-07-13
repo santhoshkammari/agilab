@@ -885,6 +885,9 @@ class EditTool:
             
             logger.info(f"File edited successfully, {replacements} replacements made")
             
+            # Generate diff
+            diff = self._generate_diff(original_content, new_content, file_path)
+            
             return {
                 'success': True,
                 'file_path': file_path,
@@ -892,12 +895,30 @@ class EditTool:
                 'old_string': old_string,
                 'new_string': new_string,
                 'original_size': len(original_content),
-                'new_size': len(new_content)
+                'new_size': len(new_content),
+                'diff': diff
             }
             
         except Exception as e:
             logger.error(f"File editing failed: {e}")
             raise FileSystemError(f"Failed to edit file: {e}")
+    
+    def _generate_diff(self, original_content: str, new_content: str, file_path: str) -> str:
+        """Generate unified diff between original and new content"""
+        import difflib
+        
+        original_lines = original_content.splitlines(keepends=True)
+        new_lines = new_content.splitlines(keepends=True)
+        
+        diff_lines = list(difflib.unified_diff(
+            original_lines,
+            new_lines,
+            fromfile=f"a/{file_path}",
+            tofile=f"b/{file_path}",
+            lineterm=""
+        ))
+        
+        return ''.join(diff_lines)
 
 
 # ============================================================================
