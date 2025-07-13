@@ -210,7 +210,7 @@ class ChatApp(App):
         ]
         
         # Tools that don't need permission in default mode
-        self.no_permission_tools = {'read_file', 'list_directory', 'web_search'}
+        self.no_permission_tools = {'read_file', 'list_directory', 'web_search', 'fetch_url'}
         
         # Tools that are auto-approved in auto-accept-edits mode
         self.auto_accept_edit_tools = {'write_file', 'edit_file', 'multi_edit_file'}
@@ -767,15 +767,17 @@ Current Configuration:
             'read_file': 'Read',
             'write_file': 'Write', 
             'edit_file': 'Edit',
-            'multi_edit_file': 'MultiEdit',
+            'multi_edit_file': 'Multi Edit',
             'bash_execute': 'Bash',
             'glob_find_files': 'Glob',
             'grep_search': 'Grep',
             'list_directory': 'LS',
-            'web_fetch': 'WebFetch',
-            'web_search': 'WebSearch',
-            'todo_read': 'TodoRead',
-            'todo_write': 'TodoWrite'
+            'fetch_url': 'Web Fetch',
+            'web_search': 'Web Search',
+            'todo_read': 'Todo Read',
+            'todo_write': 'Todo Write',
+            'apply_edit': 'Apply Edit',
+            'discard_edit': 'Discard Edit'
         }
         return tool_names.get(tool_name, tool_name.replace('_', ' ').title())
 
@@ -926,9 +928,9 @@ Current Configuration:
             pass
         
         # Display the final response
-        if final_response.message.content and final_response.message.content.strip():
+        if final_response.choices[0].message.content and final_response.choices[0].message.content.strip():
             # Remove thinking content before displaying
-            clean_content = self.remove_thinking_content(final_response.message.content)
+            clean_content = self.remove_thinking_content(final_response.choices[0].message.content)
             if clean_content.strip():
                 # Use rich Markdown for better rendering
                 markdown_content = Markdown("● " + clean_content.strip())
@@ -1138,7 +1140,10 @@ Current Configuration:
         # Update status bar to show tool progress
         status_indicator.update(f"● Executing {tool_name.title()}...")
         
-        # Scroll to end
+        # Force scroll to end immediately and refresh
+        chat_area.scroll_end(animate=False)
+        self.refresh()
+        # Also schedule for after refresh as backup
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
     
     async def execute_tool_and_get_result(self, tool_call, tool_id: str, tool_args: str):
@@ -1220,7 +1225,10 @@ Current Configuration:
             widget.remove_class("tool-executing")
             widget.add_class("tool-completed")
             
-            # Scroll to end after tool completion
+            # Force scroll to end immediately and refresh
+            chat_area.scroll_end(animate=False)
+            self.refresh()
+            # Also schedule for after refresh as backup
             self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
             
             # Clear status bar
@@ -1245,6 +1253,7 @@ Current Configuration:
         thinking_word_index = 0
         
         status_indicator = self.query_one("#status_indicator")
+        chat_area = self.query_one("#chat_area")
         start_time = time.time()
         
         try:
@@ -1258,6 +1267,10 @@ Current Configuration:
                 
                 current_thinking_word = thinking_words[thinking_word_index]
                 status_indicator.update(f"{flower_chars[flower_index]} {current_thinking_word} [grey]({elapsed_seconds}s)[/grey]")
+                
+                # Ensure scroll stays at bottom during long operations every few cycles
+                if flower_index % 10 == 0:
+                    chat_area.scroll_end(animate=False)
                 
                 await asyncio.sleep(0.3)
         except asyncio.CancelledError:
