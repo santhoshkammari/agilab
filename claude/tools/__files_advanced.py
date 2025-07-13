@@ -833,7 +833,7 @@ class EditTool:
     """Make exact string replacements in files"""
     
     def __init__(self):
-        pass
+        self._pending_edit = None
     
     async def edit_file(
         self, 
@@ -879,14 +879,17 @@ class EditTool:
             if replacements == 0:
                 raise ValidationError(f"String not found in file: {old_string}")
             
-            # Write updated content
-            async with aiofiles.open(validated_path, 'w', encoding='utf-8') as f:
-                await f.write(new_content)
-            
-            logger.info(f"File edited successfully, {replacements} replacements made")
-            
-            # Generate diff
+            # Generate diff (but don't write file yet)
             diff = self._generate_diff(original_content, new_content, file_path)
+            
+            # Store the new content for later application
+            self._pending_edit = {
+                'file_path': validated_path,
+                'new_content': new_content,
+                'applied': False
+            }
+            
+            logger.info(f"File edit prepared, {replacements} replacements ready")
             
             return {
                 'success': True,
@@ -896,7 +899,8 @@ class EditTool:
                 'new_string': new_string,
                 'original_size': len(original_content),
                 'new_size': len(new_content),
-                'diff': diff
+                'diff': diff,
+                'pending_application': True
             }
             
         except Exception as e:
@@ -919,6 +923,107 @@ class EditTool:
         ))
         
         return ''.join(diff_lines)
+    
+    async def preview_edit(
+        self, 
+        file_path: str, 
+        old_string: str, 
+        new_string: str,
+        replace_all: bool = False
+    ) -> Dict[str, Any]:
+        """Preview what an edit would do without actually making changes"""
+        logger.info(f"Previewing edit for file: {file_path}")
+        
+        try:
+            validated_path = validate_path(file_path)
+            
+            if not os.path.exists(validated_path):
+                raise FileSystemError(f"File does not exist: {file_path}")
+            
+            # Read current content
+            async with aiofiles.open(validated_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+            
+            original_content = content
+            
+            # Perform replacement (in memory only)
+            if replace_all:
+                new_content = content.replace(old_string, new_string)
+                replacements = content.count(old_string)
+            else:
+                # Replace only first occurrence
+                if old_string not in content:
+                    raise ValidationError(f"String not found in file: {old_string}")
+                
+                # Check for multiple occurrences
+                if content.count(old_string) > 1:
+                    raise ValidationError(
+                        f"Multiple occurrences of string found. Use replace_all=True or provide more context",
+                        "Make the old_string more specific or use replace_all option"
+                    )
+                
+                new_content = content.replace(old_string, new_string, 1)
+                replacements = 1
+            
+            if replacements == 0:
+                raise ValidationError(f"String not found in file: {old_string}")
+            
+            # Generate diff (without writing)
+            diff = self._generate_diff(original_content, new_content, file_path)
+            
+            return {
+                'success': True,
+                'file_path': file_path,
+                'replacements': replacements,
+                'old_string': old_string,
+                'new_string': new_string,
+                'original_size': len(original_content),
+                'new_size': len(new_content),
+                'diff': diff,
+                'preview_only': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Edit preview failed: {e}")
+            raise FileSystemError(f"Failed to preview edit: {e}")
+    
+    async def apply_pending_edit(self) -> Dict[str, Any]:
+        """Apply the pending edit to the file"""
+        if not self._pending_edit or self._pending_edit.get('applied', False):
+            raise ValidationError("No pending edit to apply")
+        
+        try:
+            # Write the new content to file
+            async with aiofiles.open(self._pending_edit['file_path'], 'w', encoding='utf-8') as f:
+                await f.write(self._pending_edit['new_content'])
+            
+            self._pending_edit['applied'] = True
+            logger.info(f"Pending edit applied to {self._pending_edit['file_path']}")
+            
+            return {
+                'success': True,
+                'file_path': self._pending_edit['file_path'],
+                'applied': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to apply pending edit: {e}")
+            raise FileSystemError(f"Failed to apply edit: {e}")
+    
+    async def discard_pending_edit(self) -> Dict[str, Any]:
+        """Discard the pending edit without applying it"""
+        if not self._pending_edit:
+            raise ValidationError("No pending edit to discard")
+        
+        file_path = self._pending_edit['file_path']
+        self._pending_edit = None
+        logger.info(f"Pending edit discarded for {file_path}")
+        
+        return {
+            'success': True,
+            'file_path': file_path,
+            'discarded': True
+        }
 
 
 # ============================================================================

@@ -33,6 +33,8 @@ tools_dict = {
     'read_file': _claude_tools.read.read_file,
     'write_file': _claude_tools.write.write_file,
     'edit_file': _claude_tools.edit.edit_file,
+    'apply_edit': _claude_tools.edit.apply_pending_edit,
+    'discard_edit': _claude_tools.edit.discard_pending_edit,
     'multi_edit_file': _claude_tools.multiedit.multi_edit_file,
     'bash_execute': _claude_tools.bash.execute,
     'glob_find_files': _claude_tools.glob.find_files,

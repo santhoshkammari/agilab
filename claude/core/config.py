@@ -7,9 +7,9 @@ class Config:
     
     def __init__(self):
         self.host = None  # None means localhost:11434
-        self.model = "qwen3:0.6b"
+        self.model = "qwen3:4b"
         self.num_ctx = 2048
-        self.thinking_enabled = True  # Default to thinking enabled
+        self.thinking_enabled = False  # Default to thinking disabled
     
     def set_host(self, host: str) -> None:
         """Set the LLM host URL."""

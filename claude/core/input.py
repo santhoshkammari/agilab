@@ -193,6 +193,12 @@ class ChatApp(App):
         # Command palette state
         self.waiting_for_command = False
         
+        # Edit confirmation state
+        self.pending_edit_result = None
+        self.pending_edit_tool_id = None
+        self.pending_edit_tool_args = None
+        self.waiting_for_edit_confirmation = False
+        
         # Permission modes: 'default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode'
         self.permission_mode = 'default'
         self.modes = ['default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode']
@@ -245,7 +251,7 @@ class ChatApp(App):
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
-            yield Input(placeholder="Type your message here...", compact=True, value="read /home/ntlpt59/master/own/claude/claude/core/input.py")
+            yield Input(placeholder="Type your message here...", compact=True, value="replace def simple_print(message): with def simple_print_message(message):")
         # Footer
         with Horizontal(id="footer"):
             yield Static(self.get_mode_display(), id="footer-right")
@@ -286,6 +292,11 @@ class ChatApp(App):
         """Handle permission choice from OptionList"""
         choice_index = event.option_index
         
+        # Check if we're in edit confirmation mode
+        if self.waiting_for_edit_confirmation:
+            self.handle_edit_confirmation_choice(choice_index)
+            return
+        
         if choice_index == 0:  # Yes
             self.hide_permission_widget()
             self.call_later(self.execute_pending_tool)
@@ -306,6 +317,79 @@ class ChatApp(App):
             chat_area.mount(Static(f"\n> I don't want you to execute the {self.pending_tool_call.function.name} tool. Please suggest an alternative.\n", classes="message"))
             self.pending_tool_call = None
             self.call_later(self.start_ai_response, "tool_rejected", self.conversation_history.copy())
+
+    def handle_edit_confirmation_choice(self, choice_index: int):
+        """Handle edit confirmation choice"""
+        if choice_index == 0:  # Apply edit
+            self.call_later(self.apply_pending_edit)
+        elif choice_index == 1:  # Discard edit
+            self.call_later(self.discard_pending_edit)
+        elif choice_index == 2:  # Show full diff
+            self.show_full_diff()
+            return  # Don't hide permission widget yet
+        
+        self.hide_permission_widget()
+
+    async def apply_pending_edit(self):
+        """Apply the pending edit"""
+        try:
+            # Apply the edit
+            apply_result = await tools_dict['apply_edit']()
+            
+            # Complete the tool execution with success
+            diff_content = self.pending_edit_result.get('diff', '')
+            if diff_content.strip():
+                result_text = f"Applied edit - {self.pending_edit_result.get('replacements', 0)} replacement(s)\n{diff_content}"
+            else:
+                result_text = f"Applied edit - {self.pending_edit_result.get('replacements', 0)} replacement(s)"
+            
+            self.complete_tool_execution(self.pending_edit_tool_id, self.pending_edit_tool_args, result_text)
+            
+            # Clear pending edit state
+            self.clear_edit_confirmation_state()
+            
+        except Exception as e:
+            # Complete with error
+            self.complete_tool_execution(self.pending_edit_tool_id, self.pending_edit_tool_args, f"Error applying edit: {str(e)}")
+            self.clear_edit_confirmation_state()
+
+    async def discard_pending_edit(self):
+        """Discard the pending edit"""
+        try:
+            # Discard the edit
+            discard_result = await tools_dict['discard_edit']()
+            
+            # Complete the tool execution with discard message
+            result_text = f"Edit discarded - {self.pending_edit_result.get('replacements', 0)} replacement(s) not applied"
+            self.complete_tool_execution(self.pending_edit_tool_id, self.pending_edit_tool_args, result_text)
+            
+            # Clear pending edit state
+            self.clear_edit_confirmation_state()
+            
+        except Exception as e:
+            # Complete with error
+            self.complete_tool_execution(self.pending_edit_tool_id, self.pending_edit_tool_args, f"Error discarding edit: {str(e)}")
+            self.clear_edit_confirmation_state()
+
+    def show_full_diff(self):
+        """Show the full diff in chat area"""
+        chat_area = self.query_one("#chat_area")
+        full_diff = self.pending_edit_result.get('diff', '')
+        
+        if full_diff.strip():
+            chat_area.mount(Static(f"\nFull diff:\n{full_diff}\n", classes="message"))
+        else:
+            chat_area.mount(Static("\nNo diff content available.\n", classes="message"))
+        
+        # Scroll to end
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
+    def clear_edit_confirmation_state(self):
+        """Clear edit confirmation state"""
+        self.waiting_for_edit_confirmation = False
+        self.pending_edit_result = None
+        self.pending_edit_tool_id = None
+        self.pending_edit_tool_args = None
 
     @on(OptionList.OptionSelected, "#command_options")
     def handle_command_choice(self, event: OptionList.OptionSelected) -> None:
@@ -423,9 +507,54 @@ class ChatApp(App):
         option_list.focus()
         option_list.highlighted = 0
 
+    def show_edit_confirmation(self, edit_result: dict, tool_id: str, tool_args: str):
+        """Show edit confirmation with diff after tool execution"""
+        self.pending_edit_result = edit_result
+        self.pending_edit_tool_id = tool_id
+        self.pending_edit_tool_args = tool_args
+        self.waiting_for_edit_confirmation = True
+        
+        # Format the diff for display
+        diff_content = edit_result.get('diff', '')
+        replacements = edit_result.get('replacements', 0)
+        file_path = edit_result.get('file_path', '')
+        
+        if diff_content.strip():
+            # Truncate very long diffs
+            if len(diff_content) > 800:
+                diff_lines = diff_content.split('\n')
+                if len(diff_lines) > 20:
+                    diff_content = '\n'.join(diff_lines[:20]) + f"\n... ({len(diff_lines) - 20} more lines)"
+            
+            permission_message = f"Edit ready for {file_path} ({replacements} replacement(s)):\n\n{diff_content}\n\nApply this edit?"
+        else:
+            permission_message = f"Edit ready for {file_path} ({replacements} replacement(s)). Apply this edit?"
+        
+        # Update permission message
+        permission_msg = self.query_one("#permission_message")
+        permission_msg.update(permission_message)
+        
+        # Set edit confirmation options
+        option_list = self.query_one("#permission_options")
+        option_list.clear_options()
+        option_list.add_options([
+            "1. Apply edit",
+            "2. Discard edit", 
+            "3. Show full diff"
+        ])
+        
+        # Show permission area and hide input
+        self.query_one("#permission_area").display = True
+        self.query_one("#input_area").display = False
+        
+        # Focus option list and highlight first option
+        option_list.focus()
+        option_list.highlighted = 0
+
     def hide_permission_widget(self):
         """Hide permission widget and show input"""
         self.waiting_for_permission = False
+        self.waiting_for_edit_confirmation = False
         self.query_one("#permission_area").display = False
         self.query_one("#input_area").display = True
         self.query_one(Input).focus()
@@ -887,6 +1016,20 @@ Current Configuration:
                     result_text = f"Read {result['lines']} lines"
                 elif tool_name == "list_directory":
                     result_text = f"Listed {len(result)} items"
+                elif tool_name == "edit_file" and isinstance(result, dict) and 'diff' in result:
+                    # Check if edit is pending application
+                    if result.get('pending_application', False):
+                        # Show diff and ask for confirmation
+                        diff_content = result['diff']
+                        self.show_edit_confirmation(result, tool_id, tool_args)
+                        return result  # Don't complete tool execution yet
+                    else:
+                        # Show the diff for completed edit operations
+                        diff_content = result['diff']
+                        if diff_content.strip():
+                            result_text = f"Edited {result.get('replacements', 0)} occurrence(s)\n{diff_content}"
+                        else:
+                            result_text = f"Edited {result.get('replacements', 0)} occurrence(s)"
                 else:
                     result_text = "done"
                     
