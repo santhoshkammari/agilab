@@ -982,7 +982,7 @@ Current Configuration:
         # Reset status to empty
         status_indicator.update("")
 
-    async def agentic_loop(self, query: str, messages: list, max_iterations: int = 10):
+    async def agentic_loop(self, query: str, messages: list, max_iterations: int = 25):
         """Main agentic loop that continues until no tool calls or max iterations"""
         chat_area = self.query_one("#chat_area")
         iteration = 0
