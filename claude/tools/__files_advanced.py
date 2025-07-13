@@ -113,10 +113,10 @@ class TodoItem:
     """Todo list item"""
     id: str
     content: str
-    # status: str  # 'pending', 'in_progress', 'completed'
-    # priority: str  # 'low', 'medium', 'high'
-    # created_at: float = field(default_factory=time.time)
-    # updated_at: float = field(default_factory=time.time)
+    status: str = 'pending'  # 'pending', 'in_progress', 'completed'
+    priority: str = 'medium'  # 'low', 'medium', 'high'
+    created_at: float = field(default_factory=time.time)
+    updated_at: float = field(default_factory=time.time)
 
 
 # ============================================================================
@@ -1452,26 +1452,38 @@ class TodoWriteTool:
     def __init__(self, storage_path: str = None):
         self.storage = TodoStorage(storage_path)
     
-    async def todo_write(self, todos: List[str]) -> Dict[str, Any]:
+    async def todo_write(self, todos: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Write/update the todo list"""
         logger.info(f"Writing {len(todos)} todos")
         
         try:
             # Convert dicts to TodoItem objects
             todo_items = []
-            for idx,todo_data in enumerate(todos,1):
-                # Ensure required fields
-                # todo_data.setdefault('created_at', time.time())
-                # todo_data['updated_at'] = time.time()
-                #
-                todo_items.append(TodoItem(id=str(idx),content=todo_data))
+            for todo_data in todos:
+                # Handle both dict and string formats for backward compatibility
+                if isinstance(todo_data, str):
+                    todo_items.append(TodoItem(
+                        id=str(len(todo_items) + 1),
+                        content=todo_data,
+                        status='pending',
+                        priority='medium'
+                    ))
+                else:
+                    # Ensure required fields with defaults
+                    todo_data.setdefault('status', 'pending')
+                    todo_data.setdefault('priority', 'medium')
+                    todo_data.setdefault('created_at', time.time())
+                    todo_data['updated_at'] = time.time()
+                    
+                    todo_items.append(TodoItem(**todo_data))
             
             await self.storage.save_todos(todo_items)
             
             return {
                 'success': True,
                 'total_todos': len(todo_items),
-                'updated_at': time.time()
+                'updated_at': time.time(),
+                'todos': [asdict(todo) for todo in todo_items]
             }
             
         except Exception as e:
@@ -1490,8 +1502,8 @@ class TodoWriteTool:
         new_todo = TodoItem(
             id=str(int(time.time() * 1000)),  # Simple ID generation
             content=content,
-            # status=status,
-            # priority=priority
+            status=status,
+            priority=priority
         )
         
         todos.append(new_todo)

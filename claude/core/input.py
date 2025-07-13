@@ -806,7 +806,7 @@ Current Configuration:
             'fetch_url': 'Web Fetch',
             'web_search': 'Web Search',
             'todo_read': 'Todo Read',
-            'todo_write': 'Todo Write',
+            'todo_write': 'Update Todos',
             'apply_edit': 'Apply Edit',
             'discard_edit': 'Discard Edit'
         }
@@ -1207,6 +1207,12 @@ Current Configuration:
                         result_text = f"Edited {result.get('replacements', 0)} occurrence(s)"
                         self.complete_tool_execution(tool_id, tool_args, result_text, diff_content)
                         return result
+                elif tool_name == "todo_write" and isinstance(result, dict) and 'todos' in result:
+                    # Special handling for todo display
+                    result_text = f"Updated {result.get('total_todos', 0)} todos"
+                    todo_content = self._format_todos_display(result['todos'])
+                    self.complete_tool_execution(tool_id, tool_args, result_text, todo_content)
+                    return result
                 else:
                     result_text = "done"
                     
@@ -1222,7 +1228,7 @@ Current Configuration:
             self.complete_tool_execution(tool_id, tool_args, error_msg)
             return error_msg
     
-    def complete_tool_execution(self, tool_id: str, tool_args, result: str = "", diff_content: str = None):
+    def complete_tool_execution(self, tool_id: str, tool_args, result: str = "", diff_content = None):
         """Mark tool execution as completed with green dot"""
         if tool_id in self.tool_widgets:
             from rich.text import Text
@@ -1246,11 +1252,17 @@ Current Configuration:
             widget.remove_class("tool-executing")
             widget.add_class("tool-completed")
             
-            # If there's diff content, show it in a separate syntax-highlighted widget
-            if diff_content and diff_content.strip():
-                diff_syntax = Syntax(diff_content, "diff", theme="monokai", line_numbers=False, word_wrap=True)
-                diff_widget = Static(diff_syntax, classes="ai-response")
-                chat_area.mount(diff_widget)
+            # Handle different types of diff_content
+            if diff_content:
+                if isinstance(diff_content, str) and diff_content.strip():
+                    # Regular diff content
+                    diff_syntax = Syntax(diff_content, "diff", theme="monokai", line_numbers=False, word_wrap=True)
+                    diff_widget = Static(diff_syntax, classes="ai-response")
+                    chat_area.mount(diff_widget)
+                elif hasattr(diff_content, 'append'):
+                    # Rich Text object (for todos)
+                    todo_widget = Static(diff_content, classes="ai-response")
+                    chat_area.mount(todo_widget)
             
             # Force scroll to end immediately and refresh
             chat_area.scroll_end(animate=False)
@@ -1264,6 +1276,35 @@ Current Configuration:
             # Remove from tracking
             del self.tool_widgets[tool_id]
 
+    def _format_todos_display(self, todos):
+        """Format todos with checkboxes and color coding"""
+        from rich.text import Text
+        
+        formatted_todos = Text()
+        
+        for todo in todos:
+            status = todo.get('status', 'pending')
+            priority = todo.get('priority', 'medium')
+            content = todo.get('content', '')
+            
+            # Get checkbox symbol and color based on status
+            if status == 'completed':
+                checkbox = "☑"
+                color = "#5cf074"  # Green
+            elif status == 'in_progress':
+                checkbox = "☐"
+                color = "#b19cd9"  # Lavender/purple
+            else:  # pending
+                checkbox = "☐"
+                color = "#a89984"  # Grey
+            
+            # Format the todo line
+            formatted_todos.append(f"  {checkbox} ", style=color)
+            formatted_todos.append(content, style=color)
+            formatted_todos.append("\n")
+        
+        return formatted_todos
+    
     def remove_thinking_content(self, content: str) -> str:
         """Remove <think>...</think> content from the response"""
         # Split by </think> and return the last part, properly stripped

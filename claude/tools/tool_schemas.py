@@ -304,6 +304,59 @@ PREDEFINED_TOOL_SCHEMAS = {
                 "required": ["url"]
             }
         }
+    },
+    "todo_read": {
+        "type": "function",
+        "function": {
+            "name": "todo_read",
+            "description": "Read the current todo list",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    "todo_write": {
+        "type": "function",
+        "function": {
+            "name": "todo_write",
+            "description": "Create and manage structured task lists with priorities and status tracking",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "todos": {
+                        "type": "array",
+                        "description": "Array of todo items with content, status, priority, and id",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "content": {
+                                    "type": "string",
+                                    "description": "Todo item description"
+                                },
+                                "status": {
+                                    "type": "string",
+                                    "description": "Status of the todo item",
+                                    "enum": ["pending", "in_progress", "completed"]
+                                },
+                                "priority": {
+                                    "type": "string",
+                                    "description": "Priority level of the todo item",
+                                    "enum": ["low", "medium", "high"]
+                                },
+                                "id": {
+                                    "type": "string",
+                                    "description": "Unique identifier for the todo item"
+                                }
+                            },
+                            "required": ["content", "status", "priority", "id"]
+                        }
+                    }
+                },
+                "required": ["todos"]
+            }
+        }
     }
 }
 
