@@ -343,12 +343,9 @@ class ChatApp(App):
             
             # Complete the tool execution with success
             diff_content = self.pending_edit_result.get('diff', '')
-            if diff_content.strip():
-                result_text = f"Applied edit - {self.pending_edit_result.get('replacements', 0)} replacement(s)\n{diff_content}"
-            else:
-                result_text = f"Applied edit - {self.pending_edit_result.get('replacements', 0)} replacement(s)"
+            result_text = f"Applied edit - {self.pending_edit_result.get('replacements', 0)} replacement(s)"
             
-            self.complete_tool_execution(self.pending_edit_tool_id, self.pending_edit_tool_args, result_text)
+            self.complete_tool_execution(self.pending_edit_tool_id, self.pending_edit_tool_args, result_text, diff_content)
             
             # Clear pending edit state
             self.clear_edit_confirmation_state()
@@ -378,11 +375,23 @@ class ChatApp(App):
 
     def show_full_diff(self):
         """Show the full diff in chat area"""
+        from rich.syntax import Syntax
+        from rich.panel import Panel
+        
         chat_area = self.query_one("#chat_area")
         full_diff = self.pending_edit_result.get('diff', '')
         
         if full_diff.strip():
-            chat_area.mount(Static(f"\nFull diff:\n{full_diff}\n", classes="message"))
+            # Create syntax highlighted full diff
+            diff_syntax = Syntax(full_diff, "diff", theme="monokai", line_numbers=False, word_wrap=True)
+            diff_panel = Panel(
+                diff_syntax,
+                title="Full Diff",
+                border_style="cyan",
+                expand=False
+            )
+            diff_widget = Static(diff_panel, classes="message")
+            chat_area.mount(diff_widget)
         else:
             chat_area.mount(Static("\nNo diff content available.\n", classes="message"))
         
@@ -540,6 +549,9 @@ class ChatApp(App):
 
     def show_edit_confirmation(self, edit_result: dict, tool_id: str, tool_args: str):
         """Show edit confirmation with diff after tool execution"""
+        from rich.syntax import Syntax
+        from rich.panel import Panel
+        
         self.pending_edit_result = edit_result
         self.pending_edit_tool_id = tool_id
         self.pending_edit_tool_args = tool_args
@@ -550,20 +562,36 @@ class ChatApp(App):
         replacements = edit_result.get('replacements', 0)
         file_path = edit_result.get('file_path', '')
         
-        if diff_content.strip():
-            # Truncate very long diffs
-            if len(diff_content) > 800:
-                diff_lines = diff_content.split('\n')
-                if len(diff_lines) > 20:
-                    diff_content = '\n'.join(diff_lines[:20]) + f"\n... ({len(diff_lines) - 20} more lines)"
-            
-            permission_message = f"Edit ready for {file_path} ({replacements} replacement(s)):\n\n{diff_content}\n\nApply this edit?"
-        else:
-            permission_message = f"Edit ready for {file_path} ({replacements} replacement(s)). Apply this edit?"
+        # Create the permission message with syntax highlighted diff
+        permission_text = f"Edit ready for {file_path} ({replacements} replacement(s))\n\nApply this edit?"
         
-        # Update permission message
+        # Show diff in a nice panel in the chat area first
+        chat_area = self.query_one("#chat_area")
+        if diff_content.strip():
+            # Truncate very long diffs for the permission area
+            display_diff = diff_content
+            if len(diff_content) > 1000:
+                diff_lines = diff_content.split('\n')
+                if len(diff_lines) > 25:
+                    display_diff = '\n'.join(diff_lines[:25]) + f"\n... ({len(diff_lines) - 25} more lines)"
+            
+            # Create syntax highlighted diff
+            diff_syntax = Syntax(display_diff, "diff", theme="monokai", line_numbers=False, word_wrap=True)
+            diff_panel = Panel(
+                diff_syntax,
+                title="Edit Preview",
+                border_style="yellow",
+                expand=False
+            )
+            diff_widget = Static(diff_panel, classes="message")
+            chat_area.mount(diff_widget)
+            
+            # Scroll to show the diff
+            chat_area.scroll_end(animate=False)
+        
+        # Update permission message (without the diff content)
         permission_msg = self.query_one("#permission_message")
-        permission_msg.update(permission_message)
+        permission_msg.update(permission_text)
         
         # Set edit confirmation options
         option_list = self.query_one("#permission_options")
@@ -1176,10 +1204,9 @@ Current Configuration:
                     else:
                         # Show the diff for completed edit operations
                         diff_content = result['diff']
-                        if diff_content.strip():
-                            result_text = f"Edited {result.get('replacements', 0)} occurrence(s)\n{diff_content}"
-                        else:
-                            result_text = f"Edited {result.get('replacements', 0)} occurrence(s)"
+                        result_text = f"Edited {result.get('replacements', 0)} occurrence(s)"
+                        self.complete_tool_execution(tool_id, tool_args, result_text, diff_content)
+                        return result
                 else:
                     result_text = "done"
                     
@@ -1195,10 +1222,11 @@ Current Configuration:
             self.complete_tool_execution(tool_id, tool_args, error_msg)
             return error_msg
     
-    def complete_tool_execution(self, tool_id: str, tool_args,result: str = ""):
+    def complete_tool_execution(self, tool_id: str, tool_args, result: str = "", diff_content: str = None):
         """Mark tool execution as completed with green dot"""
         if tool_id in self.tool_widgets:
             from rich.text import Text
+            from rich.syntax import Syntax
             widget = self.tool_widgets[tool_id]
             tool_info = tool_id.split('_')[0].title()
             status_indicator = self.query_one("#status_indicator")
@@ -1217,6 +1245,12 @@ Current Configuration:
             widget.update(tool_text)
             widget.remove_class("tool-executing")
             widget.add_class("tool-completed")
+            
+            # If there's diff content, show it in a separate syntax-highlighted widget
+            if diff_content and diff_content.strip():
+                diff_syntax = Syntax(diff_content, "diff", theme="monokai", line_numbers=False, word_wrap=True)
+                diff_widget = Static(diff_syntax, classes="ai-response")
+                chat_area.mount(diff_widget)
             
             # Force scroll to end immediately and refresh
             chat_area.scroll_end(animate=False)
