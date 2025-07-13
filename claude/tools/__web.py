@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import json
 from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
@@ -78,10 +79,10 @@ class WebSearchTool:
             else:
                 search_results = []
 
-            return search_results
+            return json.dumps(search_results)
         except Exception as e:
             print(f"Search error: {str(e)}")
-            return []
+            return json.dumps([])
         finally:
             await self.browser.close()
 

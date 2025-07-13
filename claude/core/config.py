@@ -7,18 +7,18 @@ class Config:
     
     def __init__(self):
         # Provider selection (ollama, openrouter, google)
-        self.provider = "google"  # Default to google
+        self.provider = "ollama"  # Default to ollama
         
         # Legacy settings (for backward compatibility)
         self.host = None  # None means localhost:11434
-        self.model = "gemini-2.5-flash"
+        self.model = "qwen3:4b"
         self.num_ctx = 2048
         self.thinking_enabled = False  # Default to thinking disabled
         
         # Provider-specific configurations
         self.providers = {
             "ollama": {
-                "host": "http://localhost:11434",
+                "host": "http://localhost:11434/v1",
                 "model": "qwen3:4b",
                 "num_ctx": 2048,
                 "temperature": 0.7
@@ -35,6 +35,12 @@ class Config:
                 "num_ctx": 4096,
                 "temperature": 0.7,
                 "thinking_budget": 0  # Disable thinking for speed
+            },
+            "vllm": {
+                "base_url": "http://localhost:8000/v1",
+                "model": None,  # Auto-detected
+                "num_ctx": 4096,
+                "temperature": 0.7
             }
         }
     
@@ -51,12 +57,17 @@ class Config:
             self.model = provider_config["model"]
             self.num_ctx = provider_config["num_ctx"]
         elif provider == "openrouter":
-            self.host = "https://openrouter.ai/api/v1"
+            # self.host = "https://openrouter.ai/api/v1"
+            self.host = "https://generativelanguage.googleapis.com/v1beta/openai/"
             self.model = provider_config["model"]
             self.num_ctx = provider_config["num_ctx"]
         elif provider == "google":
             self.host = "https://generativelanguage.googleapis.com"
             self.model = provider_config["model"]
+            self.num_ctx = provider_config["num_ctx"]
+        elif provider == "vllm":
+            self.host = provider_config.get("base_url", "http://localhost:8000/v1")
+            self.model = provider_config.get("model", "auto-detected")
             self.num_ctx = provider_config["num_ctx"]
     
     def get_provider_config(self, provider: str = None) -> dict:
@@ -99,6 +110,8 @@ class Config:
             return "https://openrouter.ai/api/v1"
         elif self.provider == "google":
             return "https://generativelanguage.googleapis.com"
+        elif self.provider == "vllm":
+            return current_config.get("base_url", "http://localhost:8000/v1")
         return self.host if self.host else "http://localhost:11434"
     
     def get_provider_display(self) -> str:

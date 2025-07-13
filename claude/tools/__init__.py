@@ -49,5 +49,11 @@ tools_dict = {
     # 'task_execute': _claude_tools.task.task_execute
 }
 
-# Tools list for LLM integration (list of functions)
-tools = list(tools_dict.values())
+# Tool schemas for LLM integration (OpenAI-compatible)
+try:
+    from .tool_schemas import get_tool_schemas
+    tools = get_tool_schemas()
+except ImportError as e:
+    print(f"Warning: Could not import tool schemas: {e}")
+    # Fallback to empty list
+    tools = []

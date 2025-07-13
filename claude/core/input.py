@@ -11,8 +11,7 @@ from rich.text import Text
 from rich.markdown import Markdown
 
 from claude.tools import tools, tools_dict
-from claude.llm import ChatOllama, ChatOpenRouter, ChatGoogleGenAI, SystemMessage, UserMessage, AssistantMessage, BaseMessage
-from claude.llm.compat import LLMCompatibilityWrapper
+from claude.llm import OAI
 from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words, SYSTEM_PROMPT
 from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
 from claude.core.config import config
@@ -488,7 +487,22 @@ class ChatApp(App):
         # Update permission message
         tool_name = tool_call.function.name
         tool_display_name = self.get_tool_display_name(tool_name)
-        tool_args = list(tool_call.function.arguments.values())[0] if tool_call.function.arguments else ""
+        
+        # Handle arguments that might be string or dict
+        if tool_call.function.arguments:
+            if isinstance(tool_call.function.arguments, str):
+                import json
+                try:
+                    args_dict = json.loads(tool_call.function.arguments)
+                    tool_args = list(args_dict.values())[0] if args_dict else ""
+                except (json.JSONDecodeError, IndexError):
+                    tool_args = tool_call.function.arguments
+            elif isinstance(tool_call.function.arguments, dict):
+                tool_args = list(tool_call.function.arguments.values())[0] if tool_call.function.arguments else ""
+            else:
+                tool_args = str(tool_call.function.arguments)
+        else:
+            tool_args = ""
         
         permission_msg = self.query_one("#permission_message")
         if tool_name == 'bash_execute':
@@ -611,26 +625,26 @@ class ChatApp(App):
         provider_config = config.get_current_config()
         
         if config.provider == "ollama":
-            host = provider_config.get("host", "http://localhost:11434")
+            base_url = provider_config.get("host", "http://localhost:11434/v1")
             model = provider_config.get("model", "qwen3:4b")
-            raw_llm = ChatOllama(model=model, host=host)
-            return LLMCompatibilityWrapper(raw_llm)
+            return OAI(provider="ollama", base_url=base_url, model=model)
         elif config.provider == "openrouter":
             api_key = provider_config.get("api_key", "")
             model = provider_config.get("model", "google/gemini-2.0-flash-exp:free")
-            raw_llm = ChatOpenRouter(model=model, api_key=api_key)
-            return LLMCompatibilityWrapper(raw_llm)
+            return OAI(provider="openrouter", api_key=api_key, model=model)
         elif config.provider == "google":
             api_key = provider_config.get("api_key", "")
             model = provider_config.get("model", "gemini-2.5-flash")
-            temperature = provider_config.get("temperature", 0.7)
-            thinking_budget = provider_config.get("thinking_budget", 0)
-            raw_llm = ChatGoogleGenAI(model=model, api_key=api_key, temperature=temperature, thinking_budget=thinking_budget)
-            return LLMCompatibilityWrapper(raw_llm)
+            return OAI(provider="google", api_key=api_key, model=model)
+        elif config.provider == "vllm":
+            base_url = provider_config.get("base_url", "http://localhost:8000/v1")
+            model = provider_config.get("model", None)
+            return OAI(provider="vllm", base_url=base_url, model=model)
         else:
-            # Fallback to google
-            raw_llm = ChatGoogleGenAI(model="gemini-2.5-flash", api_key="AIzaSyBb8wTvVw9e25aX8XK-eBuu1JzDEPCdqUE", thinking_budget=0)
-            return LLMCompatibilityWrapper(raw_llm)
+            # Default fallback
+            api_key = provider_config.get("api_key", "")
+            model = provider_config.get("model", "google/gemini-2.0-flash-exp:free")
+            return OAI(provider="openrouter", api_key=api_key, model=model)
 
     def show_provider_selection(self):
         """Show provider selection dialog"""
@@ -647,6 +661,7 @@ class ChatApp(App):
             "  • google - Google Generative AI (Gemini models)",
             "  • ollama - Local Ollama server",
             "  • openrouter - OpenRouter API (multiple models)",
+            "  • vllm - Local vLLM server",
             "\nUse: /provider <name> to switch (e.g., /provider google)\n"
         ]
         
@@ -836,7 +851,23 @@ Current Configuration:
         if self.pending_tool_call:
             tool_call = self.pending_tool_call
             tool_display_name = self.get_tool_display_name(tool_call.function.name)
-            tool_args = list(tool_call.function.arguments.values())[0] if tool_call.function.arguments else ""
+            
+            # Handle arguments that might be string or dict
+            if tool_call.function.arguments:
+                if isinstance(tool_call.function.arguments, str):
+                    import json
+                    try:
+                        args_dict = json.loads(tool_call.function.arguments)
+                        tool_args = list(args_dict.values())[0] if args_dict else ""
+                    except (json.JSONDecodeError, IndexError):
+                        tool_args = tool_call.function.arguments
+                elif isinstance(tool_call.function.arguments, dict):
+                    tool_args = list(tool_call.function.arguments.values())[0] if tool_call.function.arguments else ""
+                else:
+                    tool_args = str(tool_call.function.arguments)
+            else:
+                tool_args = ""
+                
             tool_id = f"{tool_call.function.name}_{id(tool_call)}"
             
             # Create tool widget with animation
@@ -852,7 +883,8 @@ Current Configuration:
             self.conversation_history.append({
                 'role': 'tool',
                 'content': str(result),
-                'tool_name': tool_call.function.name
+                'tool_call_id': tool_call.id,
+                'name': tool_call.function.name
             })
             
             # Add user message asking for code explanation/summary
@@ -884,7 +916,7 @@ Current Configuration:
         loop = asyncio.get_event_loop()
         # Pass no tools in plan mode
         tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-        final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=config.model, tools=tools_to_use, num_ctx=config.num_ctx))
+        final_response = await loop.run_in_executor(None, lambda: self.llm.run(messages=self.conversation_history, model=config.model, tools=tools_to_use, max_tokens=config.num_ctx))
         
         # Stop thinking animation
         animation_task.cancel()
@@ -937,128 +969,149 @@ Current Configuration:
         # Set initial status
         status_indicator.update("● Generating response...")
         
+    # try:
+        # Start thinking animation and make the LLM call in a separate thread
+        animation_task = asyncio.create_task(self.animate_thinking_status(query, "Generating response..."))
+
+        # Make the LLM call using chat method in a separate thread
+        loop = asyncio.get_event_loop()
+        # Pass no tools in plan mode
+        tools_to_use = None if self.permission_mode == 'plan-mode' else tools
+        response = await loop.run_in_executor(None, lambda: self.llm.run(messages=messages, model=config.model, max_tokens=config.num_ctx, tools=tools_to_use))
+
+        # Stop thinking animation
+        animation_task.cancel()
         try:
-            # Start thinking animation and make the LLM call in a separate thread
-            animation_task = asyncio.create_task(self.animate_thinking_status(query, "Generating response..."))
-            
-            # Make the LLM call using chat method in a separate thread
+            await animation_task
+        except asyncio.CancelledError:
+            pass
+
+        # Handle tool calls if present
+        if response.choices[0].message.tool_calls:
+            # Add assistant message with tool calls to history
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": response.choices[0].message.content,
+                "tool_calls": response.choices[0].message.tool_calls
+            })
+
+            # Process first tool call (handle one at a time for permissions)
+            tc = response.choices[0].message.tool_calls[0]
+            tool_name = tc.function.name
+
+            # Check if tool needs permission based on current mode
+            if self.needs_permission(tool_name):
+                # Show permission widget and wait for user decision
+                self.show_permission_widget(tc)
+                return
+            else:
+                # Auto-approved or doesn't need permission - execute directly
+                tool_display_name = self.get_tool_display_name(tc.function.name)
+
+                # Handle arguments that might be string or dict
+                if tc.function.arguments:
+                    if isinstance(tc.function.arguments, str):
+                        import json
+                        try:
+                            args_dict = json.loads(tc.function.arguments)
+                            tool_args = list(args_dict.values())[0] if args_dict else ""
+                        except (json.JSONDecodeError, IndexError):
+                            tool_args = tc.function.arguments
+                    elif isinstance(tc.function.arguments, dict):
+                        tool_args = list(tc.function.arguments.values())[0] if tc.function.arguments else ""
+                    else:
+                        tool_args = str(tc.function.arguments)
+                else:
+                    tool_args = ""
+
+                tool_id = f"{tc.function.name}_{id(tc)}"
+
+                # Create tool widget with animation
+                await self.create_tool_widget(tool_display_name, tool_args, tool_id)
+
+                # Execute the actual tool
+                result = await self.execute_tool_and_get_result(tc, tool_id, tool_args)
+
+                # Give time for user to see the tool completion
+                await asyncio.sleep(0.1)
+
+                # Add tool result to conversation history
+                self.conversation_history.append({
+                    'role': 'tool',
+                    'content': str(result),
+                    'tool_call_id': tc.id,
+                    'name': tc.function.name
+                })
+
+                # Add user message asking for code explanation/summary
+                if tc.function.name == 'read_file':
+                    self.conversation_history.append({
+                        'role': 'user',
+                        'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key components/features, 3) Short conclusion line. Keep it concise like Claude Code style.'
+                    })
+                elif tc.function.name == 'list_directory':
+                    self.conversation_history.append({
+                        'role': 'user',
+                        'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key contents, 3) Short summary line. Keep it concise.'
+                    })
+                else:
+                    self.conversation_history.append({
+                        'role': 'user',
+                        'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key results, 3) Short conclusion. Keep it concise.'
+                    })
+
+            # Make another LLM call with tool results
+            animation_task = asyncio.create_task(self.animate_thinking_status(query, "Processing tool results..."))
+
             loop = asyncio.get_event_loop()
             # Pass no tools in plan mode
             tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-            response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=messages, model=config.model, num_ctx=config.num_ctx, tools=tools_to_use))
-            
+            final_response = await loop.run_in_executor(None, lambda: self.llm.run(messages=self.conversation_history, model=config.model, tools=tools_to_use, max_tokens=config.num_ctx))
+
             # Stop thinking animation
             animation_task.cancel()
             try:
                 await animation_task
             except asyncio.CancelledError:
                 pass
-            
-            # Handle tool calls if present
-            if response.message.tool_calls:
-                # Add assistant message with tool calls to history
-                self.conversation_history.append(response.message)
-                
-                # Process first tool call (handle one at a time for permissions)
-                tc = response.message.tool_calls[0]
-                tool_name = tc.function.name
-                
-                # Check if tool needs permission based on current mode
-                if self.needs_permission(tool_name):
-                    # Show permission widget and wait for user decision
-                    self.show_permission_widget(tc)
-                    return
-                else:
-                    # Auto-approved or doesn't need permission - execute directly
-                    tool_display_name = self.get_tool_display_name(tc.function.name)
-                    tool_args = list(tc.function.arguments.values())[0] if tc.function.arguments else ""
-                    tool_id = f"{tc.function.name}_{id(tc)}"
-                    
-                    # Create tool widget with animation
-                    await self.create_tool_widget(tool_display_name, tool_args, tool_id)
-                    
-                    # Execute the actual tool
-                    result = await self.execute_tool_and_get_result(tc, tool_id, tool_args)
-                    
-                    # Give time for user to see the tool completion
-                    await asyncio.sleep(0.1)
-                    
-                    # Add tool result to conversation history
+
+            # Display the final response
+            if final_response.choices[0].message.content and final_response.choices[0].message.content.strip():
+                # Remove thinking content before displaying
+                clean_content = self.remove_thinking_content(final_response.choices[0].message.content)
+                if clean_content.strip():
+                    # Use rich Markdown for better rendering
+                    markdown_content = Markdown("● " + clean_content.strip())
+                    markdown_widget = Static(markdown_content, classes="ai-response")
+                    chat_area.mount(markdown_widget)
+
+                    # Add assistant response to conversation history
                     self.conversation_history.append({
-                        'role': 'tool',
-                        'content': str(result),
-                        'tool_name': tc.function.name
+                        "role": "assistant",
+                        "content": clean_content.strip()
                     })
-                    
-                    # Add user message asking for code explanation/summary
-                    if tc.function.name == 'read_file':
-                        self.conversation_history.append({
-                            'role': 'user',
-                            'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key components/features, 3) Short conclusion line. Keep it concise like Claude Code style.'
-                        })
-                    elif tc.function.name == 'list_directory':
-                        self.conversation_history.append({
-                            'role': 'user', 
-                            'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key contents, 3) Short summary line. Keep it concise.'
-                        })
-                    else:
-                        self.conversation_history.append({
-                            'role': 'user',
-                            'content': 'Format response as: 1) Brief title in normal text (no # headers), 2) 3-4 bullet points using - for key results, 3) Short conclusion. Keep it concise.'
-                        })
-                
-                # Make another LLM call with tool results
-                animation_task = asyncio.create_task(self.animate_thinking_status(query, "Processing tool results..."))
-                
-                loop = asyncio.get_event_loop()
-                # Pass no tools in plan mode
-                tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-                final_response = await loop.run_in_executor(None, lambda: self.llm.chat(messages=self.conversation_history, model=config.model, tools=tools_to_use, num_ctx=config.num_ctx))
-                
-                # Stop thinking animation
-                animation_task.cancel()
-                try:
-                    await animation_task
-                except asyncio.CancelledError:
-                    pass
-                
-                # Display the final response
-                if final_response.message.content and final_response.message.content.strip():
-                    # Remove thinking content before displaying
-                    clean_content = self.remove_thinking_content(final_response.message.content)
-                    if clean_content.strip():
-                        # Use rich Markdown for better rendering
-                        markdown_content = Markdown("● " + clean_content.strip())
-                        markdown_widget = Static(markdown_content, classes="ai-response")
-                        chat_area.mount(markdown_widget)
-                        
-                        # Add assistant response to conversation history
-                        self.conversation_history.append({
-                            "role": "assistant",
-                            "content": clean_content.strip()
-                        })
-            else:
-                # No tool calls, just display the response
-                if response.message.content and response.message.content.strip():
-                    # Remove thinking content before displaying
-                    clean_content = self.remove_thinking_content(response.message.content)
-                    if clean_content.strip():
-                        # Use rich Markdown for better rendering
-                        markdown_content = Markdown("● " + clean_content.strip())
-                        markdown_widget = Static(markdown_content, classes="ai-response")
-                        chat_area.mount(markdown_widget)
-                        
-                        # Add assistant response to conversation history
-                        self.conversation_history.append({
-                            "role": "assistant",
-                            "content": clean_content.strip()
-                        })
-                    
-        except Exception as e:
-            error_text = f"🤖 **Error**: {str(e)}"
-            chat_area.mount(Static(error_text, classes="ai-response"))
-            status_indicator.update("")
-            return
+        else:
+            # No tool calls, just display the response
+            if response.choices[0].message.content and response.choices[0].message.content.strip():
+                # Remove thinking content before displaying
+                clean_content = self.remove_thinking_content(response.choices[0].message.content)
+                if clean_content.strip():
+                    # Use rich Markdown for better rendering
+                    markdown_content = Markdown("● " + clean_content.strip())
+                    markdown_widget = Static(markdown_content, classes="ai-response")
+                    chat_area.mount(markdown_widget)
+
+                    # Add assistant response to conversation history
+                    self.conversation_history.append({
+                        "role": "assistant",
+                        "content": clean_content.strip()
+                    })
+
+        # except Exception as e:
+        #     error_text = f"🤖 **Error**: {str(e)}"
+        #     chat_area.mount(Static(error_text, classes="ai-response"))
+        #     status_indicator.update("")
+        #     return
 
         # Ensure scroll to end after markdown rendering
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
@@ -1096,7 +1149,19 @@ Current Configuration:
             # Get the tool method from the tools dictionary
             if tool_name in tools_dict:
                 tool_method = tools_dict[tool_name]
-                result = await tool_method(**tool_call.function.arguments)
+                
+                # Handle arguments that might be string or dict
+                if isinstance(tool_call.function.arguments, str):
+                    import json
+                    try:
+                        args_dict = json.loads(tool_call.function.arguments)
+                        result = await tool_method(**args_dict)
+                    except json.JSONDecodeError:
+                        result = f"Error: Invalid JSON arguments: {tool_call.function.arguments}"
+                elif isinstance(tool_call.function.arguments, dict):
+                    result = await tool_method(**tool_call.function.arguments)
+                else:
+                    result = await tool_method()
                 
                 # Generate appropriate result text based on tool and result
                 if tool_name == "read_file" and isinstance(result, dict) and 'lines' in result:

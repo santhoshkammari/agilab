@@ -354,7 +354,7 @@ class BashTool:
         self.timeout = timeout
         self.max_output_size = max_output_size
     
-    async def execute(self, command: str, cwd: str = None, env: Dict[str, str] = None) -> ExecutionResult:
+    async def execute(self, command: str, cwd: Optional[str] = None, env: Optional[Dict[str, str]] = None) -> ExecutionResult:
         """Execute a shell command safely"""
         logger.info(f"Executing command: {command}")
         
@@ -586,7 +586,7 @@ class LSTool:
         path: str = ".", 
         show_hidden: bool = False,
         recursive: bool = False,
-        ignore_patterns: List[str] = None
+        ignore_patterns: Optional[List[str]] = None
     ) -> List[FileInfo]:
         """List directory contents"""
         logger.info(f"Listing directory: {path}")
@@ -683,8 +683,8 @@ class ReadTool:
         self, 
         file_path: str, 
         encoding: str = 'utf-8',
-        offset: int = None,
-        limit: int = None
+        offset: Optional[int] = None,
+        limit: Optional[int] = None
     ) -> Dict[str, Any]:
         """Read file contents"""
         logger.info(f"Reading file: {file_path}")
@@ -1291,7 +1291,7 @@ class WebFetchTool:
     def __init__(self, timeout: float = 30.0):
         self.timeout = timeout
     
-    async def fetch_url(self, url: str, prompt: str = None) -> Dict[str, Any]:
+    async def fetch_url(self, url: str, prompt: Optional[str] = None) -> Dict[str, Any]:
         """Fetch content from URL and optionally process with prompt"""
         logger.info(f"Fetching URL: {url}")
         
