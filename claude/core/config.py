@@ -7,11 +7,11 @@ class Config:
     
     def __init__(self):
         # Provider selection (ollama, openrouter, google)
-        self.provider = "ollama"  # Default to ollama
+        self.provider = "google"  # Default to google
         
         # Legacy settings (for backward compatibility)
         self.host = None  # None means localhost:11434
-        self.model = "qwen3:4b"
+        self.model = "gemini-2.5-flash"
         self.num_ctx = 2048
         self.thinking_enabled = False  # Default to thinking disabled
         

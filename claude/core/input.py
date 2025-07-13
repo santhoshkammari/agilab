@@ -218,7 +218,7 @@ class ChatApp(App):
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="chat_area"):
             welcome_panel = Panel(
-                renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold orange1]Plaude Pode[/]!\n\n"
+                renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold white]Claude Code[/]!\n\n"
                                  f"/help for help, /status for your current setup\n\ncwd: {self.cwd}"),
                 border_style=ORANGE_COLORS[17],
                 expand=False
@@ -624,7 +624,11 @@ class ChatApp(App):
         """Initialize LLM based on current provider configuration"""
         provider_config = config.get_current_config()
         
-        if config.provider == "ollama":
+        if config.provider == "google":
+            api_key = provider_config.get("api_key", "")
+            model = provider_config.get("model", "gemini-2.5-flash")
+            return OAI(provider="google", api_key=api_key, model=model)
+        elif config.provider == "ollama":
             base_url = provider_config.get("host", "http://localhost:11434/v1")
             model = provider_config.get("model", "qwen3:4b")
             return OAI(provider="ollama", base_url=base_url, model=model)
@@ -632,19 +636,15 @@ class ChatApp(App):
             api_key = provider_config.get("api_key", "")
             model = provider_config.get("model", "google/gemini-2.0-flash-exp:free")
             return OAI(provider="openrouter", api_key=api_key, model=model)
-        elif config.provider == "google":
-            api_key = provider_config.get("api_key", "")
-            model = provider_config.get("model", "gemini-2.5-flash")
-            return OAI(provider="google", api_key=api_key, model=model)
         elif config.provider == "vllm":
             base_url = provider_config.get("base_url", "http://localhost:8000/v1")
             model = provider_config.get("model", None)
             return OAI(provider="vllm", base_url=base_url, model=model)
         else:
-            # Default fallback
+            # Default fallback to Google
             api_key = provider_config.get("api_key", "")
-            model = provider_config.get("model", "google/gemini-2.0-flash-exp:free")
-            return OAI(provider="openrouter", api_key=api_key, model=model)
+            model = provider_config.get("model", "gemini-2.5-flash")
+            return OAI(provider="google", api_key=api_key, model=model)
 
     def show_provider_selection(self):
         """Show provider selection dialog"""
@@ -748,7 +748,7 @@ Current Configuration:
         
         # Add welcome message back
         welcome_panel = Panel(
-            renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold orange1]Plaude Pode[/]!\n\n"
+            renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold white]Claude Code[/]!\n\n"
                              f"/help for help, /status for your current setup\n\ncwd: {self.cwd}"),
             border_style=ORANGE_COLORS[17],
             expand=False

@@ -1296,17 +1296,37 @@ class WebFetchTool:
         logger.info(f"Fetching URL: {url}")
         
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        raise ToolError(f"HTTP {response.status}: {response.reason}")
-                    
+            # Validate URL format
+            if not url.startswith(('http://', 'https://')):
+                raise ToolError(f"Invalid URL format: {url}")
+            
+            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=10.0)
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, allow_redirects=True) as response:
                     content_type = response.headers.get('content-type', '').lower()
                     
+                    # Handle different status codes
+                    if response.status >= 400:
+                        error_content = await response.text()
+                        return {
+                            'url': url,
+                            'status': response.status,
+                            'error': f"HTTP {response.status}: {response.reason}",
+                            'content_type': content_type,
+                            'content': error_content[:500] if error_content else "",
+                            'size': len(error_content) if error_content else 0,
+                            'success': False
+                        }
+                    
+                    # Process successful response
                     if 'text/html' in content_type:
                         content = await response.text()
                         # Convert HTML to markdown (simplified)
                         processed_content = self._html_to_markdown(content)
+                    elif 'application/json' in content_type:
+                        content = await response.text()
+                        processed_content = content  # Keep JSON as-is
                     else:
                         content = await response.text()
                         processed_content = content
@@ -1316,7 +1336,8 @@ class WebFetchTool:
                         'status': response.status,
                         'content_type': content_type,
                         'content': processed_content,
-                        'size': len(content)
+                        'size': len(content),
+                        'success': True
                     }
                     
                     if prompt:
@@ -1325,9 +1346,30 @@ class WebFetchTool:
                     
                     return result
                     
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout fetching URL: {url}")
+            return {
+                'url': url,
+                'error': f"Request timed out after {self.timeout} seconds",
+                'success': False,
+                'status': 0
+            }
+        except aiohttp.ClientError as e:
+            logger.error(f"Client error fetching URL: {url} - {e}")
+            return {
+                'url': url,
+                'error': f"Connection error: {str(e)}",
+                'success': False,
+                'status': 0
+            }
         except Exception as e:
             logger.error(f"Web fetch failed: {e}")
-            raise ToolError(f"Failed to fetch URL: {e}")
+            return {
+                'url': url,
+                'error': f"Unexpected error: {str(e)}",
+                'success': False,
+                'status': 0
+            }
     
     def _html_to_markdown(self, html: str) -> str:
         """Convert HTML to markdown (simplified)"""
@@ -1370,13 +1412,8 @@ class TodoStorage:
     async def load_todos(self) -> List[TodoItem]:
         """Load todos from storage"""
         try:
-            if not os.path.exists(self.storage_path):
-                return []
-            
-            async with aiofiles.open(self.storage_path, 'r') as f:
-                data = json.loads(await f.read())
-            
-            return [TodoItem(**item) for item in data]
+            # Always start with empty todos at startup
+            return []
             
         except Exception as e:
             logger.error(f"Failed to load todos: {e}")
@@ -1385,10 +1422,9 @@ class TodoStorage:
     async def save_todos(self, todos: List[TodoItem]) -> None:
         """Save todos to storage"""
         try:
-            data = [todo.model_dump() for todo in todos]
-            
-            async with aiofiles.open(self.storage_path, 'w') as f:
-                await f.write(json.dumps(data, indent=2))
+            # For session-based todos, we don't persist to disk
+            # This ensures they reset when the chat app starts
+            pass
                 
         except Exception as e:
             logger.error(f"Failed to save todos: {e}")
