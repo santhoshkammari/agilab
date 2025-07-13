@@ -8,6 +8,43 @@ except ImportError:
     from __util import convert_function_to_tool
 
 
+class FunctionWrapper:
+    """Wrapper for tool call function data"""
+    def __init__(self, function_dict: dict):
+        self._data = function_dict
+    
+    @property
+    def name(self):
+        return self._data.get('name', '')
+    
+    @property
+    def arguments(self):
+        args_str = self._data.get('arguments', '{}')
+        try:
+            import json
+            return json.loads(args_str) if isinstance(args_str, str) else args_str
+        except:
+            return {}
+
+
+class ToolCallWrapper:
+    """Wrapper for tool call data"""
+    def __init__(self, tool_call_dict: dict):
+        self._data = tool_call_dict
+        if 'function' in tool_call_dict:
+            self.function = FunctionWrapper(tool_call_dict['function'])
+        else:
+            self.function = FunctionWrapper({})
+    
+    @property
+    def id(self):
+        return self._data.get('id', '')
+    
+    @property
+    def type(self):
+        return self._data.get('type', 'function')
+
+
 class MessageWrapper:
     """Wrapper to make dict responses compatible with attribute access"""
     def __init__(self, message_dict: dict):
@@ -23,7 +60,10 @@ class MessageWrapper:
     
     @property
     def tool_calls(self):
-        return self._data.get('tool_calls', None)
+        tool_calls_data = self._data.get('tool_calls', None)
+        if tool_calls_data and isinstance(tool_calls_data, list):
+            return [ToolCallWrapper(tc) for tc in tool_calls_data]
+        return tool_calls_data
 
 
 class ResponseWrapper:
