@@ -22,6 +22,7 @@ class ChatApp(App):
     
     BINDINGS = [
         Binding("shift+tab", "cycle_mode", "Cycle Mode", priority=True),
+        Binding("ctrl+c", "clear_input", "Clear Input", priority=True),
     ]
     
     CSS = """
@@ -429,6 +430,12 @@ class ChatApp(App):
     def action_cycle_mode(self) -> None:
         """Action to cycle through modes"""
         self.cycle_mode()
+
+    def action_clear_input(self) -> None:
+        """Action to clear the input field"""
+        input_widget = self.query_one(Input)
+        if input_widget.has_focus:
+            input_widget.clear()
 
     @on(Input.Submitted)
     def handle_message(self, event: Input.Submitted) -> None:
