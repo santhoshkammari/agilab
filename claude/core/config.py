@@ -25,7 +25,7 @@ class Config:
             },
             "openrouter": {
                 "api_key": "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",
-                "model": "google/gemini-2.0-flash-exp:free",
+                "model": "gemini-2.5-flash-lite-preview-06-17", #"gemini-2.5-flash",
                 "num_ctx": 4096,
                 "temperature": 0.7
             },

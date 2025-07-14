@@ -1,3 +1,18 @@
+"""
+Claude Code Chat Interface
+
+This module provides the main chat interface for Claude Code with the following features:
+- Real-time chat with AI models
+- Tool execution with permission system
+- Dynamic footer content updates
+- Command palette and keyboard shortcuts
+- Multiple permission modes (default, auto-accept-edits, bypass-permissions, plan-mode)
+
+Footer Management:
+- Left footer: Can be updated dynamically using update_left_footer()
+- Right footer: Shows current mode, updated via cycle_mode()
+"""
+
 import asyncio
 from pathlib import Path
 
@@ -67,10 +82,12 @@ class ChatApp(App):
 
     #footer-left {
         text-align: left;
+        width: 1fr;
     }
 
     #footer-right {
         text-align: right;
+        width: auto;
     }
     
     .mode-bypass {
@@ -268,7 +285,9 @@ class ChatApp(App):
             yield Input(placeholder="Type your message here...", compact=True, value="websearch for latest AI news and then fetch the first URL to summarize")
         # Footer
         with Horizontal(id="footer"):
+            yield Static("", id="footer-left")
             yield Static(self.get_mode_display(), id="footer-right")
+
 
 
     def on_ready(self) -> None:
@@ -284,6 +303,9 @@ class ChatApp(App):
         footer_right = self.query_one("#footer-right")
         if self.permission_mode == 'auto-accept-edits':
             footer_right.add_class("mode-auto-edit")
+        
+        # Initialize left footer content
+        self.update_left_footer("[grey]  ? for shortcuts[/grey]")
 
     def on_key(self, event) -> None:
         """Handle key events for command palette"""
@@ -919,6 +941,11 @@ Current Configuration:
             return "Bypassing Permissions   "
         elif self.permission_mode == 'plan-mode':
             return "⏸ plan mode on   "
+
+    def update_left_footer(self, new_content: str):
+        """Update the left footer content dynamically"""
+        footer_left = self.query_one("#footer-left")
+        footer_left.update(new_content)
         
     def cycle_mode(self):
         """Cycle to the next permission mode"""
