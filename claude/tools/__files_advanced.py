@@ -113,10 +113,10 @@ class TodoItem:
     """Todo list item"""
     id: str
     content: str
-    # status: str  # 'pending', 'in_progress', 'completed'
-    # priority: str  # 'low', 'medium', 'high'
-    # created_at: float = field(default_factory=time.time)
-    # updated_at: float = field(default_factory=time.time)
+    status: str = 'pending'  # 'pending', 'in_progress', 'completed'
+    priority: str = 'medium'  # 'low', 'medium', 'high'
+    created_at: float = field(default_factory=time.time)
+    updated_at: float = field(default_factory=time.time)
 
 
 # ============================================================================
@@ -354,7 +354,7 @@ class BashTool:
         self.timeout = timeout
         self.max_output_size = max_output_size
     
-    async def execute(self, command: str, cwd: str = None, env: Dict[str, str] = None) -> ExecutionResult:
+    async def execute(self, command: str, cwd: Optional[str] = None, env: Optional[Dict[str, str]] = None) -> ExecutionResult:
         """Execute a shell command safely"""
         logger.info(f"Executing command: {command}")
         
@@ -586,7 +586,7 @@ class LSTool:
         path: str = ".", 
         show_hidden: bool = False,
         recursive: bool = False,
-        ignore_patterns: List[str] = None
+        ignore_patterns: Optional[List[str]] = None
     ) -> List[FileInfo]:
         """List directory contents"""
         logger.info(f"Listing directory: {path}")
@@ -683,8 +683,8 @@ class ReadTool:
         self, 
         file_path: str, 
         encoding: str = 'utf-8',
-        offset: int = None,
-        limit: int = None
+        offset: Optional[int] = None,
+        limit: Optional[int] = None
     ) -> Dict[str, Any]:
         """Read file contents"""
         logger.info(f"Reading file: {file_path}")
@@ -833,7 +833,7 @@ class EditTool:
     """Make exact string replacements in files"""
     
     def __init__(self):
-        pass
+        self._pending_edit = None
     
     async def edit_file(
         self, 
@@ -879,11 +879,17 @@ class EditTool:
             if replacements == 0:
                 raise ValidationError(f"String not found in file: {old_string}")
             
-            # Write updated content
-            async with aiofiles.open(validated_path, 'w', encoding='utf-8') as f:
-                await f.write(new_content)
+            # Generate diff (but don't write file yet)
+            diff = self._generate_diff(original_content, new_content, file_path)
             
-            logger.info(f"File edited successfully, {replacements} replacements made")
+            # Store the new content for later application
+            self._pending_edit = {
+                'file_path': validated_path,
+                'new_content': new_content,
+                'applied': False
+            }
+            
+            logger.info(f"File edit prepared, {replacements} replacements ready")
             
             return {
                 'success': True,
@@ -892,12 +898,132 @@ class EditTool:
                 'old_string': old_string,
                 'new_string': new_string,
                 'original_size': len(original_content),
-                'new_size': len(new_content)
+                'new_size': len(new_content),
+                'diff': diff,
+                'pending_application': True
             }
             
         except Exception as e:
             logger.error(f"File editing failed: {e}")
             raise FileSystemError(f"Failed to edit file: {e}")
+    
+    def _generate_diff(self, original_content: str, new_content: str, file_path: str) -> str:
+        """Generate unified diff between original and new content"""
+        import difflib
+        
+        original_lines = original_content.splitlines(keepends=True)
+        new_lines = new_content.splitlines(keepends=True)
+        
+        diff_lines = list(difflib.unified_diff(
+            original_lines,
+            new_lines,
+            fromfile=f"a/{file_path}",
+            tofile=f"b/{file_path}",
+            lineterm=""
+        ))
+        
+        return ''.join(diff_lines)
+    
+    async def preview_edit(
+        self, 
+        file_path: str, 
+        old_string: str, 
+        new_string: str,
+        replace_all: bool = False
+    ) -> Dict[str, Any]:
+        """Preview what an edit would do without actually making changes"""
+        logger.info(f"Previewing edit for file: {file_path}")
+        
+        try:
+            validated_path = validate_path(file_path)
+            
+            if not os.path.exists(validated_path):
+                raise FileSystemError(f"File does not exist: {file_path}")
+            
+            # Read current content
+            async with aiofiles.open(validated_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+            
+            original_content = content
+            
+            # Perform replacement (in memory only)
+            if replace_all:
+                new_content = content.replace(old_string, new_string)
+                replacements = content.count(old_string)
+            else:
+                # Replace only first occurrence
+                if old_string not in content:
+                    raise ValidationError(f"String not found in file: {old_string}")
+                
+                # Check for multiple occurrences
+                if content.count(old_string) > 1:
+                    raise ValidationError(
+                        f"Multiple occurrences of string found. Use replace_all=True or provide more context",
+                        "Make the old_string more specific or use replace_all option"
+                    )
+                
+                new_content = content.replace(old_string, new_string, 1)
+                replacements = 1
+            
+            if replacements == 0:
+                raise ValidationError(f"String not found in file: {old_string}")
+            
+            # Generate diff (without writing)
+            diff = self._generate_diff(original_content, new_content, file_path)
+            
+            return {
+                'success': True,
+                'file_path': file_path,
+                'replacements': replacements,
+                'old_string': old_string,
+                'new_string': new_string,
+                'original_size': len(original_content),
+                'new_size': len(new_content),
+                'diff': diff,
+                'preview_only': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Edit preview failed: {e}")
+            raise FileSystemError(f"Failed to preview edit: {e}")
+    
+    async def apply_pending_edit(self) -> Dict[str, Any]:
+        """Apply the pending edit to the file"""
+        if not self._pending_edit or self._pending_edit.get('applied', False):
+            raise ValidationError("No pending edit to apply")
+        
+        try:
+            # Write the new content to file
+            async with aiofiles.open(self._pending_edit['file_path'], 'w', encoding='utf-8') as f:
+                await f.write(self._pending_edit['new_content'])
+            
+            self._pending_edit['applied'] = True
+            logger.info(f"Pending edit applied to {self._pending_edit['file_path']}")
+            
+            return {
+                'success': True,
+                'file_path': self._pending_edit['file_path'],
+                'applied': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to apply pending edit: {e}")
+            raise FileSystemError(f"Failed to apply edit: {e}")
+    
+    async def discard_pending_edit(self) -> Dict[str, Any]:
+        """Discard the pending edit without applying it"""
+        if not self._pending_edit:
+            raise ValidationError("No pending edit to discard")
+        
+        file_path = self._pending_edit['file_path']
+        self._pending_edit = None
+        logger.info(f"Pending edit discarded for {file_path}")
+        
+        return {
+            'success': True,
+            'file_path': file_path,
+            'discarded': True
+        }
 
 
 # ============================================================================
@@ -1165,22 +1291,42 @@ class WebFetchTool:
     def __init__(self, timeout: float = 30.0):
         self.timeout = timeout
     
-    async def fetch_url(self, url: str, prompt: str = None) -> Dict[str, Any]:
+    async def fetch_url(self, url: str, prompt: Optional[str] = None) -> Dict[str, Any]:
         """Fetch content from URL and optionally process with prompt"""
         logger.info(f"Fetching URL: {url}")
         
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        raise ToolError(f"HTTP {response.status}: {response.reason}")
-                    
+            # Validate URL format
+            if not url.startswith(('http://', 'https://')):
+                raise ToolError(f"Invalid URL format: {url}")
+            
+            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=10.0)
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, allow_redirects=True) as response:
                     content_type = response.headers.get('content-type', '').lower()
                     
+                    # Handle different status codes
+                    if response.status >= 400:
+                        error_content = await response.text()
+                        return {
+                            'url': url,
+                            'status': response.status,
+                            'error': f"HTTP {response.status}: {response.reason}",
+                            'content_type': content_type,
+                            'content': error_content[:500] if error_content else "",
+                            'size': len(error_content) if error_content else 0,
+                            'success': False
+                        }
+                    
+                    # Process successful response
                     if 'text/html' in content_type:
                         content = await response.text()
                         # Convert HTML to markdown (simplified)
                         processed_content = self._html_to_markdown(content)
+                    elif 'application/json' in content_type:
+                        content = await response.text()
+                        processed_content = content  # Keep JSON as-is
                     else:
                         content = await response.text()
                         processed_content = content
@@ -1190,7 +1336,8 @@ class WebFetchTool:
                         'status': response.status,
                         'content_type': content_type,
                         'content': processed_content,
-                        'size': len(content)
+                        'size': len(content),
+                        'success': True
                     }
                     
                     if prompt:
@@ -1199,9 +1346,30 @@ class WebFetchTool:
                     
                     return result
                     
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout fetching URL: {url}")
+            return {
+                'url': url,
+                'error': f"Request timed out after {self.timeout} seconds",
+                'success': False,
+                'status': 0
+            }
+        except aiohttp.ClientError as e:
+            logger.error(f"Client error fetching URL: {url} - {e}")
+            return {
+                'url': url,
+                'error': f"Connection error: {str(e)}",
+                'success': False,
+                'status': 0
+            }
         except Exception as e:
             logger.error(f"Web fetch failed: {e}")
-            raise ToolError(f"Failed to fetch URL: {e}")
+            return {
+                'url': url,
+                'error': f"Unexpected error: {str(e)}",
+                'success': False,
+                'status': 0
+            }
     
     def _html_to_markdown(self, html: str) -> str:
         """Convert HTML to markdown (simplified)"""
@@ -1244,13 +1412,8 @@ class TodoStorage:
     async def load_todos(self) -> List[TodoItem]:
         """Load todos from storage"""
         try:
-            if not os.path.exists(self.storage_path):
-                return []
-            
-            async with aiofiles.open(self.storage_path, 'r') as f:
-                data = json.loads(await f.read())
-            
-            return [TodoItem(**item) for item in data]
+            # Always start with empty todos at startup
+            return []
             
         except Exception as e:
             logger.error(f"Failed to load todos: {e}")
@@ -1259,10 +1422,9 @@ class TodoStorage:
     async def save_todos(self, todos: List[TodoItem]) -> None:
         """Save todos to storage"""
         try:
-            data = [todo.model_dump() for todo in todos]
-            
-            async with aiofiles.open(self.storage_path, 'w') as f:
-                await f.write(json.dumps(data, indent=2))
+            # For session-based todos, we don't persist to disk
+            # This ensures they reset when the chat app starts
+            pass
                 
         except Exception as e:
             logger.error(f"Failed to save todos: {e}")
@@ -1290,26 +1452,38 @@ class TodoWriteTool:
     def __init__(self, storage_path: str = None):
         self.storage = TodoStorage(storage_path)
     
-    async def todo_write(self, todos: List[str]) -> Dict[str, Any]:
+    async def todo_write(self, todos: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Write/update the todo list"""
         logger.info(f"Writing {len(todos)} todos")
         
         try:
             # Convert dicts to TodoItem objects
             todo_items = []
-            for idx,todo_data in enumerate(todos,1):
-                # Ensure required fields
-                # todo_data.setdefault('created_at', time.time())
-                # todo_data['updated_at'] = time.time()
-                #
-                todo_items.append(TodoItem(id=str(idx),content=todo_data))
+            for todo_data in todos:
+                # Handle both dict and string formats for backward compatibility
+                if isinstance(todo_data, str):
+                    todo_items.append(TodoItem(
+                        id=str(len(todo_items) + 1),
+                        content=todo_data,
+                        status='pending',
+                        priority='medium'
+                    ))
+                else:
+                    # Ensure required fields with defaults
+                    todo_data.setdefault('status', 'pending')
+                    todo_data.setdefault('priority', 'medium')
+                    todo_data.setdefault('created_at', time.time())
+                    todo_data['updated_at'] = time.time()
+                    
+                    todo_items.append(TodoItem(**todo_data))
             
             await self.storage.save_todos(todo_items)
             
             return {
                 'success': True,
                 'total_todos': len(todo_items),
-                'updated_at': time.time()
+                'updated_at': time.time(),
+                'todos': [asdict(todo) for todo in todo_items]
             }
             
         except Exception as e:
@@ -1328,8 +1502,8 @@ class TodoWriteTool:
         new_todo = TodoItem(
             id=str(int(time.time() * 1000)),  # Simple ID generation
             content=content,
-            # status=status,
-            # priority=priority
+            status=status,
+            priority=priority
         )
         
         todos.append(new_todo)
