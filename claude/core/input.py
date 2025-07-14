@@ -32,16 +32,22 @@ from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
 from claude.core.config import config
 
 
+class State:
+    def __init__(self):
+        self.user_interrupt = False
+
+
 class ChatApp(App):
     """Simple chat interface with message display and input"""
     
     BINDINGS = [
         Binding("shift+tab", "cycle_mode", "Cycle Mode", priority=True),
         Binding("ctrl+c", "clear_input", "Clear Input", priority=True),
+        Binding("escape", "interrupt_conversation", "Interrupt Conversation", priority=True),
         Binding("ctrl+d", "clear_input", "Clear Input", priority=True),
         Binding("ctrl+l", "clear_screen", "Clear Screen", priority=True),
-        Binding("up", "previous_command", "Previous Command", priority=True),
-        Binding("down", "next_command", "Next Command", priority=True),
+        # Binding("up", "previous_command", "Previous Command", priority=True),
+        # Binding("down", "next_command", "Next Command", priority=True),
     ]
     
     CSS = """
@@ -203,6 +209,7 @@ class ChatApp(App):
 
     def __init__(self,cwd):
         super().__init__()
+        self.state = State()
         self.llm = self._initialize_llm()
         self.tool_widgets = {}  # Track tool execution widgets
         self.cwd = cwd
@@ -467,6 +474,24 @@ class ChatApp(App):
         if input_widget.has_focus:
             input_widget.clear()
 
+    def action_interrupt_conversation(self) -> None:
+        """Action to interrupt the conversation"""
+        self.state.user_interrupt = True
+        status_indicator = self.query_one("#status_indicator")
+        chat_area = self.query_one("#chat_area")
+
+        # Clear status indicator immediately
+        status_indicator.update("")
+
+        # Clear any pending tool states
+        self.pending_tool_call = None
+        self.pending_agentic_state = None
+        self.tool_widgets.clear()
+        
+        # Add interrupt message to chat
+        chat_area.mount(Static("\n⚠ Conversation interrupted by user\n", classes="message"))
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
     def action_clear_screen(self) -> None:
         """Action to clear the screen but keep conversation history"""
         chat_area = self.query_one("#chat_area")
@@ -595,6 +620,8 @@ class ChatApp(App):
 
             chat_area.scroll_end(animate=False)
             self.refresh()
+            # Reset interrupt flag for new conversation
+            self.state.user_interrupt = False
             self.call_later(self.start_ai_response, query, self.conversation_history.copy())
 
     def show_permission_widget(self, tool_call):
@@ -1099,32 +1126,47 @@ Current Configuration:
         iteration = 0
         
         try:
-            while iteration < max_iterations:
+            while iteration < max_iterations and not self.state.user_interrupt:
                 iteration += 1
+                
+                # Check for interrupt before LLM call
+                if self.state.user_interrupt:
+                    break
                 
                 # Make LLM call
                 animation_task = asyncio.create_task(
                     self.animate_thinking_status(query, "Generating response...")
                 )
                 
-                loop = asyncio.get_event_loop()
-                tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-                response = await loop.run_in_executor(
-                    None, 
-                    lambda: self.llm.run(
-                        messages=messages, 
-                        model=config.model, 
-                        max_tokens=config.num_ctx, 
-                        tools=tools_to_use
-                    )
-                )
-                
-                # Stop thinking animation
-                animation_task.cancel()
                 try:
-                    await animation_task
-                except asyncio.CancelledError:
-                    pass
+                    loop = asyncio.get_event_loop()
+                    tools_to_use = None if self.permission_mode == 'plan-mode' else tools
+                    response = await loop.run_in_executor(
+                        None, 
+                        lambda: self.llm.run(
+                            messages=messages, 
+                            model=config.model, 
+                            max_tokens=config.num_ctx, 
+                            tools=tools_to_use
+                        )
+                    )
+                    
+                    # Check interrupt immediately after LLM call
+                    if self.state.user_interrupt:
+                        break
+                        
+                except Exception as e:
+                    # If interrupted during LLM call, just break
+                    if self.state.user_interrupt:
+                        break
+                    raise e
+                finally:
+                    # Stop thinking animation
+                    animation_task.cancel()
+                    try:
+                        await animation_task
+                    except asyncio.CancelledError:
+                        pass
                 
                 # Add assistant response to conversation
                 assistant_msg = {
@@ -1135,10 +1177,18 @@ Current Configuration:
                     assistant_msg["tool_calls"] = response.choices[0].message.tool_calls
                 messages.append(assistant_msg)
                 
+                # Check for interrupt after LLM response
+                if self.state.user_interrupt:
+                    break
+                
                 # Check if there are tool calls
                 if response.choices[0].message.tool_calls:
                     # Execute all tool calls
                     tool_results = await self.execute_all_tools(response.choices[0].message.tool_calls)
+                    
+                    # Check for interrupt after tool execution
+                    if self.state.user_interrupt:
+                        break
                     
                     # If any tool needs permission and user hasn't granted it yet, stop here
                     if any(result.get('needs_permission') for result in tool_results):
@@ -1184,8 +1234,10 @@ Current Configuration:
             error_text = f"🤖 **Error in agentic loop**: {str(e)}"
             chat_area.mount(Static(error_text, classes="ai-response"))
         
-        # Update conversation history and scroll
-        self.conversation_history = messages
+        # Only update conversation history if not interrupted
+        if not self.state.user_interrupt:
+            self.conversation_history = messages
+        
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
 
     async def execute_all_tools(self, tool_calls):
@@ -1194,6 +1246,10 @@ Current Configuration:
         chat_area = self.query_one("#chat_area")
         
         for tc in tool_calls:
+            # Check for interrupt before each tool
+            if self.state.user_interrupt:
+                return results
+                
             tool_name = tc.function.name
             
             # Check if tool needs permission
@@ -1285,6 +1341,10 @@ Current Configuration:
     async def execute_tool_and_get_result(self, tool_call, tool_id: str, tool_args: str):
         """Execute the actual tool and return the result"""
         try:
+            # Check for interrupt before executing
+            if self.state.user_interrupt:
+                return "Interrupted by user"
+                
             tool_name = tool_call.function.name
             
             # Get the tool method from the tools dictionary
@@ -1296,12 +1356,21 @@ Current Configuration:
                     import json
                     try:
                         args_dict = json.loads(tool_call.function.arguments)
+                        # Check interrupt before tool execution
+                        if self.state.user_interrupt:
+                            return "Interrupted by user"
                         result = await tool_method(**args_dict)
                     except json.JSONDecodeError:
                         result = f"Error: Invalid JSON arguments: {tool_call.function.arguments}"
                 elif isinstance(tool_call.function.arguments, dict):
+                    # Check interrupt before tool execution
+                    if self.state.user_interrupt:
+                        return "Interrupted by user"
                     result = await tool_method(**tool_call.function.arguments)
                 else:
+                    # Check interrupt before tool execution
+                    if self.state.user_interrupt:
+                        return "Interrupted by user"
                     result = await tool_method()
                 
                 # Generate appropriate result text based on tool and result
@@ -1441,6 +1510,10 @@ Current Configuration:
         
         try:
             while True:
+                # Check for interrupt
+                if self.state.user_interrupt:
+                    break
+                    
                 elapsed_seconds = int(time.time() - start_time)
                 flower_index = (flower_index + 1) % len(flower_chars)
                 
