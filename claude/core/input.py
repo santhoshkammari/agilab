@@ -46,8 +46,8 @@ class ChatApp(App):
         Binding("escape", "interrupt_conversation", "Interrupt Conversation", priority=True),
         Binding("ctrl+d", "clear_input", "Clear Input", priority=True),
         Binding("ctrl+l", "clear_screen", "Clear Screen", priority=True),
-        # Binding("up", "previous_command", "Previous Command", priority=True),
-        # Binding("down", "next_command", "Next Command", priority=True),
+        Binding("shift+up", "previous_command", "Previous Command", priority=True),
+        Binding("shift+down", "next_command", "Next Command", priority=True),   
     ]
     
     CSS = """
