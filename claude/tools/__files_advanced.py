@@ -1427,6 +1427,8 @@ class TodoStorage:
         try:
             # Save to session storage
             self._session_todos = todos.copy()
+            with open(self.storage_path,'w') as f:
+                json.dump([asdict(todo) for todo in todos],f,indent=2)
                 
         except Exception as e:
             logger.error(f"Failed to save todos: {e}")
