@@ -1402,7 +1402,10 @@ class WebFetchTool:
 # ============================================================================
 
 class TodoStorage:
-    """Simple file-based storage for todos"""
+    """Simple session-based storage for todos"""
+    
+    # Class-level storage to persist todos during the session
+    _session_todos: List[TodoItem] = []
     
     def __init__(self, storage_path: str = None):
         if storage_path is None:
@@ -1410,21 +1413,20 @@ class TodoStorage:
         self.storage_path = storage_path
     
     async def load_todos(self) -> List[TodoItem]:
-        """Load todos from storage"""
+        """Load todos from session storage"""
         try:
-            # Always start with empty todos at startup
-            return []
+            # Return session todos
+            return self._session_todos.copy()
             
         except Exception as e:
             logger.error(f"Failed to load todos: {e}")
             return []
     
     async def save_todos(self, todos: List[TodoItem]) -> None:
-        """Save todos to storage"""
+        """Save todos to session storage"""
         try:
-            # For session-based todos, we don't persist to disk
-            # This ensures they reset when the chat app starts
-            pass
+            # Save to session storage
+            self._session_todos = todos.copy()
                 
         except Exception as e:
             logger.error(f"Failed to save todos: {e}")
