@@ -22,11 +22,11 @@ class ChatApp(App):
     
     BINDINGS = [
         Binding("shift+tab", "cycle_mode", "Cycle Mode", priority=True),
-        Binding("ctrl+c", "clear_input", "Clear Input", priority=True),
-        Binding("ctrl+d", "clear_input", "Clear Input", priority=True),
-        Binding("ctrl+l", "clear_screen", "Clear Screen", priority=True),
-        Binding("up", "previous_command", "Previous Command", priority=True),
-        Binding("down", "next_command", "Next Command", priority=True),
+        # Binding("ctrl+c", "clear_input", "Clear Input", priority=True),
+        # Binding("ctrl+d", "clear_input", "Clear Input", priority=True),
+        # Binding("ctrl+l", "clear_screen", "Clear Screen", priority=True),
+        # Binding("up", "previous_command", "Previous Command", priority=True),
+        # Binding("down", "next_command", "Next Command", priority=True),
     ]
     
     CSS = """
@@ -269,6 +269,8 @@ class ChatApp(App):
         # Footer
         with Horizontal(id="footer"):
             yield Static(self.get_mode_display(), id="footer-right")
+            # yield Static("[grey]  ? for shortcuts[/grey]", id="footer-left")
+
 
 
     def on_ready(self) -> None:
