@@ -1323,7 +1323,8 @@ Current Configuration:
         tool_text = Text()
         tool_text.append("● ", style="bright_black")
         tool_text.append(tool_name.title(), style="bold")
-        tool_text.append(f"({tool_args})", style="default")
+        if tool_args:
+            tool_text.append(f"({tool_args})", style="default")
         
         tool_widget = Static(tool_text, classes="tool-executing")
         chat_area.mount(tool_widget)
@@ -1392,8 +1393,8 @@ Current Configuration:
                         self.complete_tool_execution(tool_id, tool_args, result_text, diff_content)
                         return result
                 elif tool_name == "todo_write" and isinstance(result, dict) and 'todos' in result:
-                    # Special handling for todo display
-                    result_text = f"Updated {result.get('total_todos', 0)} todos"
+                    # Special handling for todo display - show only checkboxes
+                    result_text = ""
                     todo_content = self._format_todos_display(result['todos'])
                     self.complete_tool_execution(tool_id, tool_args, result_text, todo_content)
                     return result
@@ -1418,7 +1419,9 @@ Current Configuration:
             from rich.text import Text
             from rich.syntax import Syntax
             widget = self.tool_widgets[tool_id]
-            tool_info = tool_id.split('_')[0].title()
+            # Extract tool name from tool_id format: {tool_name}_{id}
+            tool_name = '_'.join(tool_id.split('_')[:-1])
+            tool_info = self.get_tool_display_name(tool_name)
             status_indicator = self.query_one("#status_indicator")
             chat_area = self.query_one("#chat_area")
             
@@ -1426,7 +1429,8 @@ Current Configuration:
             tool_text = Text()
             tool_text.append("● ", style="dim #5cf074")
             tool_text.append(tool_info, style="bold")
-            tool_text.append(f"({tool_args})", style="default")
+            if tool_args:
+                tool_text.append(f"({tool_args})", style="default")
             
             # Add result text on next line if available
             if result and result.strip():
