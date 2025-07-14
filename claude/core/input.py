@@ -23,6 +23,10 @@ class ChatApp(App):
     BINDINGS = [
         Binding("shift+tab", "cycle_mode", "Cycle Mode", priority=True),
         Binding("ctrl+c", "clear_input", "Clear Input", priority=True),
+        Binding("ctrl+d", "clear_input", "Clear Input", priority=True),
+        Binding("ctrl+l", "clear_screen", "Clear Screen", priority=True),
+        Binding("up", "previous_command", "Previous Command", priority=True),
+        Binding("down", "next_command", "Next Command", priority=True),
     ]
     
     CSS = """
@@ -193,6 +197,10 @@ class ChatApp(App):
         
         # Command palette state
         self.waiting_for_command = False
+        
+        # Command history for up/down arrow navigation
+        self.command_history = []
+        self.history_index = -1
         
         # Edit confirmation state
         self.pending_edit_result = None
@@ -437,6 +445,64 @@ class ChatApp(App):
         if input_widget.has_focus:
             input_widget.clear()
 
+    def action_clear_screen(self) -> None:
+        """Action to clear the screen but keep conversation history"""
+        chat_area = self.query_one("#chat_area")
+        
+        # Clear all widgets from chat area
+        for widget in chat_area.children:
+            widget.remove()
+        
+        # Add welcome message back
+        from rich.panel import Panel
+        from rich.text import Text
+        from claude.core.utils import ORANGE_COLORS
+        
+        welcome_panel = Panel(
+            renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold white]Claude Code[/]!\n\n"
+                             f"/help for help, /status for your current setup\n\ncwd: {self.cwd}"),
+            border_style=ORANGE_COLORS[17],
+            expand=False
+        )
+        chat_area.mount(Static(welcome_panel, classes="message"))
+        
+        # Scroll to end
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
+    def action_previous_command(self) -> None:
+        """Action to navigate to previous command in history"""
+        input_widget = self.query_one(Input)
+        if not input_widget.has_focus or not self.command_history:
+            return
+        
+        if self.history_index == -1:
+            # Store current input before navigating history
+            self.current_input_backup = input_widget.value
+            self.history_index = len(self.command_history) - 1
+        elif self.history_index > 0:
+            self.history_index -= 1
+        
+        if 0 <= self.history_index < len(self.command_history):
+            input_widget.value = self.command_history[self.history_index]
+            input_widget.cursor_position = len(input_widget.value)
+
+    def action_next_command(self) -> None:
+        """Action to navigate to next command in history"""
+        input_widget = self.query_one(Input)
+        if not input_widget.has_focus or not self.command_history or self.history_index == -1:
+            return
+        
+        if self.history_index < len(self.command_history) - 1:
+            self.history_index += 1
+            input_widget.value = self.command_history[self.history_index]
+        else:
+            # Restore original input or clear
+            input_widget.value = getattr(self, 'current_input_backup', '')
+            self.history_index = -1
+            self.current_input_backup = ''
+        
+        input_widget.cursor_position = len(input_widget.value)
+
     @on(Input.Submitted)
     def handle_message(self, event: Input.Submitted) -> None:
         """Handle when user submits a message"""
@@ -446,6 +512,17 @@ class ChatApp(App):
             
         query = event.value.strip()
         if query:  # Only process non-empty messages
+            # Add to command history (avoid duplicates)
+            if not self.command_history or self.command_history[-1] != query:
+                self.command_history.append(query)
+                # Limit history size
+                if len(self.command_history) > 100:
+                    self.command_history.pop(0)
+            
+            # Reset history navigation
+            self.history_index = -1
+            self.current_input_backup = ''
+            
             # Handle command shortcuts
             if query.startswith("/host "):
                 host_url = query[6:].strip()
