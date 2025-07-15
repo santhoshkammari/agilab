@@ -214,6 +214,10 @@ class ChatApp(App):
         self.tool_widgets = {}  # Track tool execution widgets
         self.cwd = cwd
         
+        # Generate unique session ID for this chat session
+        import uuid
+        self.session_id = str(uuid.uuid4())
+        
         # Permission system state
         self.pending_tool_call = None
         self.auto_approve_tools = set()  # Tools that user chose "don't ask again" for
@@ -898,7 +902,7 @@ Current Configuration:
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
 
     def clear_conversation(self):
-        """Clear conversation history and chat area"""
+        """Clear conversation history, chat area, and todos"""
         chat_area = self.query_one("#chat_area")
         
         # Clear all widgets from chat area
@@ -910,6 +914,16 @@ Current Configuration:
             {"role": "system", "content": self.get_system_prompt()}
         ]
         
+        # Clear todos by calling the clear_todos tool
+        try:
+            self.call_later(self.clear_todos_async)
+        except Exception as e:
+            logger.error(f"Failed to clear todos: {e}")
+        
+        # Generate new session ID for fresh start
+        import uuid
+        self.session_id = str(uuid.uuid4())
+        
         # Add welcome message back
         welcome_panel = Panel(
             renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold white]Claude Code[/]!\n\n"
@@ -920,10 +934,20 @@ Current Configuration:
         chat_area.mount(Static(welcome_panel, classes="message"))
         
         # Add confirmation message
-        chat_area.mount(Static("\n✓ Conversation cleared\n", classes="message"))
+        chat_area.mount(Static("\n✓ Conversation and todos cleared\n", classes="message"))
         
         # Scroll to end
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
+    async def clear_todos_async(self):
+        """Async helper to clear todos for current session"""
+        try:
+            from claude.tools import tools_dict
+            if 'todo_write' in tools_dict:
+                # Clear by writing empty list - session-based approach
+                await tools_dict['todo_write'](todos=[], session_id=self.session_id)
+        except Exception as e:
+            logger.error(f"Failed to clear todos: {e}")
 
     def get_tool_display_name(self, tool_name):
         """Get user-friendly display name for tools"""
@@ -1465,14 +1489,16 @@ Current Configuration:
             del self.tool_widgets[tool_id]
 
     def _format_todos_display(self, todos):
-        """Format todos with checkboxes and color coding"""
+        """Format todos with checkboxes and color coding in ID order"""
         from rich.text import Text
         
         formatted_todos = Text()
         
-        for todo in todos:
+        # Sort todos by ID to maintain order
+        sorted_todos = sorted(todos, key=lambda x: x.get('id', '0'))
+        
+        for todo in sorted_todos:
             status = todo.get('status', 'pending')
-            priority = todo.get('priority', 'medium')
             content = todo.get('content', '')
             
             # Get checkbox symbol and color based on status
