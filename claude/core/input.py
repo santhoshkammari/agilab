@@ -1403,6 +1403,46 @@ Current Configuration:
                     result_text = f"Read {result['lines']} lines"
                 elif tool_name == "list_directory":
                     result_text = f"Listed {len(result)} items"
+                elif tool_name == "fetch_url" and isinstance(result, dict):
+                    # Special handling for WebFetch results
+                    if not result.get('success', True):
+                        # Failed fetch - use user-friendly error message
+                        error_msg = result.get('user_message', result.get('error', 'Unknown error'))
+                        result_text = f"Failed: {error_msg}"
+                        self.complete_tool_execution(tool_id, tool_args, result_text)
+                        return result
+                    else:
+                        # Successful fetch
+                        success_msg = result.get('user_message', f"Fetched {result.get('size', 0)} characters")
+                        result_text = success_msg
+                        self.complete_tool_execution(tool_id, tool_args, result_text)
+                        return result
+                elif tool_name == "web_search" and isinstance(result, str):
+                    # Special handling for web_search results (returns JSON string)
+                    try:
+                        import json
+                        search_data = json.loads(result)
+                        if isinstance(search_data, dict) and search_data.get('error'):
+                            # Failed search - use user-friendly error message
+                            error_msg = search_data.get('user_message', search_data.get('message', 'Unknown search error'))
+                            result_text = f"Failed: {error_msg}"
+                            self.complete_tool_execution(tool_id, tool_args, result_text)
+                            return result
+                        elif isinstance(search_data, list):
+                            # Successful search
+                            result_text = f"Found {len(search_data)} search results"
+                            self.complete_tool_execution(tool_id, tool_args, result_text)
+                            return result
+                        else:
+                            # Unknown format
+                            result_text = "Search completed"
+                            self.complete_tool_execution(tool_id, tool_args, result_text)
+                            return result
+                    except (json.JSONDecodeError, TypeError):
+                        # Invalid JSON response
+                        result_text = "Search completed (invalid response format)"
+                        self.complete_tool_execution(tool_id, tool_args, result_text)
+                        return result
                 elif tool_name == "edit_file" and isinstance(result, dict) and 'diff' in result:
                     # Check if edit is pending application
                     if result.get('pending_application', False):

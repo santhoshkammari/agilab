@@ -140,7 +140,15 @@ class WebSearchTool:
             return json.dumps(search_results)
         except Exception as e:
             print(f"Search error: {str(e)}")
-            return json.dumps([])
+            # Return structured error information instead of empty array
+            error_result = {
+                "error": True,
+                "message": f"Search failed: {str(e)}",
+                "user_message": f"Web search failed for query '{query}': {str(e)}",
+                "query": query,
+                "results": []
+            }
+            return json.dumps(error_result)
         finally:
             if browser:
                 await browser.close()

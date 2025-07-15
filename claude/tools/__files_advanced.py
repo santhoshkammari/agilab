@@ -1298,7 +1298,14 @@ class WebFetchTool:
         try:
             # Validate URL format
             if not url.startswith(('http://', 'https://')):
-                raise ToolError(f"Invalid URL format: {url}")
+                error_msg = f"Invalid URL format: {url}. URLs must start with 'http://' or 'https://'"
+                return {
+                    'url': url,
+                    'error': error_msg,
+                    'user_message': error_msg,
+                    'success': False,
+                    'status': 0
+                }
             
             timeout = aiohttp.ClientTimeout(total=self.timeout, connect=10.0)
             
@@ -1309,10 +1316,26 @@ class WebFetchTool:
                     # Handle different status codes
                     if response.status >= 400:
                         error_content = await response.text()
+                        
+                        # Create user-friendly error messages
+                        if response.status == 401:
+                            user_message = f"Authorization failed for {url}. The URL requires authentication or valid credentials."
+                        elif response.status == 403:
+                            user_message = f"Access forbidden to {url}. You don't have permission to access this resource."
+                        elif response.status == 404:
+                            user_message = f"Page not found at {url}. The URL may be incorrect or the resource has been moved."
+                        elif response.status == 429:
+                            user_message = f"Rate limit exceeded for {url}. Too many requests - try again later."
+                        elif response.status >= 500:
+                            user_message = f"Server error at {url} (HTTP {response.status}). The website is experiencing technical difficulties."
+                        else:
+                            user_message = f"HTTP {response.status} error accessing {url}: {response.reason}"
+                        
                         return {
                             'url': url,
                             'status': response.status,
                             'error': f"HTTP {response.status}: {response.reason}",
+                            'user_message': user_message,
                             'content_type': content_type,
                             'content': error_content[:500] if error_content else "",
                             'size': len(error_content) if error_content else 0,
@@ -1337,7 +1360,8 @@ class WebFetchTool:
                         'content_type': content_type,
                         'content': processed_content,
                         'size': len(content),
-                        'success': True
+                        'success': True,
+                        'user_message': f"Successfully fetched {len(content)} characters from {url}"
                     }
                     
                     if prompt:
@@ -1348,25 +1372,40 @@ class WebFetchTool:
                     
         except asyncio.TimeoutError:
             logger.error(f"Timeout fetching URL: {url}")
+            user_message = f"Request to {url} timed out after {self.timeout} seconds. The server may be slow or unresponsive."
             return {
                 'url': url,
                 'error': f"Request timed out after {self.timeout} seconds",
+                'user_message': user_message,
                 'success': False,
                 'status': 0
             }
         except aiohttp.ClientError as e:
             logger.error(f"Client error fetching URL: {url} - {e}")
+            # Create more specific error messages based on error type
+            if "Name or service not known" in str(e) or "nodename nor servname provided" in str(e):
+                user_message = f"Could not resolve hostname for {url}. Please check the URL is correct."
+            elif "Connection refused" in str(e):
+                user_message = f"Connection refused to {url}. The server may be down or the port may be blocked."
+            elif "SSL" in str(e) or "certificate" in str(e).lower():
+                user_message = f"SSL/TLS error accessing {url}. The website may have certificate issues."
+            else:
+                user_message = f"Network error accessing {url}: {str(e)}"
+            
             return {
                 'url': url,
                 'error': f"Connection error: {str(e)}",
+                'user_message': user_message,
                 'success': False,
                 'status': 0
             }
         except Exception as e:
             logger.error(f"Web fetch failed: {e}")
+            user_message = f"Unexpected error fetching {url}: {str(e)}"
             return {
                 'url': url,
                 'error': f"Unexpected error: {str(e)}",
+                'user_message': user_message,
                 'success': False,
                 'status': 0
             }
