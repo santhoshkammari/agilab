@@ -1543,7 +1543,7 @@ Current Configuration:
             
             # Get checkbox symbol and color based on status
             if status == 'completed':
-                checkbox = "☑"
+                checkbox = "☒"
                 color = "#5cf074"  # Green
             elif status == 'in_progress':
                 checkbox = "☐"
