@@ -65,7 +65,7 @@ class ChatApp(App):
 
     #input_area {
         height: auto;
-        border: round grey;
+        border: round #7E7E80;
         background: transparent;
     }
 
@@ -88,12 +88,12 @@ class ChatApp(App):
 
     #footer-left {
         text-align: left;
-        width: 1fr;
+        width: auto;
     }
 
     #footer-right {
         text-align: right;
-        width: auto;
+        width: 1fr;
     }
     
     .mode-bypass {
@@ -293,11 +293,13 @@ class ChatApp(App):
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label(" > ")
-            yield Input(placeholder="Type your message here...", compact=True, value="create todo and then task: websearch for latest AI news and then fetch the first URL to summarize")
+            yield Input(placeholder='Try "write a test for input.py"', compact=True,
+                        # value="create atodo and then task: websearch for latest AI news and then fetch the first URL to summarize"
+                        )
         # Footer
         with Horizontal(id="footer"):
-            yield Static("", id="footer-left")
-            yield Static(self.get_mode_display(), id="footer-right")
+            yield Static(self.get_mode_display(), id="footer-left")
+            yield Static("", id="footer-right")
 
 
 
@@ -311,12 +313,12 @@ class ChatApp(App):
         self.query_one("#command_palette").display = False
         
         # Set initial mode styling (default has no class, so no color)
-        footer_right = self.query_one("#footer-right")
+        footer_left = self.query_one("#footer-left")
         if self.permission_mode == 'auto-accept-edits':
-            footer_right.add_class("mode-auto-edit")
+            footer_left.add_class("mode-auto-edit")
         
-        # Initialize left footer content
-        self.update_left_footer("[grey]  ? for shortcuts[/grey]")
+        # Initialize right footer content
+        self.update_right_footer("Try claude doctor or npm i -g @anthropic-ai/claude-code")
 
     def on_key(self, event) -> None:
         """Handle key events for command palette"""
@@ -985,18 +987,23 @@ Current Configuration:
     def get_mode_display(self):
         """Get the display text and style for current mode"""
         if self.permission_mode == 'default':
-            return ""
+            return "[grey]  ? for shortcuts[/grey]"
         elif self.permission_mode == 'auto-accept-edits':
-            return "⏵⏵ auto-accept edits on   "
+            return "   ⏵⏵ auto-accept edits on   "
         elif self.permission_mode == 'bypass-permissions':
-            return "Bypassing Permissions   "
+            return "   Bypassing Permissions   "
         elif self.permission_mode == 'plan-mode':
-            return "⏸ plan mode on   "
+            return "   ⏸ plan mode on   "
 
     def update_left_footer(self, new_content: str):
         """Update the left footer content dynamically"""
         footer_left = self.query_one("#footer-left")
         footer_left.update(new_content)
+        
+    def update_right_footer(self, new_content: str):
+        """Update the right footer content dynamically"""
+        footer_right = self.query_one("#footer-right")
+        footer_right.update(new_content)
         
     def cycle_mode(self):
         """Cycle to the next permission mode"""
@@ -1005,17 +1012,17 @@ Current Configuration:
         self.permission_mode = self.modes[self.current_mode_index]
         
         # Update footer
-        footer_right = self.query_one("#footer-right")
-        footer_right.update(self.get_mode_display())
+        footer_left = self.query_one("#footer-left")
+        footer_left.update(self.get_mode_display())
         
         # Remove all mode classes and add the current one
-        footer_right.remove_class("mode-bypass", "mode-plan", "mode-auto-edit")
+        footer_left.remove_class("mode-bypass", "mode-plan", "mode-auto-edit")
         if self.permission_mode == 'bypass-permissions':
-            footer_right.add_class("mode-bypass")
+            footer_left.add_class("mode-bypass")
         elif self.permission_mode == 'plan-mode':
-            footer_right.add_class("mode-plan")
+            footer_left.add_class("mode-plan")
         elif self.permission_mode == 'auto-accept-edits':
-            footer_right.add_class("mode-auto-edit")
+            footer_left.add_class("mode-auto-edit")
         
         # Update system prompt in conversation history if mode changed
         if old_mode != self.permission_mode:
