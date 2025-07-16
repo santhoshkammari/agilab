@@ -32,16 +32,22 @@ from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
 from claude.core.config import config
 
 
+class State:
+    def __init__(self):
+        self.user_interrupt = False
+
+
 class ChatApp(App):
     """Simple chat interface with message display and input"""
     
     BINDINGS = [
         Binding("shift+tab", "cycle_mode", "Cycle Mode", priority=True),
         Binding("ctrl+c", "clear_input", "Clear Input", priority=True),
+        Binding("escape", "interrupt_conversation", "Interrupt Conversation", priority=True),
         Binding("ctrl+d", "clear_input", "Clear Input", priority=True),
         Binding("ctrl+l", "clear_screen", "Clear Screen", priority=True),
-        Binding("up", "previous_command", "Previous Command", priority=True),
-        Binding("down", "next_command", "Next Command", priority=True),
+        Binding("shift+up", "previous_command", "Previous Command", priority=True),
+        Binding("shift+down", "next_command", "Next Command", priority=True),   
     ]
     
     CSS = """
@@ -203,9 +209,14 @@ class ChatApp(App):
 
     def __init__(self,cwd):
         super().__init__()
+        self.state = State()
         self.llm = self._initialize_llm()
         self.tool_widgets = {}  # Track tool execution widgets
         self.cwd = cwd
+        
+        # Generate unique session ID for this chat session
+        import uuid
+        self.session_id = str(uuid.uuid4())
         
         # Permission system state
         self.pending_tool_call = None
@@ -282,7 +293,7 @@ class ChatApp(App):
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label("> ")
-            yield Input(placeholder="Type your message here...", compact=True, value="websearch for latest AI news and then fetch the first URL to summarize")
+            yield Input(placeholder="Type your message here...", compact=True, value="create todo and then task: websearch for latest AI news and then fetch the first URL to summarize")
         # Footer
         with Horizontal(id="footer"):
             yield Static("", id="footer-left")
@@ -467,6 +478,24 @@ class ChatApp(App):
         if input_widget.has_focus:
             input_widget.clear()
 
+    def action_interrupt_conversation(self) -> None:
+        """Action to interrupt the conversation"""
+        self.state.user_interrupt = True
+        status_indicator = self.query_one("#status_indicator")
+        chat_area = self.query_one("#chat_area")
+
+        # Clear status indicator immediately
+        status_indicator.update("")
+
+        # Clear any pending tool states
+        self.pending_tool_call = None
+        self.pending_agentic_state = None
+        self.tool_widgets.clear()
+        
+        # Add interrupt message to chat
+        chat_area.mount(Static("\n⚠ Conversation interrupted by user\n", classes="message"))
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
     def action_clear_screen(self) -> None:
         """Action to clear the screen but keep conversation history"""
         chat_area = self.query_one("#chat_area")
@@ -595,6 +624,8 @@ class ChatApp(App):
 
             chat_area.scroll_end(animate=False)
             self.refresh()
+            # Reset interrupt flag for new conversation
+            self.state.user_interrupt = False
             self.call_later(self.start_ai_response, query, self.conversation_history.copy())
 
     def show_permission_widget(self, tool_call):
@@ -871,7 +902,7 @@ Current Configuration:
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
 
     def clear_conversation(self):
-        """Clear conversation history and chat area"""
+        """Clear conversation history, chat area, and todos"""
         chat_area = self.query_one("#chat_area")
         
         # Clear all widgets from chat area
@@ -883,6 +914,16 @@ Current Configuration:
             {"role": "system", "content": self.get_system_prompt()}
         ]
         
+        # Clear todos by calling the clear_todos tool
+        try:
+            self.call_later(self.clear_todos_async)
+        except Exception as e:
+            logger.error(f"Failed to clear todos: {e}")
+        
+        # Generate new session ID for fresh start
+        import uuid
+        self.session_id = str(uuid.uuid4())
+        
         # Add welcome message back
         welcome_panel = Panel(
             renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold white]Claude Code[/]!\n\n"
@@ -893,10 +934,20 @@ Current Configuration:
         chat_area.mount(Static(welcome_panel, classes="message"))
         
         # Add confirmation message
-        chat_area.mount(Static("\n✓ Conversation cleared\n", classes="message"))
+        chat_area.mount(Static("\n✓ Conversation and todos cleared\n", classes="message"))
         
         # Scroll to end
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
+    async def clear_todos_async(self):
+        """Async helper to clear todos for current session"""
+        try:
+            from claude.tools import tools_dict
+            if 'todo_write' in tools_dict:
+                # Clear by writing empty list - session-based approach
+                await tools_dict['todo_write'](todos=[], session_id=self.session_id)
+        except Exception as e:
+            logger.error(f"Failed to clear todos: {e}")
 
     def get_tool_display_name(self, tool_name):
         """Get user-friendly display name for tools"""
@@ -1099,32 +1150,47 @@ Current Configuration:
         iteration = 0
         
         try:
-            while iteration < max_iterations:
+            while iteration < max_iterations and not self.state.user_interrupt:
                 iteration += 1
+                
+                # Check for interrupt before LLM call
+                if self.state.user_interrupt:
+                    break
                 
                 # Make LLM call
                 animation_task = asyncio.create_task(
                     self.animate_thinking_status(query, "Generating response...")
                 )
                 
-                loop = asyncio.get_event_loop()
-                tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-                response = await loop.run_in_executor(
-                    None, 
-                    lambda: self.llm.run(
-                        messages=messages, 
-                        model=config.model, 
-                        max_tokens=config.num_ctx, 
-                        tools=tools_to_use
-                    )
-                )
-                
-                # Stop thinking animation
-                animation_task.cancel()
                 try:
-                    await animation_task
-                except asyncio.CancelledError:
-                    pass
+                    loop = asyncio.get_event_loop()
+                    tools_to_use = None if self.permission_mode == 'plan-mode' else tools
+                    response = await loop.run_in_executor(
+                        None, 
+                        lambda: self.llm.run(
+                            messages=messages, 
+                            model=config.model, 
+                            max_tokens=config.num_ctx, 
+                            tools=tools_to_use
+                        )
+                    )
+                    
+                    # Check interrupt immediately after LLM call
+                    if self.state.user_interrupt:
+                        break
+                        
+                except Exception as e:
+                    # If interrupted during LLM call, just break
+                    if self.state.user_interrupt:
+                        break
+                    raise e
+                finally:
+                    # Stop thinking animation
+                    animation_task.cancel()
+                    try:
+                        await animation_task
+                    except asyncio.CancelledError:
+                        pass
                 
                 # Add assistant response to conversation
                 assistant_msg = {
@@ -1135,10 +1201,18 @@ Current Configuration:
                     assistant_msg["tool_calls"] = response.choices[0].message.tool_calls
                 messages.append(assistant_msg)
                 
+                # Check for interrupt after LLM response
+                if self.state.user_interrupt:
+                    break
+                
                 # Check if there are tool calls
                 if response.choices[0].message.tool_calls:
                     # Execute all tool calls
                     tool_results = await self.execute_all_tools(response.choices[0].message.tool_calls)
+                    
+                    # Check for interrupt after tool execution
+                    if self.state.user_interrupt:
+                        break
                     
                     # If any tool needs permission and user hasn't granted it yet, stop here
                     if any(result.get('needs_permission') for result in tool_results):
@@ -1184,8 +1258,10 @@ Current Configuration:
             error_text = f"🤖 **Error in agentic loop**: {str(e)}"
             chat_area.mount(Static(error_text, classes="ai-response"))
         
-        # Update conversation history and scroll
-        self.conversation_history = messages
+        # Only update conversation history if not interrupted
+        if not self.state.user_interrupt:
+            self.conversation_history = messages
+        
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
 
     async def execute_all_tools(self, tool_calls):
@@ -1194,6 +1270,10 @@ Current Configuration:
         chat_area = self.query_one("#chat_area")
         
         for tc in tool_calls:
+            # Check for interrupt before each tool
+            if self.state.user_interrupt:
+                return results
+                
             tool_name = tc.function.name
             
             # Check if tool needs permission
@@ -1267,7 +1347,8 @@ Current Configuration:
         tool_text = Text()
         tool_text.append("● ", style="bright_black")
         tool_text.append(tool_name.title(), style="bold")
-        tool_text.append(f"({tool_args})", style="default")
+        if tool_args:
+            tool_text.append(f"({tool_args})", style="default")
         
         tool_widget = Static(tool_text, classes="tool-executing")
         chat_area.mount(tool_widget)
@@ -1285,6 +1366,10 @@ Current Configuration:
     async def execute_tool_and_get_result(self, tool_call, tool_id: str, tool_args: str):
         """Execute the actual tool and return the result"""
         try:
+            # Check for interrupt before executing
+            if self.state.user_interrupt:
+                return "Interrupted by user"
+                
             tool_name = tool_call.function.name
             
             # Get the tool method from the tools dictionary
@@ -1296,12 +1381,21 @@ Current Configuration:
                     import json
                     try:
                         args_dict = json.loads(tool_call.function.arguments)
+                        # Check interrupt before tool execution
+                        if self.state.user_interrupt:
+                            return "Interrupted by user"
                         result = await tool_method(**args_dict)
                     except json.JSONDecodeError:
                         result = f"Error: Invalid JSON arguments: {tool_call.function.arguments}"
                 elif isinstance(tool_call.function.arguments, dict):
+                    # Check interrupt before tool execution
+                    if self.state.user_interrupt:
+                        return "Interrupted by user"
                     result = await tool_method(**tool_call.function.arguments)
                 else:
+                    # Check interrupt before tool execution
+                    if self.state.user_interrupt:
+                        return "Interrupted by user"
                     result = await tool_method()
                 
                 # Generate appropriate result text based on tool and result
@@ -1309,6 +1403,46 @@ Current Configuration:
                     result_text = f"Read {result['lines']} lines"
                 elif tool_name == "list_directory":
                     result_text = f"Listed {len(result)} items"
+                elif tool_name == "fetch_url" and isinstance(result, dict):
+                    # Special handling for WebFetch results
+                    if not result.get('success', True):
+                        # Failed fetch - use user-friendly error message
+                        error_msg = result.get('user_message', result.get('error', 'Unknown error'))
+                        result_text = f"Failed: {error_msg}"
+                        self.complete_tool_execution(tool_id, tool_args, result_text)
+                        return result
+                    else:
+                        # Successful fetch
+                        success_msg = result.get('user_message', f"Fetched {result.get('size', 0)} characters")
+                        result_text = success_msg
+                        self.complete_tool_execution(tool_id, tool_args, result_text)
+                        return result
+                elif tool_name == "web_search" and isinstance(result, str):
+                    # Special handling for web_search results (returns JSON string)
+                    try:
+                        import json
+                        search_data = json.loads(result)
+                        if isinstance(search_data, dict) and search_data.get('error'):
+                            # Failed search - use user-friendly error message
+                            error_msg = search_data.get('user_message', search_data.get('message', 'Unknown search error'))
+                            result_text = f"Failed: {error_msg}"
+                            self.complete_tool_execution(tool_id, tool_args, result_text)
+                            return result
+                        elif isinstance(search_data, list):
+                            # Successful search
+                            result_text = f"Found {len(search_data)} search results"
+                            self.complete_tool_execution(tool_id, tool_args, result_text)
+                            return result
+                        else:
+                            # Unknown format
+                            result_text = "Search completed"
+                            self.complete_tool_execution(tool_id, tool_args, result_text)
+                            return result
+                    except (json.JSONDecodeError, TypeError):
+                        # Invalid JSON response
+                        result_text = "Search completed (invalid response format)"
+                        self.complete_tool_execution(tool_id, tool_args, result_text)
+                        return result
                 elif tool_name == "edit_file" and isinstance(result, dict) and 'diff' in result:
                     # Check if edit is pending application
                     if result.get('pending_application', False):
@@ -1323,8 +1457,8 @@ Current Configuration:
                         self.complete_tool_execution(tool_id, tool_args, result_text, diff_content)
                         return result
                 elif tool_name == "todo_write" and isinstance(result, dict) and 'todos' in result:
-                    # Special handling for todo display
-                    result_text = f"Updated {result.get('total_todos', 0)} todos"
+                    # Special handling for todo display - show only checkboxes
+                    result_text = ""
                     todo_content = self._format_todos_display(result['todos'])
                     self.complete_tool_execution(tool_id, tool_args, result_text, todo_content)
                     return result
@@ -1349,7 +1483,9 @@ Current Configuration:
             from rich.text import Text
             from rich.syntax import Syntax
             widget = self.tool_widgets[tool_id]
-            tool_info = tool_id.split('_')[0].title()
+            # Extract tool name from tool_id format: {tool_name}_{id}
+            tool_name = '_'.join(tool_id.split('_')[:-1])
+            tool_info = self.get_tool_display_name(tool_name)
             status_indicator = self.query_one("#status_indicator")
             chat_area = self.query_one("#chat_area")
             
@@ -1357,7 +1493,8 @@ Current Configuration:
             tool_text = Text()
             tool_text.append("● ", style="dim #5cf074")
             tool_text.append(tool_info, style="bold")
-            tool_text.append(f"({tool_args})", style="default")
+            if tool_args:
+                tool_text.append(f"({tool_args})", style="default")
             
             # Add result text on next line if available
             if result and result.strip():
@@ -1392,19 +1529,21 @@ Current Configuration:
             del self.tool_widgets[tool_id]
 
     def _format_todos_display(self, todos):
-        """Format todos with checkboxes and color coding"""
+        """Format todos with checkboxes and color coding in ID order"""
         from rich.text import Text
         
         formatted_todos = Text()
         
-        for todo in todos:
+        # Sort todos by ID to maintain order
+        sorted_todos = sorted(todos, key=lambda x: x.get('id', '0'))
+        
+        for todo in sorted_todos:
             status = todo.get('status', 'pending')
-            priority = todo.get('priority', 'medium')
             content = todo.get('content', '')
             
             # Get checkbox symbol and color based on status
             if status == 'completed':
-                checkbox = "☑"
+                checkbox = "☒"
                 color = "#5cf074"  # Green
             elif status == 'in_progress':
                 checkbox = "☐"
@@ -1441,6 +1580,10 @@ Current Configuration:
         
         try:
             while True:
+                # Check for interrupt
+                if self.state.user_interrupt:
+                    break
+                    
                 elapsed_seconds = int(time.time() - start_time)
                 flower_index = (flower_index + 1) % len(flower_chars)
                 

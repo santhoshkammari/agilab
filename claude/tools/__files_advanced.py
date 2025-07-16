@@ -1298,7 +1298,14 @@ class WebFetchTool:
         try:
             # Validate URL format
             if not url.startswith(('http://', 'https://')):
-                raise ToolError(f"Invalid URL format: {url}")
+                error_msg = f"Invalid URL format: {url}. URLs must start with 'http://' or 'https://'"
+                return {
+                    'url': url,
+                    'error': error_msg,
+                    'user_message': error_msg,
+                    'success': False,
+                    'status': 0
+                }
             
             timeout = aiohttp.ClientTimeout(total=self.timeout, connect=10.0)
             
@@ -1309,10 +1316,26 @@ class WebFetchTool:
                     # Handle different status codes
                     if response.status >= 400:
                         error_content = await response.text()
+                        
+                        # Create user-friendly error messages
+                        if response.status == 401:
+                            user_message = f"Authorization failed for {url}. The URL requires authentication or valid credentials."
+                        elif response.status == 403:
+                            user_message = f"Access forbidden to {url}. You don't have permission to access this resource."
+                        elif response.status == 404:
+                            user_message = f"Page not found at {url}. The URL may be incorrect or the resource has been moved."
+                        elif response.status == 429:
+                            user_message = f"Rate limit exceeded for {url}. Too many requests - try again later."
+                        elif response.status >= 500:
+                            user_message = f"Server error at {url} (HTTP {response.status}). The website is experiencing technical difficulties."
+                        else:
+                            user_message = f"HTTP {response.status} error accessing {url}: {response.reason}"
+                        
                         return {
                             'url': url,
                             'status': response.status,
                             'error': f"HTTP {response.status}: {response.reason}",
+                            'user_message': user_message,
                             'content_type': content_type,
                             'content': error_content[:500] if error_content else "",
                             'size': len(error_content) if error_content else 0,
@@ -1337,7 +1360,8 @@ class WebFetchTool:
                         'content_type': content_type,
                         'content': processed_content,
                         'size': len(content),
-                        'success': True
+                        'success': True,
+                        'user_message': f"Successfully fetched {len(content)} characters from {url}"
                     }
                     
                     if prompt:
@@ -1348,25 +1372,40 @@ class WebFetchTool:
                     
         except asyncio.TimeoutError:
             logger.error(f"Timeout fetching URL: {url}")
+            user_message = f"Request to {url} timed out after {self.timeout} seconds. The server may be slow or unresponsive."
             return {
                 'url': url,
                 'error': f"Request timed out after {self.timeout} seconds",
+                'user_message': user_message,
                 'success': False,
                 'status': 0
             }
         except aiohttp.ClientError as e:
             logger.error(f"Client error fetching URL: {url} - {e}")
+            # Create more specific error messages based on error type
+            if "Name or service not known" in str(e) or "nodename nor servname provided" in str(e):
+                user_message = f"Could not resolve hostname for {url}. Please check the URL is correct."
+            elif "Connection refused" in str(e):
+                user_message = f"Connection refused to {url}. The server may be down or the port may be blocked."
+            elif "SSL" in str(e) or "certificate" in str(e).lower():
+                user_message = f"SSL/TLS error accessing {url}. The website may have certificate issues."
+            else:
+                user_message = f"Network error accessing {url}: {str(e)}"
+            
             return {
                 'url': url,
                 'error': f"Connection error: {str(e)}",
+                'user_message': user_message,
                 'success': False,
                 'status': 0
             }
         except Exception as e:
             logger.error(f"Web fetch failed: {e}")
+            user_message = f"Unexpected error fetching {url}: {str(e)}"
             return {
                 'url': url,
                 'error': f"Unexpected error: {str(e)}",
+                'user_message': user_message,
                 'success': False,
                 'status': 0
             }
@@ -1402,46 +1441,50 @@ class WebFetchTool:
 # ============================================================================
 
 class TodoStorage:
-    """Simple file-based storage for todos"""
+    """Session-based storage for todos, similar to TypeScript implementation"""
     
-    def __init__(self, storage_path: str = None):
-        if storage_path is None:
-            storage_path = os.path.join(os.path.expanduser('~'), '.session-todos.json')
-        self.storage_path = storage_path
+    # Class-level storage to persist todos during the session by sessionId
+    _session_todos: Dict[str, List[TodoItem]] = {}
+    
+    def __init__(self, session_id: str = "default"):
+        self.session_id = session_id
     
     async def load_todos(self) -> List[TodoItem]:
-        """Load todos from storage"""
+        """Load todos for current session"""
         try:
-            # Always start with empty todos at startup
-            return []
+            # Return todos for this session, or empty list if none exist
+            return self._session_todos.get(self.session_id, []).copy()
             
         except Exception as e:
             logger.error(f"Failed to load todos: {e}")
             return []
     
     async def save_todos(self, todos: List[TodoItem]) -> None:
-        """Save todos to storage"""
+        """Save todos for current session"""
         try:
-            # For session-based todos, we don't persist to disk
-            # This ensures they reset when the chat app starts
-            pass
+            # Save to session storage for this session
+            self._session_todos[self.session_id] = todos.copy()
                 
         except Exception as e:
             logger.error(f"Failed to save todos: {e}")
             raise ToolError(f"Failed to save todos: {e}")
+    
 
 
 class TodoReadTool:
     """Read current todo list"""
     
-    def __init__(self, storage_path: str = None):
-        self.storage = TodoStorage(storage_path)
+    def __init__(self, session_id: str = "default"):
+        self.session_id = session_id
     
-    async def todo_read(self) -> List[Dict[str, Any]]:
-        """Read the current todo list"""
+    async def todo_read(self, session_id: str = None) -> List[Dict[str, Any]]:
+        """Read the current todo list for a session"""
         logger.info("Reading todo list")
         
-        todos = await self.storage.load_todos()
+        # Use provided session_id or default
+        sid = session_id or self.session_id
+        storage = TodoStorage(sid)
+        todos = await storage.load_todos()
         
         return [asdict(todo) for todo in todos]
 
@@ -1449,25 +1492,39 @@ class TodoReadTool:
 class TodoWriteTool:
     """Create and manage structured task lists"""
     
-    def __init__(self, storage_path: str = None):
-        self.storage = TodoStorage(storage_path)
+    def __init__(self, session_id: str = "default"):
+        self.session_id = session_id
     
-    async def todo_write(self, todos: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Write/update the todo list"""
+    async def todo_write(self, todos: List[Dict[str, Any]], session_id: str = None) -> Dict[str, Any]:
+        """Write/update the todo list by merging with existing todos"""
         logger.info(f"Writing {len(todos)} todos")
         
         try:
-            # Convert dicts to TodoItem objects
-            todo_items = []
+            # Use provided session_id or default
+            sid = session_id or self.session_id
+            storage = TodoStorage(sid)
+            
+            # Load existing todos
+            existing_todos = await storage.load_todos()
+            existing_todos_dict = {todo.id: todo for todo in existing_todos}
+            
+            # Convert new todos to TodoItem objects and merge with existing
+            updated_todos = []
+            new_todos_dict = {}
+            
             for todo_data in todos:
                 # Handle both dict and string formats for backward compatibility
                 if isinstance(todo_data, str):
-                    todo_items.append(TodoItem(
-                        id=str(len(todo_items) + 1),
+                    # Generate ID for new string-based todo
+                    todo_id = str(int(time.time() * 1000000) + len(updated_todos))
+                    new_todo = TodoItem(
+                        id=todo_id,
                         content=todo_data,
                         status='pending',
                         priority='medium'
-                    ))
+                    )
+                    updated_todos.append(new_todo)
+                    new_todos_dict[todo_id] = new_todo
                 else:
                     # Ensure required fields with defaults
                     todo_data.setdefault('status', 'pending')
@@ -1475,15 +1532,36 @@ class TodoWriteTool:
                     todo_data.setdefault('created_at', time.time())
                     todo_data['updated_at'] = time.time()
                     
-                    todo_items.append(TodoItem(**todo_data))
+                    todo_id = todo_data.get('id')
+                    if todo_id and todo_id in existing_todos_dict:
+                        # Update existing todo
+                        existing_todo = existing_todos_dict[todo_id]
+                        existing_todo.content = todo_data.get('content', existing_todo.content)
+                        existing_todo.status = todo_data.get('status', existing_todo.status)
+                        existing_todo.priority = todo_data.get('priority', existing_todo.priority)
+                        existing_todo.updated_at = time.time()
+                        updated_todos.append(existing_todo)
+                        new_todos_dict[todo_id] = existing_todo
+                    else:
+                        # Create new todo
+                        if not todo_id:
+                            todo_data['id'] = str(int(time.time() * 1000000) + len(updated_todos))
+                        new_todo = TodoItem(**todo_data)
+                        updated_todos.append(new_todo)
+                        new_todos_dict[new_todo.id] = new_todo
             
-            await self.storage.save_todos(todo_items)
+            # Add any existing todos that weren't in the new list (preserve them)
+            for existing_id, existing_todo in existing_todos_dict.items():
+                if existing_id not in new_todos_dict:
+                    updated_todos.append(existing_todo)
+            
+            await storage.save_todos(updated_todos)
             
             return {
                 'success': True,
-                'total_todos': len(todo_items),
+                'total_todos': len(updated_todos),
                 'updated_at': time.time(),
-                'todos': [asdict(todo) for todo in todo_items]
+                'todos': [asdict(todo) for todo in updated_todos]
             }
             
         except Exception as e:
@@ -1494,10 +1572,13 @@ class TodoWriteTool:
         self, 
         content: str, 
         priority: str = 'medium', 
-        status: str = 'pending'
+        status: str = 'pending',
+        session_id: str = None
     ) -> Dict[str, Any]:
         """Add a single todo item"""
-        todos = await self.storage.load_todos()
+        sid = session_id or self.session_id
+        storage = TodoStorage(sid)
+        todos = await storage.load_todos()
         
         new_todo = TodoItem(
             id=str(int(time.time() * 1000)),  # Simple ID generation
@@ -1507,16 +1588,18 @@ class TodoWriteTool:
         )
         
         todos.append(new_todo)
-        await self.storage.save_todos(todos)
+        await storage.save_todos(todos)
         
         return {
             'success': True,
             'todo': asdict(new_todo)
         }
     
-    async def update_todo(self, todo_id: str, **updates) -> Dict[str, Any]:
+    async def update_todo(self, todo_id: str, session_id: str = None, **updates) -> Dict[str, Any]:
         """Update a specific todo item"""
-        todos = await self.storage.load_todos()
+        sid = session_id or self.session_id
+        storage = TodoStorage(sid)
+        todos = await storage.load_todos()
         
         for todo in todos:
             if todo.id == todo_id:
@@ -1528,13 +1611,14 @@ class TodoWriteTool:
         else:
             raise ValidationError(f"Todo not found: {todo_id}")
         
-        await self.storage.save_todos(todos)
+        await storage.save_todos(todos)
         
         return {
             'success': True,
             'todo_id': todo_id,
             'updates': updates
         }
+    
 
 
 # ============================================================================
