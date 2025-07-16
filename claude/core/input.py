@@ -292,7 +292,7 @@ class ChatApp(App):
         
         # Input area at bottom
         with Horizontal(id="input_area"):
-            yield Label("> ")
+            yield Label(" > ")
             yield Input(placeholder="Type your message here...", compact=True, value="create todo and then task: websearch for latest AI news and then fetch the first URL to summarize")
         # Footer
         with Horizontal(id="footer"):
