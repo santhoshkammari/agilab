@@ -1608,8 +1608,15 @@ Current Configuration:
 
 
 
-if __name__ == "__main__":
+def main():
+    """Main CLI entry point for ceaser command"""
     import sys
-    cwd = sys.argv[1] if len(sys.argv) > 1 else "/home/ntlpt59/master/own/claude/claude/core"
+    from pathlib import Path
+    
+    # Use current working directory by default
+    cwd = sys.argv[1] if len(sys.argv) > 1 else str(Path.cwd())
     app = ChatApp(cwd)
     app.run()
+
+if __name__ == "__main__":
+    main()
