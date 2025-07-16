@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "ceasercode"
-version = "0.0.30"
+version = "0.0.32"
 description = "An AI-powered code agent for workspace operations"
 authors = [ "Kammari Santhosh",]
 readme = "README.md"
@@ -14,7 +14,7 @@ repository = "https://github.com/santhosh/"
 include = "claude"
 
 [tool.poetry.scripts]
-ceaser = "claude.core.input"
+ceaser = "claude.core.input:main"
 
 [tool.poetry.dependencies]
 python = "^3.11"

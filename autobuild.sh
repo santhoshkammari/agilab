@@ -44,6 +44,6 @@ sleep 2
 
 # Update local installation
 echo -e "\n${GREEN}4. Updating local installation...${NC}"
-uv pip install -U ceaser
+uv pip install -U ceasercode
 
 echo -e "\n${BLUE}Process completed successfully!${NC}"
