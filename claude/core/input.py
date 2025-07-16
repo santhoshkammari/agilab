@@ -122,6 +122,11 @@ class ChatApp(App):
         text-style: italic;
     }
     
+    .welcome {
+        background: transparent;
+        color: grey;
+    }
+    
     .ai-response {
         background: transparent;
     }
@@ -250,7 +255,7 @@ class ChatApp(App):
         ]
         
         # Tools that don't need permission in default mode
-        self.no_permission_tools = {'read_file', 'list_directory', 'web_search', 'fetch_url'}
+        self.no_permission_tools = {'read_file', 'list_directory', 'web_search', 'fetch_url','todo_read','todo_write'}
         
         # Tools that are auto-approved in auto-accept-edits mode
         self.auto_accept_edit_tools = {'write_file', 'edit_file', 'multi_edit_file'}
@@ -258,12 +263,13 @@ class ChatApp(App):
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="chat_area"):
             welcome_panel = Panel(
-                renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold white]Claude Code[/]!\n\n"
-                                 f"/help for help, /status for your current setup\n\ncwd: {self.cwd}"),
+                renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][white]Welcome to [/][bold white]Claude Code[/]!\n\n"
+                                 f"[italic]/help for help, /status for your current setup\n\ncwd: {self.cwd}[/italic]"),
                 border_style=ORANGE_COLORS[17],
-                expand=False
+                expand=False,
+            padding = (0, 2, 0, 1)
             )
-            yield Static(welcome_panel, classes="message")
+            yield Static(welcome_panel, classes="welcome")
         # Status bar above input
         with Horizontal(id="status_bar"):
             yield Static("", id="status_indicator")
@@ -512,12 +518,13 @@ class ChatApp(App):
         from claude.core.utils import ORANGE_COLORS
         
         welcome_panel = Panel(
-            renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold white]Claude Code[/]!\n\n"
-                             f"/help for help, /status for your current setup\n\ncwd: {self.cwd}"),
+            renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][white]Welcome to [/][bold white]Claude Code[/]!\n\n"
+                             f"[italic]/help for help, /status for your current setup\n\ncwd: {self.cwd}[/italic]"),
             border_style=ORANGE_COLORS[17],
-            expand=False
+            expand=False,
+            padding=(0, 2,0,1)
         )
-        chat_area.mount(Static(welcome_panel, classes="message"))
+        chat_area.mount(Static(welcome_panel, classes="welcome"))
         
         # Scroll to end
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
@@ -928,12 +935,13 @@ Current Configuration:
         
         # Add welcome message back
         welcome_panel = Panel(
-            renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][bold]Welcome to [/][bold white]Claude Code[/]!\n\n"
-                             f"/help for help, /status for your current setup\n\ncwd: {self.cwd}"),
+            renderable=Text.from_markup(f"[{ORANGE_COLORS[17]}]✻ [/][white]Welcome to [/][bold white]Claude Code[/]!\n\n"
+                             f"[italic]/help for help, /status for your current setup\n\ncwd: {self.cwd}[/italic]"),
             border_style=ORANGE_COLORS[17],
-            expand=False
+            expand=False,
+        padding = (0, 2, 0, 1)
         )
-        chat_area.mount(Static(welcome_panel, classes="message"))
+        chat_area.mount(Static(welcome_panel, classes="welcome"))
         
         # Add confirmation message
         chat_area.mount(Static("\n✓ Conversation and todos cleared\n", classes="message"))
