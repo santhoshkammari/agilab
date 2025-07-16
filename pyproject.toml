@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "ceasercode"
-version = "0.0.32"
+version = "0.0.33"
 description = "An AI-powered code agent for workspace operations"
 authors = [ "Kammari Santhosh",]
 readme = "README.md"
