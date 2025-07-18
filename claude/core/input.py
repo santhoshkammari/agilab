@@ -273,7 +273,7 @@ class ChatApp(App):
 
         # Initialize conversation history with system prompt
         self.conversation_history = [
-            {"role": "system", "content": self.get_system_prompt()}
+            ChatMessage(role="system", content=self.get_system_prompt())
         ]
 
         # Tools that don't need permission in default mode
@@ -290,14 +290,14 @@ class ChatApp(App):
         _tools_dict = {
             'read_file': _claude_tools.read.read_file,
             'write_file': _claude_tools.write.write_file,
-            # 'edit_file': _claude_tools.edit.edit_file,
-            # 'apply_edit': _claude_tools.edit.apply_pending_edit,
-            # 'discard_edit': _claude_tools.edit.discard_pending_edit,
-            # 'multi_edit_file': _claude_tools.multiedit.multi_edit_file,
-            # 'bash_execute': _claude_tools.bash.execute,
-            # 'glob_find_files': _claude_tools.glob.find_files,
-            # 'grep_search': _claude_tools.grep.search,
-            # 'list_directory': _claude_tools.ls.list_directory,
+            'edit_file': _claude_tools.edit.edit_file,
+            'apply_edit': _claude_tools.edit.apply_pending_edit,
+            'discard_edit': _claude_tools.edit.discard_pending_edit,
+            'multi_edit_file': _claude_tools.multiedit.multi_edit_file,
+            'bash_execute': _claude_tools.bash.execute,
+            'glob_find_files': _claude_tools.glob.find_files,
+            'grep_search': _claude_tools.grep.search,
+            'list_directory': _claude_tools.ls.list_directory,
         }
         # llama_tools = [FunctionTool.from_defaults(fn=_tools_dict['read_file'])]
         llama_tools = list(map(FunctionTool.from_defaults,list(_tools_dict.values())))
@@ -410,10 +410,9 @@ class ChatApp(App):
         elif choice_index == 2:  # No
             self.hide_permission_widget()
             # Add user message asking what to do instead
-            self.conversation_history.append({
-                "role": "user",
-                "content": f"I don't want you to execute the {self.pending_tool_call.tool_name} tool. Please suggest an alternative approach or ask me what you should do instead."
-            })
+            self.conversation_history.append(
+                ChatMessage(role="user", content=f"I don't want you to execute the {self.pending_tool_call.tool_name} tool. Please suggest an alternative approach or ask me what you should do instead.")
+            )
             chat_area = self.query_one("#chat_area")
             chat_area.mount(Static(
                 f"\n> I don't want you to execute the {self.pending_tool_call.tool_name} tool. Please suggest an alternative.\n",
@@ -673,10 +672,9 @@ class ChatApp(App):
                 event.input.clear()
                 return
             # Add user message to conversation history
-            self.conversation_history.append({
-                "role": "user",
-                "content": query
-            })
+            self.conversation_history.append(
+                ChatMessage(role="user", content=query)
+            )
 
             # Add the message to chat area
             chat_area = self.query_one("#chat_area")
@@ -943,10 +941,9 @@ class ChatApp(App):
         config.thinking_enabled = enable_thinking
 
         # Update conversation history with new system prompt
-        self.conversation_history[0] = {
-            "role": "system",
-            "content": self.get_system_prompt()
-        }
+        self.conversation_history[0] = ChatMessage(
+            role="system", content=self.get_system_prompt()
+        )
 
         # Show feedback message
         if enable_thinking:
@@ -985,7 +982,7 @@ Current Configuration:
 
         # Reset conversation history to just system prompt
         self.conversation_history = [
-            {"role": "system", "content": self.get_system_prompt()}
+            ChatMessage(role="system", content=self.get_system_prompt())
         ]
 
         # Clear todos by calling the clear_todos tool
@@ -1100,10 +1097,9 @@ Current Configuration:
 
         # Update system prompt in conversation history if mode changed
         if old_mode != self.permission_mode:
-            self.conversation_history[0] = {
-                "role": "system",
-                "content": self.get_system_prompt()
-            }
+            self.conversation_history[0] = ChatMessage(
+                role="system", content=self.get_system_prompt()
+            )
 
     def needs_permission(self, tool_name):
         """Check if a tool needs permission based on current mode"""
@@ -1145,12 +1141,16 @@ Current Configuration:
             # Check if we need to resume agentic loop
             if self.pending_agentic_state:
                 # Add tool result to the pending state messages
-                self.pending_agentic_state['messages'].append({
-                    'role': 'tool',
-                    'content': str(result),
-                    'tool_call_id': tool_call.tool_id,
-                    'name': tool_call.tool_name
-                })
+                self.pending_agentic_state['messages'].append(
+                    ChatMessage(
+                        role='tool',
+                        content=str(result),
+                        additional_kwargs={
+                            'tool_call_id': tool_call.tool_id,
+                            'name': tool_call.tool_name
+                        }
+                    )
+                )
 
                 # Resume agentic loop
                 state = self.pending_agentic_state
@@ -1162,12 +1162,16 @@ Current Configuration:
                 )
             else:
                 # Legacy single tool execution - add to conversation history
-                self.conversation_history.append({
-                    'role': 'tool',
-                    'content': str(result),
-                    'tool_call_id': tool_call.tool_id,
-                    'name': tool_call.tool_name
-                })
+                self.conversation_history.append(
+                    ChatMessage(
+                        role='tool',
+                        content=str(result),
+                        additional_kwargs={
+                            'tool_call_id': tool_call.tool_id,
+                            'name': tool_call.tool_name
+                        }
+                    )
+                )
 
                 # Continue with single LLM response
                 self.call_later(self.continue_ai_response)
@@ -1178,18 +1182,8 @@ Current Configuration:
         animation_task = asyncio.create_task(self.animate_thinking_status("tool_result", "Processing tool results..."))
 
         loop = asyncio.get_event_loop()
-        # Convert messages to ChatMessage format
-        from llama_index.core.llms import ChatMessage
-        chat_messages = []
-        for msg in self.conversation_history:
-            if msg['role'] == 'system':
-                chat_messages.append(ChatMessage(role='system', content=msg['content']))
-            elif msg['role'] == 'user':
-                chat_messages.append(ChatMessage(role='user', content=msg['content']))
-            elif msg['role'] == 'assistant':
-                chat_messages.append(ChatMessage(role='assistant', content=msg['content']))
-            else:
-                raise ValueError(msg['role'])
+        # conversation_history is already ChatMessage objects
+        chat_messages = self.conversation_history
 
         if self.permission_mode == 'plan-mode':
             final_response = self.llm.stream_chat(chat_messages)
@@ -1229,10 +1223,9 @@ Current Configuration:
                 chat_area.mount(markdown_widget)
 
                 # Add assistant response to conversation history
-                self.conversation_history.append({
-                    "role": "assistant",
-                    "content": clean_content.strip()
-                })
+                self.conversation_history.append(
+                    ChatMessage(role="assistant", content=clean_content.strip())
+                )
 
         # Reset status
         status_indicator = self.query_one("#status_indicator")
@@ -1253,15 +1246,13 @@ Current Configuration:
         # Reset status to empty
         status_indicator.update("")
 
-    def get_llama_index_chat_type(self, messages):
-        return [ChatMessage(role=msg['role'], content=msg['content']) for msg in messages]
 
     async def agentic_loop(self, query: str, messages: list, max_iterations: int = 25):
         """Main agentic loop that continues until no tool calls or max iterations"""
         chat_area = self.query_one("#chat_area")
         iteration = 0
         logger.debug('Agentic Loop started ')
-        chat_history = self.get_llama_index_chat_type(messages)
+        chat_history = messages
 
         # try:
         while iteration < max_iterations and not self.state.user_interrupt:
@@ -1281,21 +1272,7 @@ Current Configuration:
             try:
                 loop = asyncio.get_event_loop()
                 tools_to_use = None if self.permission_mode == 'plan-mode' else self.llama_tools
-                # Convert messages to ChatMessage format
-                # chat_messages = []
-                # for msg in messages:
-                #     if msg['role'] == 'system':
-                #         chat_messages.append(ChatMessage(role='system', content=msg['content']))
-                #     elif msg['role'] == 'user':
-                #         chat_messages.append(ChatMessage(role='user', content=msg['content']))
-                #     elif msg['role'] == 'assistant':
-                #         chat_messages.append(ChatMessage(role='assistant', content=msg['content']))
-                #     elif msg['role'] == 'tool':
-                #         chat_messages.append(ChatMessage(role='tool',content=msg['content'],
-                #                                          additional_kwargs={"tool_call_id":msg['tool_call_id'],
-                #                                                             "tool_name":msg["tool_name"]}))
-                #     else:
-                #         raise ValueError(f"{msg['role']} chatmessage append not found")
+                # messages parameter is already ChatMessage objects
 
                 if tools_to_use and len(tools_to_use) > 0:
                     logger.debug(f"Using {len(tools_to_use)} tools with llama_index")
@@ -1383,7 +1360,7 @@ Current Configuration:
                         chat_area.mount(markdown_widget)
 
                         # Update conversation history
-                        self.conversation_history = messages
+                        self.conversation_history = chat_history
                 break
 
         # Max iterations reached
@@ -1397,7 +1374,7 @@ Current Configuration:
 
         # Only update conversation history if not interrupted
         if not self.state.user_interrupt:
-            self.conversation_history = messages
+            self.conversation_history = chat_history
 
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
 
