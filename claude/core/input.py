@@ -290,16 +290,17 @@ class ChatApp(App):
         _tools_dict = {
             'read_file': _claude_tools.read.read_file,
             'write_file': _claude_tools.write.write_file,
-            'edit_file': _claude_tools.edit.edit_file,
-            'apply_edit': _claude_tools.edit.apply_pending_edit,
-            'discard_edit': _claude_tools.edit.discard_pending_edit,
-            'multi_edit_file': _claude_tools.multiedit.multi_edit_file,
-            'bash_execute': _claude_tools.bash.execute,
-            'glob_find_files': _claude_tools.glob.find_files,
-            'grep_search': _claude_tools.grep.search,
-            'list_directory': _claude_tools.ls.list_directory,
+            # 'edit_file': _claude_tools.edit.edit_file,
+            # 'apply_edit': _claude_tools.edit.apply_pending_edit,
+            # 'discard_edit': _claude_tools.edit.discard_pending_edit,
+            # 'multi_edit_file': _claude_tools.multiedit.multi_edit_file,
+            # 'bash_execute': _claude_tools.bash.execute,
+            # 'glob_find_files': _claude_tools.glob.find_files,
+            # 'grep_search': _claude_tools.grep.search,
+            # 'list_directory': _claude_tools.ls.list_directory,
         }
-        llama_tools = [FunctionTool.from_defaults(fn=_tools_dict['read_file'])]
+        # llama_tools = [FunctionTool.from_defaults(fn=_tools_dict['read_file'])]
+        llama_tools = list(map(FunctionTool.from_defaults,list(_tools_dict.values())))
         # llama_tools = list(map(FunctionTool.from_defaults,list(tools_dict.values())))
         return llama_tools
 
@@ -344,7 +345,8 @@ class ChatApp(App):
         with Horizontal(id="input_area"):
             yield Label(" > ")
             yield Input(placeholder='Try "write a test for input.py"', compact=True,
-                        value="read app.py"
+                        value="write hai.py file and just add print hai inside it."
+                        # value="read app.py"
                         # value="hi"
                         # value="create atodo and then task: websearch for latest AI news and then fetch the first URL to summarize"
                         )
