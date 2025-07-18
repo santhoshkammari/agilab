@@ -1673,6 +1673,7 @@ class ClaudeTools:
         self.grep = GrepTool()
         self.ls = LSTool()
         self.read = ReadTool()
+        self.multi_read = MultiReadTool()
         self.edit = EditTool()
         self.multiedit = MultiEditTool()
         self.write = WriteTool()
@@ -1685,7 +1686,7 @@ class ClaudeTools:
     def list_tools(self) -> List[str]:
         """Get list of available tools"""
         return [
-            'task', 'bash', 'glob', 'grep', 'ls', 'read', 'edit', 'multiedit',
+            'task', 'bash', 'glob', 'grep', 'ls', 'read', 'multi_read', 'edit', 'multiedit',
             'write', 'notebook_read', 'notebook_edit', 'web_fetch',
             'todo_read', 'todo_write'
         ]

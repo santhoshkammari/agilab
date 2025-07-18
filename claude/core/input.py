@@ -277,7 +277,7 @@ class ChatApp(App):
         ]
 
         # Tools that don't need permission in default mode
-        self.no_permission_tools = {'read_file', 'list_directory', 'web_search', 'fetch_url', 'todo_read', 'todo_write'}
+        self.no_permission_tools = {'read_file', 'read_multiple_files', 'list_directory', 'web_search', 'fetch_url', 'todo_read', 'todo_write'}
 
         # Tools that are auto-approved in auto-accept-edits mode
         self.auto_accept_edit_tools = {'write_file', 'edit_file', 'multi_edit_file'}
@@ -1026,6 +1026,7 @@ Current Configuration:
         """Get user-friendly display name for tools"""
         tool_names = {
             'read_file': 'Read',
+            'read_multiple_files': 'Multi Read',
             'write_file': 'Write',
             'edit_file': 'Edit',
             'multi_edit_file': 'Multi Edit',
@@ -1513,6 +1514,14 @@ Current Configuration:
                 # Generate appropriate result text based on tool and result
                 if tool_name == "read_file" and isinstance(result, dict) and 'lines' in result:
                     result_text = f"Read {result['lines']} lines"
+                elif tool_name == "read_multiple_files" and isinstance(result, dict):
+                    successful_reads = result.get('successful_reads', 0)
+                    failed_reads = result.get('failed_reads', 0)
+                    total_files = result.get('total_files', 0)
+                    if failed_reads > 0:
+                        result_text = f"Read {successful_reads}/{total_files} files ({failed_reads} failed)"
+                    else:
+                        result_text = f"Read {successful_reads} files"
                 elif tool_name == "list_directory":
                     result_text = f"Listed {len(result)} items"
                 elif tool_name == "fetch_url" and isinstance(result, dict):

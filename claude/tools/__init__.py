@@ -6,6 +6,7 @@ _web_tools = WebSearchTool()
 
 tools_dict = {
     'read_file': _claude_tools.read.read_file,
+    'read_multiple_files': _claude_tools.multi_read.read_multiple_files,
     'write_file': _claude_tools.write.write_file,
     'edit_file': _claude_tools.edit.edit_file,
     'apply_edit': _claude_tools.edit.apply_pending_edit,
