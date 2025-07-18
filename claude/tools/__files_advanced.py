@@ -35,7 +35,7 @@ import tempfile
 import urllib.request
 import urllib.parse
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Callable, AsyncIterator, Iterator
@@ -43,6 +43,7 @@ from urllib.parse import urlencode, parse_qs
 
 import aiohttp
 import aiofiles
+from pydantic import BaseModel, Field
 
 
 # ============================================================================
@@ -108,15 +109,14 @@ class SearchResult:
     match_end: int
 
 
-@dataclass
-class TodoItem:
+class TodoItem(BaseModel):
     """Todo list item"""
     id: str
     content: str
-    status: str = 'pending'  # 'pending', 'in_progress', 'completed'
-    priority: str = 'medium'  # 'low', 'medium', 'high'
-    created_at: float = field(default_factory=time.time)
-    updated_at: float = field(default_factory=time.time)
+    status: str = Field(default='pending', description="Status: 'pending', 'in_progress', 'completed'")
+    priority: str = Field(default='medium', description="Priority: 'low', 'medium', 'high'")
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
 
 
 # ============================================================================
@@ -354,7 +354,7 @@ class BashTool:
         self.timeout = timeout
         self.max_output_size = max_output_size
     
-    async def execute(self, command: str, cwd: Optional[str] = None, env: Optional[Dict[str, str]] = None) -> ExecutionResult:
+    async def execute(self, command: str, cwd: Optional[str] = None) -> ExecutionResult:
         """Execute a shell command safely"""
         logger.info(f"Executing command: {command}")
         
@@ -370,8 +370,8 @@ class BashTool:
         try:
             # Prepare environment
             exec_env = os.environ.copy()
-            if env:
-                exec_env.update(env)
+            # if env:
+            #     exec_env.update(env)
             
             # Execute command
             process = await asyncio.create_subprocess_shell(
@@ -1486,7 +1486,7 @@ class TodoReadTool:
         storage = TodoStorage(sid)
         todos = await storage.load_todos()
         
-        return [asdict(todo) for todo in todos]
+        return [todo.model_dump() for todo in todos]
 
 
 class TodoWriteTool:
@@ -1495,7 +1495,7 @@ class TodoWriteTool:
     def __init__(self, session_id: str = "default"):
         self.session_id = session_id
     
-    async def todo_write(self, todos: List[Dict[str, Any]], session_id: str = None) -> Dict[str, Any]:
+    async def todo_write(self, todos: List[TodoItem], session_id: str = None) -> Dict[str, Any]:
         """Write/update the todo list by merging with existing todos"""
         logger.info(f"Writing {len(todos)} todos")
         
@@ -1504,51 +1504,46 @@ class TodoWriteTool:
             sid = session_id or self.session_id
             storage = TodoStorage(sid)
             
+            # Convert dictionaries to TodoItem objects if needed
+            converted_todos = []
+            for todo_item in todos:
+                if isinstance(todo_item, dict):
+                    # Convert dict to TodoItem using Pydantic's model_validate
+                    converted_todos.append(TodoItem.model_validate(todo_item))
+                else:
+                    # Already a TodoItem object
+                    converted_todos.append(todo_item)
+            
             # Load existing todos
             existing_todos = await storage.load_todos()
             existing_todos_dict = {todo.id: todo for todo in existing_todos}
             
-            # Convert new todos to TodoItem objects and merge with existing
+            # Process TodoItem objects and merge with existing
             updated_todos = []
             new_todos_dict = {}
             
-            for todo_data in todos:
-                # Handle both dict and string formats for backward compatibility
-                if isinstance(todo_data, str):
-                    # Generate ID for new string-based todo
-                    todo_id = str(int(time.time() * 1000000) + len(updated_todos))
-                    new_todo = TodoItem(
-                        id=todo_id,
-                        content=todo_data,
-                        status='pending',
-                        priority='medium'
-                    )
-                    updated_todos.append(new_todo)
-                    new_todos_dict[todo_id] = new_todo
+            for todo_item in converted_todos:
+                # Generate ID if not provided
+                if not todo_item.id:
+                    todo_item.id = str(int(time.time() * 1000000) + len(updated_todos))
+                
+                # Update timestamp
+                todo_item.updated_at = time.time()
+                
+                todo_id = todo_item.id
+                if todo_id in existing_todos_dict:
+                    # Update existing todo
+                    existing_todo = existing_todos_dict[todo_id]
+                    existing_todo.content = todo_item.content
+                    existing_todo.status = todo_item.status
+                    existing_todo.priority = todo_item.priority
+                    existing_todo.updated_at = time.time()
+                    updated_todos.append(existing_todo)
+                    new_todos_dict[todo_id] = existing_todo
                 else:
-                    # Ensure required fields with defaults
-                    todo_data.setdefault('status', 'pending')
-                    todo_data.setdefault('priority', 'medium')
-                    todo_data.setdefault('created_at', time.time())
-                    todo_data['updated_at'] = time.time()
-                    
-                    todo_id = todo_data.get('id')
-                    if todo_id and todo_id in existing_todos_dict:
-                        # Update existing todo
-                        existing_todo = existing_todos_dict[todo_id]
-                        existing_todo.content = todo_data.get('content', existing_todo.content)
-                        existing_todo.status = todo_data.get('status', existing_todo.status)
-                        existing_todo.priority = todo_data.get('priority', existing_todo.priority)
-                        existing_todo.updated_at = time.time()
-                        updated_todos.append(existing_todo)
-                        new_todos_dict[todo_id] = existing_todo
-                    else:
-                        # Create new todo
-                        if not todo_id:
-                            todo_data['id'] = str(int(time.time() * 1000000) + len(updated_todos))
-                        new_todo = TodoItem(**todo_data)
-                        updated_todos.append(new_todo)
-                        new_todos_dict[new_todo.id] = new_todo
+                    # Add new todo
+                    updated_todos.append(todo_item)
+                    new_todos_dict[todo_id] = todo_item
             
             # Add any existing todos that weren't in the new list (preserve them)
             for existing_id, existing_todo in existing_todos_dict.items():
@@ -1561,7 +1556,7 @@ class TodoWriteTool:
                 'success': True,
                 'total_todos': len(updated_todos),
                 'updated_at': time.time(),
-                'todos': [asdict(todo) for todo in updated_todos]
+                'todos': [todo.model_dump() for todo in updated_todos]
             }
             
         except Exception as e:
@@ -1592,7 +1587,7 @@ class TodoWriteTool:
         
         return {
             'success': True,
-            'todo': asdict(new_todo)
+            'todo': new_todo.model_dump()
         }
     
     async def update_todo(self, todo_id: str, session_id: str = None, **updates) -> Dict[str, Any]:
@@ -1619,6 +1614,48 @@ class TodoWriteTool:
             'updates': updates
         }
     
+
+
+# ============================================================================
+# MULTI-READ TOOL
+# ============================================================================
+
+class MultiReadTool:
+    """Read multiple files in a single operation using ReadTool internally"""
+    
+    def __init__(self):
+        self.read_tool = ReadTool()
+    
+    async def read_multiple_files(self, paths: List[str]) -> Dict[str, Any]:
+        """Read the contents of multiple files in a single operation"""
+        logger.info(f"Reading {len(paths)} files")
+        
+        if not paths:
+            raise ValidationError("At least one file path must be provided")
+        
+        results = {}
+        errors = {}
+        successful_reads = 0
+        
+        for path in paths:
+            try:
+                # Use ReadTool internally to read each file
+                file_result = await self.read_tool.read_file(path)
+                results[path] = file_result
+                successful_reads += 1
+                
+            except Exception as e:
+                logger.error(f"Failed to read file {path}: {e}")
+                errors[path] = str(e)
+        
+        return {
+            'success': successful_reads > 0,
+            'total_files': len(paths),
+            'successful_reads': successful_reads,
+            'failed_reads': len(errors),
+            'results': results,
+            'errors': errors if errors else None
+        }
 
 
 # ============================================================================

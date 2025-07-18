@@ -42,7 +42,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.markdown import Markdown
 
-from claude.tools import tools, tools_dict
+from claude.tools import tools_dict
 from llama_index.llms.vllm import VllmServer
 from llama_index.llms.ollama import Ollama
 from llama_index.llms.google_genai import GoogleGenAI
@@ -284,24 +284,24 @@ class ChatApp(App):
 
     def _convert_tools_to_llama_index(self):
         """Convert existing tools to llama_index FunctionTool format"""
-        from ..tools import ClaudeTools
-        _claude_tools = ClaudeTools()
-        _old_tools = tools_dict
-        _tools_dict = {
-            'read_file': _claude_tools.read.read_file,
-            'write_file': _claude_tools.write.write_file,
-            'edit_file': _claude_tools.edit.edit_file,
-            'apply_edit': _claude_tools.edit.apply_pending_edit,
-            'discard_edit': _claude_tools.edit.discard_pending_edit,
-            'multi_edit_file': _claude_tools.multiedit.multi_edit_file,
-            'bash_execute': _claude_tools.bash.execute,
-            'glob_find_files': _claude_tools.glob.find_files,
-            'grep_search': _claude_tools.grep.search,
-            'list_directory': _claude_tools.ls.list_directory,
-        }
-        # llama_tools = [FunctionTool.from_defaults(fn=_tools_dict['read_file'])]
-        llama_tools = list(map(FunctionTool.from_defaults,list(_tools_dict.values())))
-        # llama_tools = list(map(FunctionTool.from_defaults,list(tools_dict.values())))
+        # from ..tools import ClaudeTools
+        # _claude_tools = ClaudeTools()
+        # _old_tools = tools_dict
+        # _tools_dict = {
+        #     'read_file': _claude_tools.read.read_file,
+        #     'write_file': _claude_tools.write.write_file,
+        #     'edit_file': _claude_tools.edit.edit_file,
+        #     'apply_edit': _claude_tools.edit.apply_pending_edit,
+        #     'discard_edit': _claude_tools.edit.discard_pending_edit,
+        #     # 'multi_edit_file': _claude_tools.multiedit.multi_edit_file,
+        #     'bash_execute': _claude_tools.bash.execute,
+        #     'glob_find_files': _claude_tools.glob.find_files,
+        #     'grep_search': _claude_tools.grep.search,
+        #     'list_directory': _claude_tools.ls.list_directory,
+        # }
+        # # llama_tools = [FunctionTool.from_defaults(fn=_tools_dict['read_file'])]
+        # llama_tools = list(map(FunctionTool.from_defaults,list(_tools_dict.values())))
+        llama_tools = list(map(FunctionTool.from_defaults,list(tools_dict.values())))
         return llama_tools
 
     def compose(self) -> ComposeResult:
@@ -345,10 +345,10 @@ class ChatApp(App):
         with Horizontal(id="input_area"):
             yield Label(" > ")
             yield Input(placeholder='Try "write a test for input.py"', compact=True,
-                        value="write hai.py file and just add print hai inside it."
+                        # value="write hai.py file and just add print hai inside it."
                         # value="read app.py"
                         # value="hi"
-                        # value="create atodo and then task: websearch for latest AI news and then fetch the first URL to summarize"
+                        value="create a todo and then task: websearch for latest AI news and then fetch the first URL to summarize"
                         )
         # Footer
         with Horizontal(id="footer"):
