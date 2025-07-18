@@ -26,7 +26,9 @@ from rich.text import Text
 from rich.markdown import Markdown
 
 from claude.tools import tools, tools_dict
-from claude.llm import OAI
+from llama_index.llms.vllm import VllmServer
+from llama_index.llms.ollama import Ollama
+from llama_index.llms.google_genai import GoogleGenAI
 from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words, SYSTEM_PROMPT
 from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
 from claude.core.config import config
@@ -804,24 +806,36 @@ class ChatApp(App):
         if config.provider == "google":
             api_key = provider_config.get("api_key", "")
             model = provider_config.get("model", "gemini-2.5-flash")
-            return OAI(provider="google", api_key=api_key, model=model)
+            return GoogleGenAI(
+                model=model,
+                api_key=api_key
+            )
         elif config.provider == "ollama":
-            base_url = provider_config.get("host", "http://localhost:11434/v1")
+            base_url = provider_config.get("host", "http://localhost:11434")
             model = provider_config.get("model", "qwen3:4b")
-            return OAI(provider="ollama", base_url=base_url, model=model)
-        elif config.provider == "openrouter":
-            api_key = provider_config.get("api_key", "")
-            model = provider_config.get("model", "google/gemini-2.0-flash-exp:free")
-            return OAI(provider="openrouter", api_key=api_key, model=model)
+            return Ollama(
+                base_url=base_url,
+                temperature=0.0,
+                model=model,
+                thinking=False,
+                request_timeout=120.0,
+                context_window=8000
+            )
         elif config.provider == "vllm":
-            base_url = provider_config.get("base_url", "http://localhost:8000/v1")
-            model = provider_config.get("model", None)
-            return OAI(provider="vllm", base_url=base_url, model=model)
+            base_url = provider_config.get("base_url", "http://localhost:8000/generate")
+            return VllmServer(
+                api_url=base_url,
+                max_new_tokens=100,
+                temperature=0.0
+            )
         else:
             # Default fallback to Google
             api_key = provider_config.get("api_key", "")
             model = provider_config.get("model", "gemini-2.5-flash")
-            return OAI(provider="google", api_key=api_key, model=model)
+            return GoogleGenAI(
+                model=model,
+                api_key=api_key
+            )
 
     def show_provider_selection(self):
         """Show provider selection dialog"""
@@ -1112,9 +1126,18 @@ Current Configuration:
         animation_task = asyncio.create_task(self.animate_thinking_status("tool_result", "Processing tool results..."))
         
         loop = asyncio.get_event_loop()
-        # Pass no tools in plan mode
-        tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-        final_response = await loop.run_in_executor(None, lambda: self.llm.run(messages=self.conversation_history, model=config.model, tools=tools_to_use, max_tokens=config.num_ctx))
+        # Convert messages to ChatMessage format
+        from llama_index.core.llms import ChatMessage
+        chat_messages = []
+        for msg in self.conversation_history:
+            if msg['role'] == 'system':
+                chat_messages.append(ChatMessage(role='system', content=msg['content']))
+            elif msg['role'] == 'user':
+                chat_messages.append(ChatMessage(role='user', content=msg['content']))
+            elif msg['role'] == 'assistant':
+                chat_messages.append(ChatMessage(role='assistant', content=msg['content']))
+        
+        final_response = await self.llm.astream_chat(chat_messages)
         
         # Stop thinking animation
         animation_task.cancel()
@@ -1123,10 +1146,15 @@ Current Configuration:
         except asyncio.CancelledError:
             pass
         
+        # Collect streaming response
+        full_response = ""
+        async for chunk in final_response:
+            full_response += chunk.delta
+            
         # Display the final response
-        if final_response.choices[0].message.content and final_response.choices[0].message.content.strip():
+        if full_response and full_response.strip():
             # Remove thinking content before displaying
-            clean_content = self.remove_thinking_content(final_response.choices[0].message.content)
+            clean_content = self.remove_thinking_content(full_response)
             if clean_content.strip():
                 # Use rich Markdown for better rendering
                 markdown_content = Markdown("● " + clean_content.strip())
@@ -1180,15 +1208,18 @@ Current Configuration:
                 try:
                     loop = asyncio.get_event_loop()
                     tools_to_use = None if self.permission_mode == 'plan-mode' else tools
-                    response = await loop.run_in_executor(
-                        None, 
-                        lambda: self.llm.run(
-                            messages=messages, 
-                            model=config.model, 
-                            max_tokens=config.num_ctx, 
-                            tools=tools_to_use
-                        )
-                    )
+                    # Convert messages to ChatMessage format
+                    from llama_index.core.llms import ChatMessage
+                    chat_messages = []
+                    for msg in messages:
+                        if msg['role'] == 'system':
+                            chat_messages.append(ChatMessage(role='system', content=msg['content']))
+                        elif msg['role'] == 'user':
+                            chat_messages.append(ChatMessage(role='user', content=msg['content']))
+                        elif msg['role'] == 'assistant':
+                            chat_messages.append(ChatMessage(role='assistant', content=msg['content']))
+                    
+                    response = await self.llm.astream_chat(chat_messages)
                     
                     # Check interrupt immediately after LLM call
                     if self.state.user_interrupt:
@@ -1207,63 +1238,33 @@ Current Configuration:
                     except asyncio.CancelledError:
                         pass
                 
+                # Collect streaming response
+                full_response = ""
+                async for chunk in response:
+                    full_response += chunk.delta
+                    
                 # Add assistant response to conversation
                 assistant_msg = {
                     "role": "assistant",
-                    "content": response.choices[0].message.content
+                    "content": full_response
                 }
-                if response.choices[0].message.tool_calls:
-                    assistant_msg["tool_calls"] = response.choices[0].message.tool_calls
                 messages.append(assistant_msg)
                 
                 # Check for interrupt after LLM response
                 if self.state.user_interrupt:
                     break
                 
-                # Check if there are tool calls
-                if response.choices[0].message.tool_calls:
-                    # Execute all tool calls
-                    tool_results = await self.execute_all_tools(response.choices[0].message.tool_calls)
-                    
-                    # Check for interrupt after tool execution
-                    if self.state.user_interrupt:
-                        break
-                    
-                    # If any tool needs permission and user hasn't granted it yet, stop here
-                    if any(result.get('needs_permission') for result in tool_results):
-                        # Store state for resuming later
-                        self.pending_agentic_state = {
-                            'query': query,
-                            'messages': messages,
-                            'iteration': iteration,
-                            'max_iterations': max_iterations
-                        }
-                        return
-                    
-                    # Add tool results to conversation
-                    for tool_result in tool_results:
-                        if 'tool_call_id' in tool_result:
-                            messages.append({
-                                'role': 'tool',
-                                'content': str(tool_result['result']),
-                                'tool_call_id': tool_result['tool_call_id'],
-                                'name': tool_result['tool_name']
-                            })
-                    
-                    # Continue loop for next iteration
-                    continue
-                else:
-                    # No tool calls - display final response and exit loop
-                    if response.choices[0].message.content and response.choices[0].message.content.strip():
-                        clean_content = self.remove_thinking_content(response.choices[0].message.content)
-                        if clean_content.strip():
-                            markdown_content = Markdown("● " + clean_content.strip())
-                            markdown_widget = Static(markdown_content, classes="ai-response")
-                            chat_area.mount(markdown_widget)
-                            
-                            # Update conversation history
-                            self.conversation_history = messages
-                    break
+                # No tool calls with llama_index - display final response and exit loop
+                if full_response and full_response.strip():
+                    clean_content = self.remove_thinking_content(full_response)
+                    if clean_content.strip():
+                        markdown_content = Markdown("● " + clean_content.strip())
+                        markdown_widget = Static(markdown_content, classes="ai-response")
+                        chat_area.mount(markdown_widget)
+                        
+                        # Update conversation history
+                        self.conversation_history = messages
+                break
             
             # Max iterations reached
             if iteration >= max_iterations:
