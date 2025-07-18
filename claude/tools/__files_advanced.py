@@ -38,7 +38,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Callable, AsyncIterator, Iterator
+from typing import Any, Dict, List, Optional, Union, Callable, AsyncIterator, Iterator, Literal
 from urllib.parse import urlencode, parse_qs
 
 import aiohttp
@@ -113,10 +113,10 @@ class TodoItem(BaseModel):
     """Todo list item"""
     id: str
     content: str
-    status: str = Field(default='pending', description="Status: 'pending', 'in_progress', 'completed'")
-    priority: str = Field(default='medium', description="Priority: 'low', 'medium', 'high'")
-    created_at: float = Field(default_factory=time.time)
-    updated_at: float = Field(default_factory=time.time)
+    status: Literal['pending','in_progress','completed'] = 'pending'
+    priority: Literal['low','medium','high'] = 'medium'
+    created_at: float = time.time()
+    updated_at: float = time.time()
 
 
 # ============================================================================
