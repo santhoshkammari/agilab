@@ -1174,14 +1174,14 @@ Current Configuration:
         chat_messages = self.conversation_history
 
         if self.permission_mode == 'plan-mode':
-            final_response = self.llm.stream_chat(chat_messages)
+            final_response = await loop.run_in_executor(None, lambda: self.llm.stream_chat(chat_messages))
         else:
             if self.llama_tools and len(self.llama_tools) > 0:
                 logger.debug(f"Using {len(self.llama_tools)} tools for continue_ai_response")
-                final_response = self.llm.stream_chat_with_tools(tools=self.llama_tools, chat_history=chat_messages)
+                final_response = await loop.run_in_executor(None, lambda: self.llm.stream_chat_with_tools(tools=self.llama_tools, chat_history=chat_messages))
             else:
                 logger.debug("No tools available for continue_ai_response")
-                final_response = self.llm.stream_chat(chat_messages)
+                final_response = await loop.run_in_executor(None, lambda: self.llm.stream_chat(chat_messages))
 
         # Stop thinking animation
         animation_task.cancel()
@@ -1269,10 +1269,10 @@ Current Configuration:
                     logger.debug('#########################')
                     logger.debug(f"{chat_history[1:]}")
                     logger.debug('#########################')
-                    response = self.llm.chat_with_tools(tools=tools_to_use, chat_history=chat_history)
+                    response = await loop.run_in_executor(None, lambda: self.llm.chat_with_tools(tools=tools_to_use, chat_history=chat_history))
                 else:
                     logger.debug("No tools available, using regular chat")
-                    response = self.llm.chat(chat_history)
+                    response = await loop.run_in_executor(None, lambda: self.llm.chat(chat_history))
 
                 # Check interrupt immediately after LLM call
                 if self.state.user_interrupt:
