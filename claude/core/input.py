@@ -1386,7 +1386,7 @@ Current Configuration:
             # Execute tool without permission
             tool_display_name = self.get_tool_display_name(tc.tool_name)
             tool_args = self._extract_tool_args(tc.tool_kwargs, tc.tool_name)
-            tool_id = f"{tc.tool_name}_{tc.tool_id}"
+            tool_id = tc.tool_name
 
             # Create tool widget and make sure it's visible
             await self.create_tool_widget(tool_display_name, tool_args, tool_id)
@@ -1406,7 +1406,7 @@ Current Configuration:
             self.refresh()
 
             # Give time for user to see completion before next tool
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.1)
 
             results.append({
                 'result': result,
@@ -1569,7 +1569,7 @@ Current Configuration:
                     # Special handling for todo display - show only checkboxes
                     result_text = ""
                     todo_content = self._format_todos_display(result['todos'])
-                    self.complete_tool_execution(tool_id, tool_args, result_text, todo_content)
+                    self.complete_tool_execution(tool_call.tool_name, tool_args, result_text, todo_content)
                     return result
                 else:
                     result_text = "done"
@@ -1592,9 +1592,7 @@ Current Configuration:
             from rich.text import Text
             from rich.syntax import Syntax
             widget = self.tool_widgets[tool_id]
-            # Extract tool name from tool_id format: {tool_name}_{id}
-            tool_name = '_'.join(tool_id.split('_')[:-1])
-            tool_info = self.get_tool_display_name(tool_name)
+            tool_info = self.get_tool_display_name(tool_id)
             status_indicator = self.query_one("#status_indicator")
             chat_area = self.query_one("#chat_area")
 
