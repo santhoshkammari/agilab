@@ -283,26 +283,7 @@ class ChatApp(App):
         self.auto_accept_edit_tools = {'write_file', 'edit_file', 'multi_edit_file'}
 
     def _convert_tools_to_llama_index(self):
-        """Convert existing tools to llama_index FunctionTool format"""
-        # from ..tools import ClaudeTools
-        # _claude_tools = ClaudeTools()
-        # _old_tools = tools_dict
-        # _tools_dict = {
-        #     'read_file': _claude_tools.read.read_file,
-        #     'write_file': _claude_tools.write.write_file,
-        #     'edit_file': _claude_tools.edit.edit_file,
-        #     'apply_edit': _claude_tools.edit.apply_pending_edit,
-        #     'discard_edit': _claude_tools.edit.discard_pending_edit,
-        #     # 'multi_edit_file': _claude_tools.multiedit.multi_edit_file,
-        #     'bash_execute': _claude_tools.bash.execute,
-        #     'glob_find_files': _claude_tools.glob.find_files,
-        #     'grep_search': _claude_tools.grep.search,
-        #     'list_directory': _claude_tools.ls.list_directory,
-        # }
-        # # llama_tools = [FunctionTool.from_defaults(fn=_tools_dict['read_file'])]
-        # llama_tools = list(map(FunctionTool.from_defaults,list(_tools_dict.values())))
-        llama_tools = list(map(FunctionTool.from_defaults,list(tools_dict.values())))
-        return llama_tools
+        return  list(map(FunctionTool.from_defaults,list(tools_dict.values())))
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="chat_area"):
@@ -848,20 +829,22 @@ class ChatApp(App):
         self.query_one(Input).focus()
 
     def _initialize_llm(self):
-        """Initialize LLM based on current provider configuration"""
+        import time
+        start_time = time.time()
+        logger.info('Start LLM Initializtion')
         provider_config = config.get_current_config()
 
         if config.provider == "google":
             api_key = provider_config.get("api_key", "")
             model = provider_config.get("model", "gemini-2.5-flash")
-            return GoogleGenAI(
+            llm = GoogleGenAI(
                 model=model,
                 api_key=api_key
             )
         elif config.provider == "ollama":
             base_url = provider_config.get("host", "http://localhost:11434")
             model = provider_config.get("model", "qwen3:4b")
-            return Ollama(
+            llm = Ollama(
                 base_url=base_url,
                 temperature=0.0,
                 model=model,
@@ -871,7 +854,7 @@ class ChatApp(App):
             )
         elif config.provider == "vllm":
             base_url = provider_config.get("base_url", "http://localhost:8000/generate")
-            return VllmServer(
+            llm = VllmServer(
                 api_url=base_url,
                 max_new_tokens=100,
                 temperature=0.0
@@ -880,10 +863,14 @@ class ChatApp(App):
             # Default fallback to Google
             api_key = provider_config.get("api_key", "")
             model = provider_config.get("model", "gemini-2.5-flash")
-            return GoogleGenAI(
+            llm = GoogleGenAI(
                 model=model,
                 api_key=api_key
             )
+        
+        initialization_time = time.time() - start_time
+        logger.info(f'LLM Initialization completed in {initialization_time:.3f} seconds')
+        return llm
 
     def show_provider_selection(self):
         """Show provider selection dialog"""
@@ -1729,16 +1716,4 @@ Current Configuration:
             raise
 
 
-def main():
-    """Main CLI entry point for ceaser command"""
-    import sys
-    from pathlib import Path
 
-    # Use current working directory by default
-    cwd = sys.argv[1] if len(sys.argv) > 1 else str(Path.cwd())
-    app = ChatApp(cwd)
-    app.run()
-
-
-if __name__ == "__main__":
-    main()

@@ -28,19 +28,18 @@ ORANGE_COLORS = {
 
 # NLTK WordNet integration for contextual thinking words
 try:
-    import nltk
     from nltk.corpus import wordnet
     NLTK_AVAILABLE = True
-    
-    # Download required NLTK data if not present
+except ImportError:
+    NLTK_AVAILABLE = False
+
+if not NLTK_AVAILABLE:
     try:
         wordnet.synsets('test')
     except LookupError:
+        import nltk
         nltk.download('wordnet', quiet=True)
         nltk.download('omw-1.4', quiet=True)
-        
-except ImportError:
-    NLTK_AVAILABLE = False
 
 # Stop words to filter out
 STOP_WORDS = {
