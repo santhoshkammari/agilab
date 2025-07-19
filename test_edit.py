@@ -14,7 +14,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from claude.tools.__files_advanced import EditTool, ValidationError, FileSystemError
+from claude.tools.files import EditTool, ValidationError, FileSystemError
 
 
 async def test_basic_edit():

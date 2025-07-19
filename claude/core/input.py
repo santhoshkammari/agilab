@@ -42,8 +42,8 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.markdown import Markdown
 
-from claude.tools.__web import PlaywrightBrowser, WebSearchTool
-from claude.tools.__files_advanced import ClaudeTools
+from claude.tools.web import PlaywrightBrowser, WebSearchTool
+from claude.tools.files import ClaudeTools
 from llama_index.llms.vllm import VllmServer
 from llama_index.llms.ollama import Ollama
 from llama_index.llms.google_genai import GoogleGenAI

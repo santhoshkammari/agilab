@@ -6,7 +6,7 @@ Test the new edit flow with diff confirmation
 import asyncio
 import tempfile
 import json
-from claude.tools.__files_advanced import EditTool
+from claude.tools.files import EditTool
 
 
 async def test_new_edit_flow():

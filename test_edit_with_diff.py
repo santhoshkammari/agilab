@@ -6,7 +6,7 @@ Test the EditTool with diff output - formatted for better readability
 import asyncio
 import tempfile
 import json
-from claude.tools.__files_advanced import EditTool
+from claude.tools.files import EditTool
 
 
 async def test_edit_with_diff():
