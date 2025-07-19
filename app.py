@@ -3,7 +3,7 @@ from pathlib import Path
 
 from claude.core.input import ChatApp
 import logging
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.ERROR)
 
 async def main():
     """Initialize browser and start the app"""

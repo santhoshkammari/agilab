@@ -20,11 +20,11 @@ import logging
 
 # Configure logger for debug output
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.ERROR)
 
 # Create file handler for app.log in current working directory
 file_handler = logging.FileHandler('app.log', mode='w')
-file_handler.setLevel(logging.DEBUG)
+file_handler.setLevel(logging.ERROR)
 
 # Create formatter
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -103,7 +103,7 @@ class ChatApp(App):
     }
 
     #footer {
-        height: 20vh;
+        height: 5vh;
         dock: bottom;
         background: transparent;
     }
