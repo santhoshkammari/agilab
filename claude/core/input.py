@@ -1174,14 +1174,14 @@ Current Configuration:
         chat_messages = self.conversation_history
 
         if self.permission_mode == 'plan-mode':
-            final_response = await loop.run_in_executor(None, lambda: self.llm.stream_chat(chat_messages))
+            final_response = await self.llm.astream_chat(chat_messages)
         else:
             if self.llama_tools and len(self.llama_tools) > 0:
                 logger.debug(f"Using {len(self.llama_tools)} tools for continue_ai_response")
-                final_response = await loop.run_in_executor(None, lambda: self.llm.stream_chat_with_tools(tools=self.llama_tools, chat_history=chat_messages))
+                final_response = await self.llm.astream_chat_with_tools(tools=self.llama_tools, chat_history=chat_messages)
             else:
                 logger.debug("No tools available for continue_ai_response")
-                final_response = await loop.run_in_executor(None, lambda: self.llm.stream_chat(chat_messages))
+                final_response = await self.llm.astream_chat(chat_messages)
 
         # Stop thinking animation
         animation_task.cancel()
@@ -1192,7 +1192,7 @@ Current Configuration:
 
         # Collect streaming response
         full_response = ""
-        for chunk in final_response:
+        async for chunk in final_response:
             if hasattr(chunk, 'message') and chunk.message and hasattr(chunk.message,
                                                                        'content') and chunk.message.content:
                 full_response += chunk.message.content
@@ -1269,10 +1269,10 @@ Current Configuration:
                     logger.debug('#########################')
                     logger.debug(f"{chat_history[1:]}")
                     logger.debug('#########################')
-                    response = await loop.run_in_executor(None, lambda: self.llm.chat_with_tools(tools=tools_to_use, chat_history=chat_history))
+                    response = await self.llm.achat_with_tools(tools=tools_to_use, chat_history=chat_history)
                 else:
                     logger.debug("No tools available, using regular chat")
-                    response = await loop.run_in_executor(None, lambda: self.llm.chat(chat_history))
+                    response = await self.llm.achat(chat_history)
 
                 # Check interrupt immediately after LLM call
                 if self.state.user_interrupt:
