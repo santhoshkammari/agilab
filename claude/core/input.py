@@ -42,7 +42,8 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.markdown import Markdown
 
-from claude.tools import tools_dict
+from claude.tools.__web import PlaywrightBrowser, WebSearchTool
+from claude.tools.__files_advanced import ClaudeTools
 from llama_index.llms.vllm import VllmServer
 from llama_index.llms.ollama import Ollama
 from llama_index.llms.google_genai import GoogleGenAI
@@ -236,10 +237,36 @@ class ChatApp(App):
     def __init__(self, cwd):
         super().__init__()
         self.state = State()
+        self.cwd = cwd
+        
+        # Initialize browser
+        self.browser = PlaywrightBrowser()
+        
+        # Initialize tools
+        self._claude_tools = ClaudeTools()
+        self._web_tools = WebSearchTool(self.browser)
+        
+        # Create tools dictionary
+        self.tools_dict = {
+            'read_multiple_files': self._claude_tools.multi_read.read_multiple_files,
+            'read_file': self._claude_tools.read.read_file,
+            'write_file': self._claude_tools.write.write_file,
+            'edit_file': self._claude_tools.edit.edit_file,
+            'apply_edit': self._claude_tools.edit.apply_pending_edit,
+            'discard_edit': self._claude_tools.edit.discard_pending_edit,
+            'bash_execute': self._claude_tools.bash.bash_execute,
+            'glob_find_files': self._claude_tools.glob.find_files,
+            'grep_search': self._claude_tools.grep.grep_search,
+            'list_directory': self._claude_tools.ls.list_directory,
+            'fetch_url': self._claude_tools.web_fetch.fetch_url,
+            'web_search': self._web_tools.web_search,
+            'todo_read': self._claude_tools.todo_read.todo_read,
+            'todo_write': self._claude_tools.todo_write.todo_write,
+        }
+        
         self.llm = self._initialize_llm()
         self.llama_tools = self._convert_tools_to_llama_index()
         self.tool_widgets = {}  # Track tool execution widgets
-        self.cwd = cwd
 
         # Generate unique session ID for this chat session
         import uuid
@@ -283,7 +310,7 @@ class ChatApp(App):
         self.auto_accept_edit_tools = {'write_file', 'edit_file', 'multi_edit_file'}
 
     def _convert_tools_to_llama_index(self):
-        return  list(map(FunctionTool.from_defaults,list(tools_dict.values())))
+        return list(map(FunctionTool.from_defaults, list(self.tools_dict.values())))
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="chat_area"):
@@ -417,7 +444,7 @@ class ChatApp(App):
         """Apply the pending edit"""
         try:
             # Apply the edit
-            apply_result = await tools_dict['apply_edit']()
+            apply_result = await self.tools_dict['apply_edit']()
 
             # Complete the tool execution with success
             diff_content = self.pending_edit_result.get('diff', '')
@@ -439,7 +466,7 @@ class ChatApp(App):
         """Discard the pending edit"""
         try:
             # Discard the edit
-            discard_result = await tools_dict['discard_edit']()
+            discard_result = await self.tools_dict['discard_edit']()
 
             # Complete the tool execution with discard message
             result_text = f"Edit discarded - {self.pending_edit_result.get('replacements', 0)} replacement(s) not applied"
@@ -1002,10 +1029,9 @@ Current Configuration:
     async def clear_todos_async(self):
         """Async helper to clear todos for current session"""
         try:
-            from claude.tools import tools_dict
-            if 'todo_write' in tools_dict:
+            if 'todo_write' in self.tools_dict:
                 # Clear by writing empty list - session-based approach
-                await tools_dict['todo_write'](todos=[], session_id=self.session_id)
+                await self.tools_dict['todo_write'](todos=[], session_id=self.session_id)
         except Exception as e:
             logger.error(f"Failed to clear todos: {e}")
 
@@ -1473,8 +1499,8 @@ Current Configuration:
             tool_name = tool_call.tool_name
 
             # Get the tool method from the tools dictionary
-            if tool_name in tools_dict:
-                tool_method = tools_dict[tool_name]
+            if tool_name in self.tools_dict:
+                tool_method = self.tools_dict[tool_name]
 
                 # Handle arguments that might be string or dict
                 if isinstance(tool_call.tool_kwargs, str):

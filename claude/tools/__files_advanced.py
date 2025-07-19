@@ -354,7 +354,7 @@ class BashTool:
         self.timeout = timeout
         self.max_output_size = max_output_size
     
-    async def execute(self, command: str, cwd: Optional[str] = None) -> ExecutionResult:
+    async def bash_execute(self, command: str, cwd: Optional[str] = None) -> ExecutionResult:
         """Execute a shell command safely"""
         logger.info(f"Executing command: {command}")
         
@@ -499,7 +499,7 @@ class GrepTool:
     def __init__(self, max_file_size: int = 10 * 1024 * 1024):  # 10MB
         self.max_file_size = max_file_size
     
-    async def search(
+    async def grep_search(
         self, 
         pattern: str, 
         path: str = ".", 

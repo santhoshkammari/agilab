@@ -21,26 +21,26 @@ class Config:
                 "host": "http://localhost:11434/v1",
                 "model": "qwen3:4b",
                 "num_ctx": 2048,
-                "temperature": 0.7
+                "temperature": 0.0
             },
             "openrouter": {
                 "api_key": "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",
-                "model": "gemini-2.5-flash", #"gemini-2.5-flash-lite-preview-06-17", #"gemini-2.5-flash",
+                "model": "gemini-2.5-flash-lite-preview-06-17", #"gemini-2.5-flash-lite-preview-06-17", #"gemini-2.5-flash",
                 "num_ctx": 4096,
-                "temperature": 0.7
+                "temperature": 0.0
             },
             "google": {
                 "api_key": "AIzaSyBb8wTvVw9e25aX8XK-eBuu1JzDEPCdqUE",
-                "model": "gemini-2.5-flash",
-                "num_ctx": 4096,
-                "temperature": 0.7,
+                "model": "gemini-2.5-flash-lite-preview-06-17",
+                # "num_ctx": 4096,
+                "temperature": 0.0,
                 "thinking_budget": 0  # Disable thinking for speed
             },
             "vllm": {
                 "base_url": "http://localhost:8000/v1",
                 "model": None,  # Auto-detected
                 "num_ctx": 4096,
-                "temperature": 0.7
+                "temperature": 0.0
             }
         }
     
