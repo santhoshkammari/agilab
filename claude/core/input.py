@@ -690,11 +690,17 @@ class ChatApp(App):
             # Clear the input
             event.input.clear()
 
+            # Force immediate UI update and scroll
             chat_area.scroll_end(animate=False)
             self.refresh()
+            
+            # Ensure UI is fully updated before starting AI response
+            self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+            
             # Reset interrupt flag for new conversation
             self.state.user_interrupt = False
-            self.call_later(self.start_ai_response, query, self.conversation_history.copy())
+            # Schedule async AI response without blocking UI
+            asyncio.create_task(self.start_ai_response(query, self.conversation_history.copy()))
 
     def show_permission_widget(self, tool_call):
         """Show permission widget and hide input"""
