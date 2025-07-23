@@ -408,13 +408,13 @@ class ChatApp(App):
 
         if choice_index == 0:  # Yes
             self.hide_permission_widget()
-            self.call_later(self.execute_pending_tool)
+            asyncio.create_task(self.execute_pending_tool())
         elif choice_index == 1:  # Yes, and don't ask again
             if self.pending_tool_call:
                 tool_name = self.pending_tool_call.tool_name
                 self.auto_approve_tools.add(tool_name)
             self.hide_permission_widget()
-            self.call_later(self.execute_pending_tool)
+            asyncio.create_task(self.execute_pending_tool())
         elif choice_index == 2:  # No
             self.hide_permission_widget()
             # Add user message asking what to do instead
@@ -426,14 +426,14 @@ class ChatApp(App):
                 f"\n> I don't want you to execute the {self.pending_tool_call.tool_name} tool. Please suggest an alternative.\n",
                 classes="message"))
             self.pending_tool_call = None
-            self.call_later(self.start_ai_response, "tool_rejected", self.conversation_history.copy())
+            asyncio.create_task(self.start_ai_response("tool_rejected", self.conversation_history.copy()))
 
     def handle_edit_confirmation_choice(self, choice_index: int):
         """Handle edit confirmation choice"""
         if choice_index == 0:  # Apply edit
-            self.call_later(self.apply_pending_edit)
+            asyncio.create_task(self.apply_pending_edit())
         elif choice_index == 1:  # Discard edit
-            self.call_later(self.discard_pending_edit)
+            asyncio.create_task(self.discard_pending_edit())
         elif choice_index == 2:  # Show full diff
             self.show_full_diff()
             return  # Don't hide permission widget yet
@@ -1007,7 +1007,7 @@ Current Configuration:
 
         # Clear todos by calling the clear_todos tool
         try:
-            self.call_later(self.clear_todos_async)
+            asyncio.create_task(self.clear_todos_async())
         except Exception as e:
             logger.error(f"Failed to clear todos: {e}")
 
@@ -1194,7 +1194,7 @@ Current Configuration:
                 )
 
                 # Continue with single LLM response
-                self.call_later(self.continue_ai_response)
+                asyncio.create_task(self.continue_ai_response())
 
     async def continue_ai_response(self):
         """Continue AI response after tool execution"""
