@@ -26,60 +26,64 @@ ORANGE_COLORS = {
     19: "#FEE8D6"  # Orange Paper
 }
 
-# NLTK WordNet integration for contextual thinking words (lazy-loaded)
-NLTK_AVAILABLE = False
-wordnet = None
-
-def _lazy_load_nltk():
-    """Lazy load NLTK components to avoid blocking startup"""
-    global NLTK_AVAILABLE, wordnet
-    if wordnet is not None:
-        return
-        
-    try:
-        from nltk.corpus import wordnet as wn
-        wordnet = wn
-        # Quick test to see if data is available
-        wordnet.synsets('test')
-        NLTK_AVAILABLE = True
-    except (ImportError, LookupError):
-        try:
-            import nltk
-            nltk.download('wordnet', quiet=True)
-            nltk.download('omw-1.4', quiet=True)
-            from nltk.corpus import wordnet as wn
-            wordnet = wn
-            NLTK_AVAILABLE = True
-        except Exception:
-            NLTK_AVAILABLE = False
-
-# Stop words to filter out
-STOP_WORDS = {
-    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 
-    'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 
-    'do', 'does', 'did', 'will', 'would', 'should', 'could', 'can', 'may', 'might',
-    'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they',
-    'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'her', 'its', 'our', 'their'
-}
-
-# Fallback thinking words grouped by context
-CONTEXT_WORDS = {
-    'code': ['programming', 'developing', 'coding', 'scripting', 'building', 'crafting'],
-    'debug': ['debugging', 'fixing', 'troubleshooting', 'solving', 'investigating', 'analyzing'],
-    'file': ['reading', 'processing', 'parsing', 'examining', 'scanning', 'reviewing'],
-    'data': ['processing', 'analyzing', 'computing', 'calculating', 'evaluating', 'studying'],
-    'create': ['building', 'constructing', 'developing', 'designing', 'crafting', 'forming'],
-    'write': ['composing', 'drafting', 'writing', 'authoring', 'creating', 'producing'],
-    'test': ['testing', 'validating', 'verifying', 'checking', 'examining', 'evaluating'],
-    'run': ['executing', 'running', 'launching', 'starting', 'processing', 'operating'],
-    'search': ['searching', 'looking', 'finding', 'exploring', 'discovering', 'investigating'],
-    'help': ['assisting', 'helping', 'supporting', 'guiding', 'advising', 'consulting']
-}
-
-# Default thinking words
-DEFAULT_THINKING_WORDS = [
-    "Contemplating", "Pondering", "Considering", "Reflecting", "Processing",
-    "Analyzing", "Brainstorming", "Meditating", "Deliberating", "Reasoning"
+# Status messages for the thinking animation
+STATUS_MESSAGES = [
+    'Accomplishing',
+    'Actioning',
+    'Actualizing',
+    'Baking',
+    'Brewing',
+    'Calculating',
+    'Cerebrating',
+    'Churning',
+    'Clauding',
+    'Coalescing',
+    'Cogitating',
+    'Computing',
+    'Conjuring',
+    'Considering',
+    'Cooking',
+    'Crafting',
+    'Creating',
+    'Crunching',
+    'Deliberating',
+    'Determining',
+    'Doing',
+    'Effecting',
+    'Finagling',
+    'Forging',
+    'Forming',
+    'Generating',
+    'Hatching',
+    'Herding',
+    'Honking',
+    'Hustling',
+    'Ideating',
+    'Inferring',
+    'Manifesting',
+    'Marinating',
+    'Moseying',
+    'Mulling',
+    'Mustering',
+    'Musing',
+    'Noodling',
+    'Percolating',
+    'Pondering',
+    'Processing',
+    'Puttering',
+    'Reticulating',
+    'Ruminating',
+    'Schlepping',
+    'Shucking',
+    'Simmering',
+    'Smooshing',
+    'Spinning',
+    'Stewing',
+    'Synthesizing',
+    'Thinking',
+    'Transmuting',
+    'Vibing',
+    'Working',
 ]
 
 SYSTEM_PROMPT="""
@@ -97,56 +101,6 @@ SystemInformation:
 - Current working directory : {cwd}
 """
 
-def get_synonyms(word: str) -> List[str]:
-    """Get synonyms for a word using NLTK WordNet"""
-    _lazy_load_nltk()
-    if not NLTK_AVAILABLE or wordnet is None:
-        return []
-    
-    synonyms = set()
-    try:
-        for syn in wordnet.synsets(word):
-            for lemma in syn.lemmas():
-                synonym = lemma.name().replace('_', ' ')
-                if synonym != word and len(synonym) > 5:
-                    synonyms.add(synonym+"ing")
-    except Exception:
-        pass
-    
-    return list(synonyms)[:6]  # Limit to 6 synonyms
-
-def extract_keywords(text: str) -> List[str]:
-    """Extract meaningful keywords from text"""
-    words = re.findall(r'\b\w+\b', text.lower())
-    keywords = [w for w in words if len(w) > 3 and w not in STOP_WORDS]
-    return keywords[:5]  # Limit to 5 keywords
-
-def get_contextual_thinking_words(user_input: str) -> List[str]:
-    """Generate contextual thinking words based on user input"""
-    thinking_words = []
-    keywords = extract_keywords(user_input)
-    
-    # Try to get synonyms using NLTK first (only if not blocking)
-    for keyword in keywords:
-        synonyms = get_synonyms(keyword)
-        thinking_words.extend([f"{syn.capitalize()}..." for syn in synonyms])
-    
-    # Add context-based words
-    user_lower = user_input.lower()
-    for context, words in CONTEXT_WORDS.items():
-        if context in user_lower:
-            thinking_words.extend([f"{word.capitalize()}..." for word in words])
-    
-    # Add keyword-based thinking words
-    for keyword in keywords:
-        thinking_words.append(f"{keyword.capitalize()}...")
-    
-    # Remove duplicates and shuffle
-    thinking_words = list(set(thinking_words))
-    random.shuffle(thinking_words)
-    
-    # Fallback to default if no contextual words found
-    if not thinking_words:
-        thinking_words = [f"{word}..." for word in DEFAULT_THINKING_WORDS]
-    
-    return thinking_words[:10]  # Limit to 10 words
+def get_random_status_message() -> str:
+    """Get a single random status message for the thinking animation"""
+    return random.choice(STATUS_MESSAGES)

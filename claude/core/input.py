@@ -49,7 +49,7 @@ from llama_index.llms.ollama import Ollama
 from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.core.tools import FunctionTool
 from llama_index.core.llms import ChatMessage
-from claude.core.utils import ORANGE_COLORS, get_contextual_thinking_words, SYSTEM_PROMPT
+from claude.core.utils import ORANGE_COLORS, get_random_status_message, SYSTEM_PROMPT
 from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
 from claude.core.config import config
 
@@ -1725,14 +1725,13 @@ Current Configuration:
         return content.split('</think>')[-1].strip()
 
     async def animate_thinking_status(self, query: str, base_message: str):
-        """Animate the thinking status with flowers and contextual words"""
+        """Animate the thinking status with flowers and a single random status message"""
         import time
         flower_chars = ["✻", "✺", "✵", "✴", "❋", "❊", "❉", "❈", "❇", "❆", "❅", "❄"]
         flower_index = 0
 
-        # Generate contextual thinking words based on user input
-        thinking_words = get_contextual_thinking_words(query)
-        thinking_word_index = 0
+        # Get one random status message for this entire session
+        status_message = get_random_status_message() + "..."
 
         status_indicator = self.query_one("#status_indicator")
         chat_area = self.query_one("#chat_area")
@@ -1747,13 +1746,7 @@ Current Configuration:
                 elapsed_seconds = int(time.time() - start_time)
                 flower_index = (flower_index + 1) % len(flower_chars)
 
-                # Change thinking word every 5 flower cycles to slow it down
-                if flower_index % 5 == 0:
-                    thinking_word_index = (thinking_word_index + 1) % len(thinking_words)
-
-                current_thinking_word = thinking_words[thinking_word_index]
-
-                status_msg = f"{flower_chars[flower_index]} {current_thinking_word} [grey]({elapsed_seconds}s)[/grey]"
+                status_msg = f"{flower_chars[flower_index]} {status_message} [grey]({elapsed_seconds}s)[/grey]"
 
                 status_indicator.update(status_msg)
 
