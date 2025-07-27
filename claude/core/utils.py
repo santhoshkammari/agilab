@@ -26,20 +26,32 @@ ORANGE_COLORS = {
     19: "#FEE8D6"  # Orange Paper
 }
 
-# NLTK WordNet integration for contextual thinking words
-try:
-    from nltk.corpus import wordnet
-    NLTK_AVAILABLE = True
-except ImportError:
-    NLTK_AVAILABLE = False
+# NLTK WordNet integration for contextual thinking words (lazy-loaded)
+NLTK_AVAILABLE = False
+wordnet = None
 
-if not NLTK_AVAILABLE:
+def _lazy_load_nltk():
+    """Lazy load NLTK components to avoid blocking startup"""
+    global NLTK_AVAILABLE, wordnet
+    if wordnet is not None:
+        return
+        
     try:
+        from nltk.corpus import wordnet as wn
+        wordnet = wn
+        # Quick test to see if data is available
         wordnet.synsets('test')
-    except LookupError:
-        import nltk
-        nltk.download('wordnet', quiet=True)
-        nltk.download('omw-1.4', quiet=True)
+        NLTK_AVAILABLE = True
+    except (ImportError, LookupError):
+        try:
+            import nltk
+            nltk.download('wordnet', quiet=True)
+            nltk.download('omw-1.4', quiet=True)
+            from nltk.corpus import wordnet as wn
+            wordnet = wn
+            NLTK_AVAILABLE = True
+        except Exception:
+            NLTK_AVAILABLE = False
 
 # Stop words to filter out
 STOP_WORDS = {
@@ -87,7 +99,8 @@ SystemInformation:
 
 def get_synonyms(word: str) -> List[str]:
     """Get synonyms for a word using NLTK WordNet"""
-    if not NLTK_AVAILABLE:
+    _lazy_load_nltk()
+    if not NLTK_AVAILABLE or wordnet is None:
         return []
     
     synonyms = set()
@@ -113,11 +126,10 @@ def get_contextual_thinking_words(user_input: str) -> List[str]:
     thinking_words = []
     keywords = extract_keywords(user_input)
     
-    # Try to get synonyms using NLTK first
-    if NLTK_AVAILABLE:
-        for keyword in keywords:
-            synonyms = get_synonyms(keyword)
-            thinking_words.extend([f"{syn.capitalize()}..." for syn in synonyms])
+    # Try to get synonyms using NLTK first (only if not blocking)
+    for keyword in keywords:
+        synonyms = get_synonyms(keyword)
+        thinking_words.extend([f"{syn.capitalize()}..." for syn in synonyms])
     
     # Add context-based words
     user_lower = user_input.lower()

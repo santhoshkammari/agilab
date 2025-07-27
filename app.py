@@ -6,13 +6,10 @@ import logging
 logging.basicConfig(level=logging.ERROR)
 
 async def main():
-    """Initialize browser and start the app"""
+    """Start the app with lazy initialization"""
     app = ChatApp(cwd=str(Path(__file__).parent))
     
-    # Initialize browser before starting the app
-    await app.browser.initialize()
-    
-    # Run the app using run_async
+    # Run the app using run_async (browser will be initialized on first use)
     await app.run_async()
 
 if __name__ == "__main__":

@@ -239,33 +239,15 @@ class ChatApp(App):
         self.state = State()
         self.cwd = cwd
         
-        # Initialize browser
-        self.browser = PlaywrightBrowser()
+        # Lazy-loaded components
+        self.browser = None
+        self._claude_tools = None
+        self._web_tools = None
         
-        # Initialize tools
-        self._claude_tools = ClaudeTools()
-        self._web_tools = WebSearchTool(self.browser)
-        
-        # Create tools dictionary
-        self.tools_dict = {
-            'read_multiple_files': self._claude_tools.multi_read.read_multiple_files,
-            'read_file': self._claude_tools.read.read_file,
-            'write_file': self._claude_tools.write.write_file,
-            'edit_file': self._claude_tools.edit.edit_file,
-            'apply_edit': self._claude_tools.edit.apply_pending_edit,
-            'discard_edit': self._claude_tools.edit.discard_pending_edit,
-            'bash_execute': self._claude_tools.bash.bash_execute,
-            'glob_find_files': self._claude_tools.glob.find_files,
-            'grep_search': self._claude_tools.grep.grep_search,
-            'list_directory': self._claude_tools.ls.list_directory,
-            'fetch_url': self._claude_tools.web_fetch.fetch_url,
-            'web_search': self._web_tools.web_search,
-            'todo_read': self._claude_tools.todo_read.todo_read,
-            'todo_write': self._claude_tools.todo_write.todo_write,
-        }
-        
-        self.llm = self._initialize_llm()
-        self.llama_tools = self._convert_tools_to_llama_index()
+        # Lazy-loaded tools and LLM
+        self.tools_dict = None
+        self.llm = None
+        self.llama_tools = None
         self.tool_widgets = {}  # Track tool execution widgets
 
         # Generate unique session ID for this chat session
@@ -308,6 +290,42 @@ class ChatApp(App):
 
         # Tools that are auto-approved in auto-accept-edits mode
         self.auto_accept_edit_tools = {'write_file', 'edit_file', 'multi_edit_file'}
+
+    async def _ensure_initialized(self):
+        """Lazy initialization of heavy components"""
+        if self.browser is None:
+            self.browser = PlaywrightBrowser()
+            await self.browser.initialize()
+        
+        if self._claude_tools is None:
+            self._claude_tools = ClaudeTools()
+            
+        if self._web_tools is None:
+            self._web_tools = WebSearchTool(self.browser)
+            
+        if self.tools_dict is None:
+            self.tools_dict = {
+                'read_multiple_files': self._claude_tools.multi_read.read_multiple_files,
+                'read_file': self._claude_tools.read.read_file,
+                'write_file': self._claude_tools.write.write_file,
+                'edit_file': self._claude_tools.edit.edit_file,
+                'apply_edit': self._claude_tools.edit.apply_pending_edit,
+                'discard_edit': self._claude_tools.edit.discard_pending_edit,
+                'bash_execute': self._claude_tools.bash.bash_execute,
+                'glob_find_files': self._claude_tools.glob.find_files,
+                'grep_search': self._claude_tools.grep.grep_search,
+                'list_directory': self._claude_tools.ls.list_directory,
+                'fetch_url': self._claude_tools.web_fetch.fetch_url,
+                'web_search': self._web_tools.web_search,
+                'todo_read': self._claude_tools.todo_read.todo_read,
+                'todo_write': self._claude_tools.todo_write.todo_write,
+            }
+            
+        if self.llm is None:
+            self.llm = self._initialize_llm()
+            
+        if self.llama_tools is None:
+            self.llama_tools = self._convert_tools_to_llama_index()
 
     def _convert_tools_to_llama_index(self):
         return list(map(FunctionTool.from_defaults, list(self.tools_dict.values())))
@@ -1257,6 +1275,9 @@ Current Configuration:
 
     async def start_ai_response(self, query: str, messages: list):
         """Start AI response with proper agentic loop for tool calling"""
+        # Ensure components are initialized before first use
+        await self._ensure_initialized()
+        
         chat_area = self.query_one("#chat_area")
         status_indicator = self.query_one("#status_indicator")
 
