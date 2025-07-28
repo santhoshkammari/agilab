@@ -48,7 +48,7 @@ from llama_index.llms.vllm import VllmServer
 from llama_index.llms.ollama import Ollama
 from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.core.tools import FunctionTool
-from llama_index.core.llms import ChatMessage
+from llama_index.core.llms import ChatMessage, TextBlock, ImageBlock
 from claude.core.utils import ORANGE_COLORS, get_random_status_message, SYSTEM_PROMPT
 from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
 from claude.core.config import config
@@ -1725,8 +1725,9 @@ Current Configuration:
         return content.split('</think>')[-1].strip()
 
     async def animate_thinking_status(self, query: str, base_message: str):
-        """Animate the thinking status with flowers and a single random status message"""
+        """Animate the thinking status with flowers and comprehensive status info like Claude Code"""
         import time
+        import datetime
         flower_chars = ["✻", "✺", "✵", "✴", "❋", "❊", "❉", "❈", "❇", "❆", "❅", "❄"]
         flower_index = 0
 
@@ -1746,7 +1747,17 @@ Current Configuration:
                 elapsed_seconds = int(time.time() - start_time)
                 flower_index = (flower_index + 1) % len(flower_chars)
 
-                status_msg = f"{flower_chars[flower_index]} {status_message} [grey]({elapsed_seconds}s)[/grey]"
+                # Get current time for timestamp
+                current_time = datetime.datetime.now().strftime("%H:%M:%S")
+                
+                # Estimate token count (simple approximation: ~4 chars per token)
+                estimated_tokens = len(query) // 4 if query else 0
+                
+                # Create comprehensive status message with grey formatting like Claude Code
+                status_msg = (
+                    f"{flower_chars[flower_index]} {status_message} "
+                    f"[grey]({elapsed_seconds}s • {estimated_tokens} tokens • esc to interrupt)[/grey]"
+                )
 
                 status_indicator.update(status_msg)
 
