@@ -83,6 +83,7 @@ STATUS_MESSAGES = [
     'Stewing',
     'Synthesizing',
     'Thinking',
+    'Tinkering',
     'Transmuting',
     'Unfurling',
     'Vibing',
