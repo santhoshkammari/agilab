@@ -44,9 +44,7 @@ from rich.markdown import Markdown
 
 from claude.tools.web import PlaywrightBrowser, WebSearchTool
 from claude.tools.files import ClaudeTools
-from llama_index.llms.vllm import VllmServer
-from llama_index.llms.ollama import Ollama
-from llama_index.llms.google_genai import GoogleGenAI
+# LLM imports moved to _initialize_llm for lazy loading
 from llama_index.core.tools import FunctionTool
 from llama_index.core.llms import ChatMessage, TextBlock, ImageBlock
 from claude.core.utils import ORANGE_COLORS, get_random_status_message, SYSTEM_PROMPT
@@ -321,6 +319,10 @@ class ChatApp(App):
                 'todo_write': self._claude_tools.todo_write.todo_write,
             }
             
+        # LLM and tools are initialized lazily on first AI response
+
+    async def _ensure_llm_initialized(self):
+        """Ensure LLM and tools are initialized for AI responses"""
         if self.llm is None:
             self.llm = self._initialize_llm()
             
@@ -328,6 +330,8 @@ class ChatApp(App):
             self.llama_tools = self._convert_tools_to_llama_index()
 
     def _convert_tools_to_llama_index(self):
+        if self.tools_dict is None:
+            return []
         return list(map(FunctionTool.from_defaults, list(self.tools_dict.values())))
 
     def compose(self) -> ComposeResult:
@@ -694,7 +698,7 @@ class ChatApp(App):
                 return
             elif query.startswith("/provider "):
                 provider_name = query[10:].strip()
-                self.switch_provider(provider_name)
+                asyncio.create_task(self.switch_provider(provider_name))
                 event.input.clear()
                 return
             # Add user message to conversation history
@@ -886,6 +890,7 @@ class ChatApp(App):
         provider_config = config.get_current_config()
 
         if config.provider == "google":
+            from llama_index.llms.google_genai import GoogleGenAI
             api_key = provider_config.get("api_key", "")
             model = provider_config.get("model", "gemini-2.5-flash")
             llm = GoogleGenAI(
@@ -893,17 +898,26 @@ class ChatApp(App):
                 api_key=api_key
             )
         elif config.provider == "ollama":
+            from llama_index.llms.ollama import Ollama
             base_url = provider_config.get("host", "http://localhost:11434")
-            model = provider_config.get("model", "qwen3:4b")
+            model = provider_config.get("model", "llama3.1:latest")
             llm = Ollama(
-                base_url=base_url,
-                temperature=0.0,
                 model=model,
-                thinking=False,
                 request_timeout=120.0,
                 context_window=8000
             )
+        elif config.provider == "openrouter":
+            from llama_index.llms.openrouter import OpenRouter
+            api_key = provider_config.get("api_key", "")
+            model = provider_config.get("model", "gryphe/mythomax-l2-13b")
+            llm = OpenRouter(
+                api_key=api_key,
+                max_tokens=256,
+                context_window=4096,
+                model=model
+            )
         elif config.provider == "vllm":
+            from llama_index.llms.vllm import VllmServer
             base_url = provider_config.get("base_url", "http://localhost:8000/generate")
             llm = VllmServer(
                 api_url=base_url,
@@ -912,6 +926,7 @@ class ChatApp(App):
             )
         else:
             # Default fallback to Google
+            from llama_index.llms.google_genai import GoogleGenAI
             api_key = provider_config.get("api_key", "")
             model = provider_config.get("model", "gemini-2.5-flash")
             llm = GoogleGenAI(
@@ -936,16 +951,16 @@ class ChatApp(App):
             f"Configuration: {current_config}",
             "\nAvailable providers:",
             "  • google - Google Generative AI (Gemini models)",
-            "  • ollama - Local Ollama server",
+            "  • ollama - Local Ollama server (llama3.1:latest default)",
             "  • openrouter - OpenRouter API (multiple models)",
             "  • vllm - Local vLLM server",
-            "\nUse: /provider <name> to switch (e.g., /provider google)\n"
+            "\nUse: /provider <name> to switch (e.g., /provider openrouter)\n"
         ]
 
         chat_area.mount(Static("\n".join(status_lines), classes="message"))
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
 
-    def switch_provider(self, provider_name: str):
+    async def switch_provider(self, provider_name: str):
         """Switch to a different LLM provider"""
         chat_area = self.query_one("#chat_area")
 
@@ -953,9 +968,9 @@ class ChatApp(App):
             # Set the new provider
             config.set_provider(provider_name)
 
-            # Reinitialize LLM with new provider
-            self.llm = self._initialize_llm()
-            self.llama_tools = self._convert_tools_to_llama_index()
+            # Reset LLM to trigger lazy reinitialization with new provider
+            self.llm = None
+            self.llama_tools = None
 
             current_config = config.get_current_config()
             chat_area.mount(Static(
@@ -967,7 +982,9 @@ class ChatApp(App):
         except ValueError as e:
             chat_area.mount(Static(f"\n❌ {str(e)}\n", classes="message"))
         except Exception as e:
-            chat_area.mount(Static(f"\n❌ Error switching provider: {str(e)}\n", classes="message"))
+            import traceback
+            error_details = traceback.format_exc()
+            chat_area.mount(Static(f"\n❌ Error switching provider: {str(e)}\nDetails: {error_details}\n", classes="message"))
 
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
 
@@ -1277,6 +1294,7 @@ Current Configuration:
         """Start AI response with proper agentic loop for tool calling"""
         # Ensure components are initialized before first use
         await self._ensure_initialized()
+        await self._ensure_llm_initialized()
         
         chat_area = self.query_one("#chat_area")
         status_indicator = self.query_one("#status_indicator")
