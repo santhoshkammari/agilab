@@ -230,6 +230,58 @@ class ChatApp(App):
         border: none;
     }
     
+    #provider_selection {
+        height: auto;
+        background: transparent;
+        border: round #E27A53;
+        padding: 1;
+        margin: 0;
+    }
+    
+    #provider_selection_message {
+        color: #a89984;
+        text-style: italic;
+        padding: 0 0 1 0;
+        background: transparent;
+    }
+    
+    #provider_options {
+        background: transparent;
+        border: none;
+        height: auto;
+        scrollbar-size: 0 0;
+    }
+    
+    #provider_options:focus {
+        border: none;
+    }
+    
+    #model_selection {
+        height: auto;
+        background: transparent;
+        border: round #fabd2f;
+        padding: 1;
+        margin: 0;
+    }
+    
+    #model_selection_message {
+        color: #a89984;
+        text-style: italic;
+        padding: 0 0 1 0;
+        background: transparent;
+    }
+    
+    #model_options {
+        background: transparent;
+        border: none;
+        height: auto;
+        scrollbar-size: 0 0;
+    }
+    
+    #model_options:focus {
+        border: none;
+    }
+    
     """
 
     def __init__(self, cwd):
@@ -259,6 +311,10 @@ class ChatApp(App):
 
         # Command palette state
         self.waiting_for_command = False
+
+        # Provider/Model selection state
+        self.waiting_for_provider_selection = False
+        self.waiting_for_model_selection = False
 
         # Command history for up/down arrow navigation
         self.command_history = []
@@ -324,7 +380,13 @@ class ChatApp(App):
     async def _ensure_llm_initialized(self):
         """Ensure LLM and tools are initialized for AI responses"""
         if self.llm is None:
-            self.llm = self._initialize_llm()
+            try:
+                self.llm = self._initialize_llm()
+            except Exception as e:
+                chat_area = self.query_one("#chat_area")
+                chat_area.mount(Static(f"\n❌ Error initializing LLM: {str(e)}\n", classes="message"))
+                logger.error(f"LLM initialization failed: {e}")
+                return
             
         if self.llama_tools is None:
             self.llama_tools = self._convert_tools_to_llama_index()
@@ -371,6 +433,24 @@ class ChatApp(App):
                 id="command_options"
             )
 
+        # Provider selection (initially hidden)
+        with Vertical(id="provider_selection"):
+            yield Static("Select Provider:", id="provider_selection_message")
+            yield OptionList(
+                "google - Google Generative AI (Gemini models)",
+                "ollama - Local Ollama server",
+                "openrouter - OpenRouter API (multiple models)",
+                "vllm - Local vLLM server",
+                id="provider_options"
+            )
+
+        # Model selection (initially hidden)
+        with Vertical(id="model_selection"):
+            yield Static("Select Model:", id="model_selection_message")
+            yield OptionList(
+                id="model_options"
+            )
+
         # Input area at bottom
         with Horizontal(id="input_area"):
             yield Label(" > ")
@@ -393,6 +473,9 @@ class ChatApp(App):
         self.query_one("#permission_area").display = False
         # Hide command palette initially
         self.query_one("#command_palette").display = False
+        # Hide provider/model selection initially
+        self.query_one("#provider_selection").display = False
+        self.query_one("#model_selection").display = False
 
         # Set initial mode styling (default has no class, so no color)
         footer_left = self.query_one("#footer-left")
@@ -408,6 +491,8 @@ class ChatApp(App):
         if (event.character == "/" and
             not self.waiting_for_permission and
             not self.waiting_for_command and
+            not self.waiting_for_provider_selection and
+            not self.waiting_for_model_selection and
             self.query_one(Input).has_focus):
             # Clear input field to prevent "/" from being typed
             self.query_one(Input).clear()
@@ -416,6 +501,14 @@ class ChatApp(App):
         # Handle escape to hide command palette
         elif event.key == "escape" and self.waiting_for_command:
             self.hide_command_palette()
+            event.prevent_default()
+        # Handle escape to hide provider selection
+        elif event.key == "escape" and self.waiting_for_provider_selection:
+            self.hide_provider_selection()
+            event.prevent_default()
+        # Handle escape to hide model selection
+        elif event.key == "escape" and self.waiting_for_model_selection:
+            self.hide_model_selection()
             event.prevent_default()
 
     @on(OptionList.OptionSelected, "#permission_options")
@@ -546,15 +639,73 @@ class ChatApp(App):
             chat_area = self.query_one("#chat_area")
             chat_area.mount(Static("\n> Use /host <url> in the input to set host URL\n", classes="message"))
         elif choice_index == 1:  # /provider
-            self.show_provider_selection()
-        elif choice_index == 2:  # /think
+            self.show_provider_selection_widget()
+        elif choice_index == 2:  # /model
+            self.show_model_selection_widget()
+        elif choice_index == 3:  # /think
             self.toggle_think_mode(True)
-        elif choice_index == 3:  # /no-think  
+        elif choice_index == 4:  # /no-think  
             self.toggle_think_mode(False)
-        elif choice_index == 4:  # /status
+        elif choice_index == 5:  # /status
             self.show_status()
-        elif choice_index == 5:  # /clear
+        elif choice_index == 6:  # /clear
             self.clear_conversation()
+
+    @on(OptionList.OptionSelected, "#provider_options")
+    def handle_provider_choice(self, event: OptionList.OptionSelected) -> None:
+        """Handle provider choice from OptionList"""
+        choice_index = event.option_index
+        providers = ["google", "ollama", "openrouter", "vllm"]
+        
+        if choice_index < len(providers):
+            selected_provider = providers[choice_index]
+            self.hide_provider_selection()
+            asyncio.create_task(self.switch_provider(selected_provider))
+
+    @on(OptionList.OptionSelected, "#model_options")
+    def handle_model_choice(self, event: OptionList.OptionSelected) -> None:
+        """Handle model choice from OptionList"""
+        choice_index = event.option_index
+        model_options = self.query_one("#model_options")
+        
+        # Get available models to reconstruct from index
+        current_provider = config.provider
+        if current_provider == "google":
+            models = [
+                "gemini-2.5-flash - Fast and efficient",
+                "gemini-2.5-flash-lite-preview-06-17 - Lite preview version", 
+                "gemini-pro - Production model"
+            ]
+        elif current_provider == "ollama":
+            models = [
+                "llama3.1:latest - Latest Llama 3.1",
+                "qwen3:4b - Qwen 3 4B model",
+                "codellama:latest - Code-focused model",
+                "mistral:latest - Mistral model"
+            ]
+        elif current_provider == "openrouter":
+            models = [
+                "qwen/qwen3-coder:free - Free Qwen coder",
+                "gemini-2.5-flash-lite-preview-06-17 - Gemini flash lite",
+                "gryphe/mythomax-l2-13b - MythoMax 13B",
+                "anthropic/claude-3-haiku - Claude 3 Haiku"
+            ]
+        elif current_provider == "vllm":
+            models = [
+                "auto-detected - Auto-detect from server",
+                "llama-3.1-8b - Llama 3.1 8B",
+                "qwen2-7b - Qwen2 7B"
+            ]
+        else:
+            models = ["No models available"]
+        
+        # Use the choice index to get the correct model
+        if 0 <= choice_index < len(models):
+            selected_model = models[choice_index]
+            # Extract just the model name from the display text
+            model_name = selected_model.split(' - ')[0]
+            self.hide_model_selection()
+            asyncio.create_task(self.switch_model(model_name))
 
     def action_cycle_mode(self) -> None:
         """Action to cycle through modes"""
@@ -647,8 +798,9 @@ class ChatApp(App):
     @on(Input.Submitted)
     def handle_message(self, event: Input.Submitted) -> None:
         """Handle when user submits a message"""
-        # Don't process input if waiting for permission or command
-        if self.waiting_for_permission or self.waiting_for_command:
+        # Don't process input if waiting for permission or command/selection
+        if (self.waiting_for_permission or self.waiting_for_command or 
+            self.waiting_for_provider_selection or self.waiting_for_model_selection):
             return
 
         query = event.value.strip()
@@ -693,12 +845,21 @@ class ChatApp(App):
                 event.input.clear()
                 return
             elif query == "/provider":
-                self.show_provider_selection()
+                self.show_provider_selection_widget()
                 event.input.clear()
                 return
             elif query.startswith("/provider "):
                 provider_name = query[10:].strip()
                 asyncio.create_task(self.switch_provider(provider_name))
+                event.input.clear()
+                return
+            elif query == "/model":
+                self.show_model_selection_widget()
+                event.input.clear()
+                return
+            elif query.startswith("/model "):
+                model_name = query[7:].strip()
+                asyncio.create_task(self.switch_model(model_name))
                 event.input.clear()
                 return
             # Add user message to conversation history
@@ -862,6 +1023,7 @@ class ChatApp(App):
         command_options.add_options([
             f"/host <url> - Set LLM host (current: {config.get_host_display()})",
             f"/provider - Switch provider (current: {config.get_provider_display()})",
+            f"/model - Switch model (current: {config.model})",
             f"/think - Enable thinking (current: {thinking_status})",
             f"/no-think - Disable thinking (current: {thinking_status})",
             f"/status - Show configuration",
@@ -880,6 +1042,108 @@ class ChatApp(App):
         """Hide command palette and show input"""
         self.waiting_for_command = False
         self.query_one("#command_palette").display = False
+        self.query_one("#input_area").display = True
+        self.query_one(Input).focus()
+
+    def show_provider_selection_widget(self):
+        """Show provider selection widget and hide input"""
+        self.waiting_for_provider_selection = True
+
+        # Update current provider in message
+        current_provider = config.provider
+        provider_msg = self.query_one("#provider_selection_message")
+        provider_msg.update(f"Select Provider (current: {current_provider}):")
+
+        # Show provider selection and hide input
+        self.query_one("#provider_selection").display = True
+        self.query_one("#input_area").display = False
+
+        # Focus provider options and highlight current provider
+        provider_options = self.query_one("#provider_options")
+        provider_options.focus()
+        
+        # Highlight current provider
+        providers = ["google", "ollama", "openrouter", "vllm"]
+        try:
+            current_index = providers.index(current_provider)
+            provider_options.highlighted = current_index
+        except ValueError:
+            provider_options.highlighted = 0
+
+    def hide_provider_selection(self):
+        """Hide provider selection widget and show input"""
+        self.waiting_for_provider_selection = False
+        self.query_one("#provider_selection").display = False
+        self.query_one("#input_area").display = True
+        self.query_one(Input).focus()
+
+    def show_model_selection_widget(self):
+        """Show model selection widget and hide input"""
+        self.waiting_for_model_selection = True
+
+        # Get available models for current provider
+        current_provider = config.provider
+        provider_config = config.providers.get(current_provider, {})
+        
+        model_msg = self.query_one("#model_selection_message")
+        model_msg.update(f"Select Model for {current_provider} (current: {config.model}):")
+
+        # Populate model options based on provider
+        model_options = self.query_one("#model_options")
+        model_options.clear_options()
+        
+        if current_provider == "google":
+            models = [
+                "gemini-2.5-flash - Fast and efficient",
+                "gemini-2.5-flash-lite-preview-06-17 - Lite preview version",
+                "gemini-pro - Production model"
+            ]
+        elif current_provider == "ollama":
+            models = [
+                "llama3.1:latest - Latest Llama 3.1",
+                "qwen3:4b - Qwen 3 4B model",
+                "codellama:latest - Code-focused model",
+                "mistral:latest - Mistral model"
+            ]
+        elif current_provider == "openrouter":
+            models = [
+                "qwen/qwen3-coder:free - Free Qwen coder",
+                "gemini-2.5-flash-lite-preview-06-17 - Gemini flash lite",
+                "gryphe/mythomax-l2-13b - MythoMax 13B",
+                "anthropic/claude-3-haiku - Claude 3 Haiku"
+            ]
+        elif current_provider == "vllm":
+            models = [
+                "auto-detected - Auto-detect from server",
+                "llama-3.1-8b - Llama 3.1 8B",
+                "qwen2-7b - Qwen2 7B"
+            ]
+        else:
+            models = ["No models available"]
+
+        model_options.add_options(models)
+
+        # Show model selection and hide input
+        self.query_one("#model_selection").display = True
+        self.query_one("#input_area").display = False
+
+        # Focus model options and highlight current model
+        model_options.focus()
+        
+        # Try to highlight current model
+        current_model = config.model
+        for i, model_option in enumerate(models):
+            model_name = model_option.split(' - ')[0]
+            if model_name == current_model:
+                model_options.highlighted = i
+                break
+        else:
+            model_options.highlighted = 0
+
+    def hide_model_selection(self):
+        """Hide model selection widget and show input"""
+        self.waiting_for_model_selection = False
+        self.query_one("#model_selection").display = False
         self.query_one("#input_area").display = True
         self.query_one(Input).focus()
 
@@ -939,26 +1203,9 @@ class ChatApp(App):
         return llm
 
     def show_provider_selection(self):
-        """Show provider selection dialog"""
-        chat_area = self.query_one("#chat_area")
-
-        # Create provider status message
-        current_provider = config.provider
-        current_config = config.get_current_config()
-
-        status_lines = [
-            f"\n📡 Current Provider: {config.get_provider_display()}",
-            f"Configuration: {current_config}",
-            "\nAvailable providers:",
-            "  • google - Google Generative AI (Gemini models)",
-            "  • ollama - Local Ollama server (llama3.1:latest default)",
-            "  • openrouter - OpenRouter API (multiple models)",
-            "  • vllm - Local vLLM server",
-            "\nUse: /provider <name> to switch (e.g., /provider openrouter)\n"
-        ]
-
-        chat_area.mount(Static("\n".join(status_lines), classes="message"))
-        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+        """Show provider selection dialog - legacy method for backward compatibility"""
+        # Redirect to the new widget-based selection
+        self.show_provider_selection_widget()
 
     async def switch_provider(self, provider_name: str):
         """Switch to a different LLM provider"""
@@ -985,6 +1232,36 @@ class ChatApp(App):
             import traceback
             error_details = traceback.format_exc()
             chat_area.mount(Static(f"\n❌ Error switching provider: {str(e)}\nDetails: {error_details}\n", classes="message"))
+
+        self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
+
+    async def switch_model(self, model_name: str):
+        """Switch to a different model for the current provider"""
+        chat_area = self.query_one("#chat_area")
+
+        try:
+            # Update the model in config
+            config.model = model_name
+            
+            # Update the provider config with the new model
+            provider_config = config.providers.get(config.provider, {})
+            provider_config["model"] = model_name
+            config.providers[config.provider] = provider_config
+
+            # Reset LLM to trigger lazy reinitialization with new model
+            self.llm = None
+            self.llama_tools = None
+
+            chat_area.mount(Static(
+                f"\n✓ Switched to model: {model_name}\n"
+                f"Provider: {config.get_provider_display()}\n",
+                classes="message"
+            ))
+
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            chat_area.mount(Static(f"\n❌ Error switching model: {str(e)}\nDetails: {error_details}\n", classes="message"))
 
         self.call_after_refresh(lambda: chat_area.scroll_end(animate=False))
 
