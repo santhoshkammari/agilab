@@ -74,7 +74,7 @@ STATUS_MESSAGES = [
     'Puttering',
     'Reticulating',
     'Ruminating',
-    'Schlepping',
+    'Slepping',
     'Shucking',
     'Shimming',
     'Simmering',
