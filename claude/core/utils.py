@@ -40,6 +40,7 @@ STATUS_MESSAGES = [
     'Coalescing',
     'Cogitating',
     'Computing',
+    'Combobulating',
     'Conjuring',
     'Considering',
     'Cooking',
@@ -84,7 +85,6 @@ STATUS_MESSAGES = [
     'Transmuting',
     'Vibing',
     'Working',
-    'Combobulating',
 ]
 
 SYSTEM_PROMPT="""
