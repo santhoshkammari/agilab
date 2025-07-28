@@ -84,6 +84,7 @@ STATUS_MESSAGES = [
     'Synthesizing',
     'Thinking',
     'Transmuting',
+    'Unfurling',
     'Vibing',
     'Working',
 ]
