@@ -1176,8 +1176,8 @@ class ChatApp(App):
             model = provider_config.get("model", "gryphe/mythomax-l2-13b")
             llm = OpenRouter(
                 api_key=api_key,
-                max_tokens=256,
-                context_window=4096,
+                max_tokens=4096,
+                context_window=16182,
                 model=model
             )
         elif config.provider == "vllm":

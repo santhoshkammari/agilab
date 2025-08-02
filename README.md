@@ -2,7 +2,7 @@
 
 > A powerful terminal-based chat application with integrated LLM capabilities and extensible tool support.
 
-![img.png](img.png)
+![img.png](images/img.png)
 
 ## Overview
 
