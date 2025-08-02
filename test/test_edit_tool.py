@@ -6,7 +6,7 @@ Simple script to run the EditTool function and print raw results
 import asyncio
 import tempfile
 import json
-from claude.tools.__files_advanced import EditTool
+from claude.tools.files import EditTool
 
 
 async def run_edit_tool():
