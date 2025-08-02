@@ -405,7 +405,10 @@ class BaseLLM(ABC):
 
     def _get_timeout(self, kwargs):
         """Get timeout from kwargs or use default timeout."""
-        return kwargs.get('timeout', None) or self._timeout
+        timeout = kwargs.get('timeout', None) or self._timeout
+        if 'timeout' in kwargs:
+            kwargs.pop("timeout")
+        return timeout
 
     def _convert_function_to_tools(self, func: Optional[list[Callable]]) -> list[dict]:
         """Convert functions to OpenAI tools format using Verifiers-style conversion."""
@@ -470,7 +473,6 @@ class vLLM(BaseLLM):
             extra_body['guided_json'] = schema
             if 'format' in kwargs:
                 kwargs.pop('format')
-
         response = self._client.chat.completions.create(
             model=model,
             messages=input,
@@ -592,7 +594,7 @@ if __name__ == '__main__':
     print("1. Basic text generation:")
     llm = vLLM(host='192.168.170.76', port="8077", 
                model="/home/ng6309/datascience/santhosh/models/Qwen3-14B")
-    res = llm("What is 2+3?")
+    res = llm("What is 2+3? /no_think")
     print(f"Answer: {res['content']}\n")
     
     # # Example 2: JSON schema formatting
@@ -608,16 +610,17 @@ if __name__ == '__main__':
     llm_tools = vLLM(host='192.168.170.76', port="8077",
                      model="/home/ng6309/datascience/santhosh/models/Qwen3-14B",
                      tools=[get_weather])
-    res = llm_tools("What's the weather in Paris?")
-    print(f"Tools called: {res['tools']}\n")
+    res = llm_tools("What's the weather in Paris? /no_think")
+    print(f"Tools called: {res['tool_calls']}\n")
     
     # Example 4: Runtime overrides
     print("4. Runtime parameter override:")
     base_llm = vLLM(host='192.168.170.76', port="8077",
                     model="/home/ng6309/datascience/santhosh/models/Qwen3-14B")
-    res = base_llm("Generate car info", 
+    res = base_llm("Generate car info /no_think",
                    format=CarInfo.model_json_schema(),
-                   timeout=10)
+                   # timeout=10
+                   )
     print(f"Car info: {res['content']}\n")
     
     # Example 5: Ollama supports only with timeout in init
@@ -631,7 +634,7 @@ if __name__ == '__main__':
     print("6. Batch processing with batch_call:")
     batch_llm = vLLM(host='192.168.170.76', port="8077",
                      model="/home/ng6309/datascience/santhosh/models/Qwen3-14B")
-    texts = ['What is 2+2?', 'What is 3+3?']
+    texts = ['What is 2+2? /no_think ', 'What is 3+3? /no_think']
     batch_results = batch_llm.batch_call(texts, max_workers=2)
     print(f"Batch outputs: {[r['content'] for r in batch_results]}\n")
     
@@ -646,18 +649,18 @@ if __name__ == '__main__':
 
     # Case 1: Single string
     print("1. Single string:")
-    res = base_llm("What is 2+2?", temperature=0)
+    res = base_llm("What is 2+2? /no_think", temperature=0)
     print(f"Result: {res['content']}\n")
 
     # Case 2: List of strings (batch)
     print("2. List of strings (batch):")
-    batch_strings = ["What is 2+2?", "What is 3+3?", "What is 5+5?"]
+    batch_strings = ["What is 2+2? /no_think", "What is 3+3?", "What is 5+5?"]
     res = base_llm(batch_strings, temperature=0)
     print(f"Results: {[r['content'] for r in res]}\n")
 
     # Case 3: Single conversation (list of dicts)
     print("3. Single conversation (list of dicts):")
-    single_conv = [{"role": "user", "content": "Hi, just tell me hello"}]
+    single_conv = [{"role": "user", "content": "Hi, just tell me hello /no_think"}]
     res = base_llm(single_conv, temperature=0)
     print(f"Result: {res['content']}\n")
 
@@ -667,7 +670,7 @@ if __name__ == '__main__':
         {"role": "system", "content": "You are a helpful assistant"},
         {"role": "user", "content": "What is your name?"},
         {"role": "assistant", "content": "I'm Claude"},
-        {"role": "user", "content": "Nice to meet you!"}
+        {"role": "user", "content": "Nice to meet you! /no_think"}
     ]
     res = base_llm(multi_conv, temperature=0)
     print(f"Result: {res['content']}\n")
@@ -675,9 +678,9 @@ if __name__ == '__main__':
     # Case 5: List of lists (batch conversations)
     print("5. List of lists (batch conversations):")
     batch_convs = [
-        [{"role": "user", "content": "Say hi"}],
-        [{"role": "user", "content": "Say bye"}],
-        [{"role": "user", "content": "Say thanks"}]
+        [{"role": "user", "content": "Say hi /no_think"}],
+        [{"role": "user", "content": "Say bye /no_think"}],
+        [{"role": "user", "content": "Say thanks /no_think"}]
     ]
     res = base_llm(batch_convs, temperature=0)
     print(f"Results: {[r['content'] for r in res]}\n")
