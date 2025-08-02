@@ -7,7 +7,7 @@ class Config:
     
     def __init__(self):
         # Provider selection (ollama, openrouter, google)
-        self.provider = "openrouter"  # Default to google
+        self.provider = "google"  # Default to google
         
         # Legacy settings (for backward compatibility)
         self.host = None  # None means localhost:11434

@@ -18,20 +18,9 @@ import json
 from pathlib import Path
 import logging
 
-# Configure logger for debug output
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.ERROR)
-
-# Create file handler for app.log in current working directory
-file_handler = logging.FileHandler('app.log', mode='w')
-file_handler.setLevel(logging.ERROR)
-
-# Create formatter
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-
-# Add handler to logger
-logger.addHandler(file_handler)
+# Configure logger for debug output using centralized logger
+from claude.utils.logger import get_logger
+logger = get_logger(__name__)
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
