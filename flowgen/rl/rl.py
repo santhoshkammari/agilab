@@ -30,6 +30,7 @@ class RLEnv:
         reward_weights: Optional[List[float]] = None,
         tools: Optional[List[Callable]] = None,
         max_turns: int = 1,
+        auto_execute_tools: bool = True,
         **kwargs
     ):
         """
@@ -41,6 +42,7 @@ class RLEnv:
             reward_weights: Weights for combining multiple rewards (defaults to equal weights)
             tools: List of tool functions for multi-turn interactions
             max_turns: Maximum conversation turns (1 for single-turn tasks)
+            auto_execute_tools: Automatically execute tools in agentic loops (True by default)
             **kwargs: Additional parameters passed to rollouts
         """
         self.dataset = dataset
@@ -64,6 +66,12 @@ class RLEnv:
         
         self.tools = tools or []
         self.max_turns = max_turns
+        self.auto_execute_tools = auto_execute_tools
+        
+        # Auto-set max_turns for tool environments like Verifiers
+        if tools and max_turns == 1:
+            self.max_turns = 10  # Default for tool-enabled environments
+            
         self.kwargs = kwargs
     
     def __call__(self, llm, input=None, **kwargs) -> Union[Dict, List[Dict]]:
@@ -90,56 +98,97 @@ class RLEnv:
         else:
             raise ValueError("Input must be None (dataset eval), string, or list of strings")
     
-    def rollout(self, llm, prompt: str, answer: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+    def rollout(self, llm, prompt: Union[str, List[Dict]], answer: Optional[str] = None, **kwargs) -> Dict[str, Any]:
         """
-        Single environment interaction.
+        Single environment interaction with automatic multi-turn tool execution.
         
         Args:
             llm: LLM instance
-            prompt: Input prompt
+            prompt: Input prompt (string or list of message dicts)
             answer: Ground truth answer (optional, used for reward calculation)
             **kwargs: Additional parameters for LLM generation
             
         Returns:
             Dictionary with messages, reward, turns, and metadata
         """
-        messages = [{"role": "user", "content": prompt}]
+        # Handle both string and message list prompts like Verifiers
+        if isinstance(prompt, str):
+            messages = [{"role": "user", "content": prompt}]
+        else:
+            messages = list(prompt)  # Copy to avoid modifying original
+        
+        completion_messages = []
+        final_response = None
         
         for turn in range(self.max_turns):
             # Generate response
             response = llm(messages, tools=self.tools, **{**self.kwargs, **kwargs})
             
-            # Add assistant response
-            messages.append({
+            # Create assistant message with proper tool_calls format
+            assistant_msg = {
                 "role": "assistant", 
                 "content": response.get('content', '')
-            })
+            }
             
-            # Handle tool calls
-            if response.get('tools'):
-                for tool_call in response['tools']:
+            # Handle tool calls using dictionary format from LLM
+            if response.get('tool_calls'):
+                # Use the tool_calls from LLM response (now in dict format)
+                assistant_msg["tool_calls"] = response['tool_calls']
+                
+                messages.append(assistant_msg)
+                completion_messages.append(assistant_msg)
+                
+                # Execute tools and add tool results using dictionary format
+                for tool_call in response['tool_calls']:
                     result = self._execute_tool(tool_call)
-                    messages.append({
+                    tool_msg = {
                         "role": "tool",
-                        "name": tool_call['name'],
+                        "tool_call_id": tool_call['id'],  # Use dict access
+                        "name": tool_call['function']['name'],  # Use dict access
                         "content": str(result)
-                    })
+                    }
+                    messages.append(tool_msg)
+                    completion_messages.append(tool_msg)
+                
+                # Continue the conversation loop for automatic tool execution
                 continue
-            
-            # Single turn or natural completion
-            break
+            else:
+                # No tool calls - add assistant message and end
+                messages.append(assistant_msg)
+                completion_messages.append(assistant_msg)
+                final_response = response
+                break
         
-        # Calculate reward
-        completion = response.get('content', '')
-        total_reward = self._compute_reward(prompt, completion, answer, **kwargs)
+        # Use final response or last response for reward calculation
+        if final_response is None and completion_messages:
+            # Get last assistant message for completion
+            final_content = ""
+            for msg in reversed(completion_messages):
+                if msg["role"] == "assistant":
+                    final_content = msg.get("content", "")
+                    break
+        else:
+            final_content = final_response.get('content', '') if final_response else ""
+        
+        total_reward = self._compute_reward(prompt, final_content, answer, **kwargs)
         
         return {
             "messages": messages,
-            "completion": completion,
+            "completion": final_content,
+            "completion_messages": completion_messages,  # Just the assistant/tool messages
             "reward": total_reward,
             "turns": turn + 1,
             "prompt": prompt,
-            "answer": answer
+            "answer": answer,
+            "state": {
+                "turn": turn + 1,
+                "tool_calls": [msg for msg in completion_messages if msg["role"] == "tool"],
+                "responses": [msg for msg in completion_messages if msg["role"] == "assistant"],
+                "auto_execute_tools": self.auto_execute_tools,
+                "tool_execution_count": len([msg for msg in completion_messages if msg["role"] == "tool"]),
+                "conversation_history": messages,
+                "env_type": "RLEnv" + ("-ToolEnabled" if self.tools else "")
+            }
         }
     
     def evaluate(self, llm, num_examples: Optional[int] = None, **kwargs) -> Dict[str, Any]:
@@ -166,11 +215,18 @@ class RLEnv:
         total_reward = 0.0
         
         for example in eval_dataset:
-            prompt = example['prompt']
+            # Handle both 'prompt' and 'messages' columns like Verifiers
+            if 'prompt' in example:
+                prompt = example['prompt']
+            elif 'messages' in example:
+                prompt = example['messages']  # List of message dicts
+            else:
+                raise ValueError("Dataset must have either 'prompt' or 'messages' column")
+                
             answer = example.get('answer', None)
             
             # Add any additional dataset columns to kwargs
-            example_kwargs = {k: v for k, v in example.items() if k not in ['prompt', 'answer']}
+            example_kwargs = {k: v for k, v in example.items() if k not in ['prompt', 'messages', 'answer']}
             
             result = self.rollout(llm, prompt, answer, **{**example_kwargs, **kwargs})
             results.append(result)
@@ -183,10 +239,14 @@ class RLEnv:
             "rewards": [r['reward'] for r in results]
         }
     
-    def _execute_tool(self, tool_call: Dict[str, Any]) -> Any:
-        """Execute a tool function call."""
-        tool_name = tool_call['name']
-        tool_args = tool_call.get('arguments', {})
+    def _execute_tool(self, tool_call) -> Any:
+        """Execute a tool function call using dictionary format."""
+        # Handle dict format (preferred).
+        tool_name = tool_call['function']['name']
+        tool_args = tool_call['function']['arguments']
+        # Parse arguments if they're a JSON string
+        if isinstance(tool_args, str):
+            tool_args = json.loads(tool_args)
         
         # Find the tool function
         tool_func = None

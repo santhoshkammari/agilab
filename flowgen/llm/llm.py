@@ -6,7 +6,7 @@ import re
 from abc import abstractmethod, ABC
 from openai import OpenAI
 from collections import defaultdict
-from typing import Any, Mapping, Optional, Sequence, Union,Callable
+from typing import Any, Mapping, Optional, Sequence, Union, Callable, get_args, get_origin
 from pydantic import (
   BaseModel,
   ConfigDict,
@@ -209,6 +209,138 @@ def convert_function_to_tool(func: Callable) -> Tool:
   return Tool.model_validate(tool)
 
 
+# Verifiers-style tool conversion for better compatibility
+_JSON_PRIMITIVE_MAP: dict[type, str] = {
+    str: "string",
+    int: "integer", 
+    float: "number",
+    bool: "boolean",
+    list: "array",
+    dict: "object",
+}
+
+def _get_json_type(annotation: Any) -> tuple[str, list[Any] | None]:
+    """Return the JSON Schema type name and optional enum values for annotation."""
+    origin = get_origin(annotation)
+
+    if origin is Literal:
+        literal_values = list(get_args(annotation))
+        if not literal_values:
+            return "string", None
+        first_value = literal_values[0]
+        json_type = _JSON_PRIMITIVE_MAP.get(type(first_value), "string")
+        return json_type, literal_values
+
+    if origin is Union:
+        args = [a for a in get_args(annotation) if a is not type(None)]
+        if len(args) == 1:
+            return _get_json_type(args[0])
+
+    json_type = _JSON_PRIMITIVE_MAP.get(annotation, "string")
+    return json_type, None
+
+def _parse_docstring_verifiers(func: Any) -> tuple[str, dict[str, str]]:
+    """Extract summary and parameter descriptions from function's docstring."""
+    doc = inspect.getdoc(func) or ""
+    if not doc:
+        return "", {}
+
+    lines = doc.splitlines()
+    summary = next((line.strip() for line in lines if line.strip()), "")
+
+    param_descs: dict[str, str] = {}
+    try:
+        block_idx = next(
+            i for i, line in enumerate(lines)
+            if line.strip().lower() in {"args:", "arguments:", "parameters:"}
+        )
+    except StopIteration:
+        return summary, param_descs
+
+    _PARAM_RE = re.compile(r"^\s*(\w+)\s*\(([^)]*)\):\s*(.*)$")
+    for raw in lines[block_idx + 1:]:
+        if not raw.strip():
+            break
+        match = _PARAM_RE.match(raw)
+        if match:
+            name, _type, desc = match.groups()
+            param_descs[name] = desc.strip()
+        else:
+            if param_descs and raw.startswith(" " * 4):
+                last_key = next(reversed(param_descs))
+                param_descs[last_key] += " " + raw.strip()
+            else:
+                break
+    return summary, param_descs
+
+def _is_required(annotation: Any) -> bool:
+    """True if annotation is not Optional/Union[..., None]."""
+    origin = get_origin(annotation)
+    if origin is Union:
+        return type(None) not in get_args(annotation)
+    return True
+
+def convert_func_to_oai_tool(func: Any) -> dict:
+    """Convert function to OpenAI function-calling tool schema (Verifiers-style)."""
+    if not callable(func):
+        raise TypeError("Expected a callable object")
+
+    signature = inspect.signature(func)
+    summary, param_descs = _parse_docstring_verifiers(func)
+
+    if not summary:
+        summary = f"Auto-generated description for `{func.__name__}`."
+
+    try:
+        resolved_hints = inspect.get_annotations(func, eval_str=True)
+    except AttributeError:
+        from typing import get_type_hints
+        resolved_hints = get_type_hints(func)
+
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+
+    for name, param in signature.parameters.items():
+        if name == "self":
+            continue
+
+        annotation = resolved_hints.get(
+            name,
+            param.annotation if param.annotation is not inspect.Parameter.empty else str,
+        )
+        json_type, enum_vals = _get_json_type(annotation)
+
+        prop_schema: dict[str, Any] = {"type": json_type}
+        if enum_vals is not None:
+            prop_schema["enum"] = enum_vals
+
+        if name in param_descs:
+            prop_schema["description"] = param_descs[name]
+        else:
+            prop_schema.setdefault("description", f"Parameter `{name}` of type {json_type}.")
+
+        properties[name] = prop_schema
+
+        if param.default is inspect.Parameter.empty and _is_required(annotation):
+            required.append(name)
+
+    parameters_schema: dict[str, Any] = {
+        "type": "object",
+        "properties": properties,
+    }
+    if required:
+        parameters_schema["required"] = required
+
+    return {
+        "type": "function",
+        "function": {
+            "name": func.__name__,
+            "description": summary,
+            "parameters": parameters_schema,
+        },
+    }
+
+
 class BaseLLM(ABC):
     """Base class for all LLM implementations."""
 
@@ -275,8 +407,11 @@ class BaseLLM(ABC):
         """Get timeout from kwargs or use default timeout."""
         return kwargs.get('timeout', None) or self._timeout
 
-    def _convert_function_to_tools(self,func: Optional[list[Callable]]) -> list[str]:
-        return [convert_function_to_tool(f).model_dump() if not isinstance(f, dict) else f for f in func]
+    def _convert_function_to_tools(self, func: Optional[list[Callable]]) -> list[dict]:
+        """Convert functions to OpenAI tools format using Verifiers-style conversion."""
+        if not func:
+            return []
+        return [convert_func_to_oai_tool(f) if not isinstance(f, dict) else f for f in func]
 
     def _extract_thinking(self, content):
         """Extract thinking content from <think> tags."""
@@ -288,6 +423,31 @@ class BaseLLM(ABC):
                 think = think_match.group(1).strip()
                 content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
         return think, content
+
+    def _convert_tool_calls_to_dict(self, tool_calls):
+        """Convert tool calls from object format to dictionary format."""
+        if not tool_calls:
+            return []
+        
+        dict_tool_calls = []
+        for tool_call in tool_calls:
+            if hasattr(tool_call, 'id'):
+                # OpenAI format - convert to dict
+                dict_tool_call = {
+                    'id': tool_call.id,
+                    'type': getattr(tool_call, 'type', 'function'),
+                    'function': {
+                        'name': tool_call.function.name,
+                        'arguments': tool_call.function.arguments
+                    }
+                }
+            else:
+                # Already dict format
+                dict_tool_call = tool_call
+            
+            dict_tool_calls.append(dict_tool_call)
+        
+        return dict_tool_calls
 
 
 class vLLM(BaseLLM):
@@ -320,16 +480,17 @@ class vLLM(BaseLLM):
             **kwargs
         )
 
-        result = {"think": "", "content": "", "tools": []}
+        result = {"think": "", "content": "", "tool_calls": None}
 
-        result['content'] = response.choices[0].message.content
-        result['think'] = response.choices[0].message.reasoning_content
+        result['content'] = response.choices[0].message.content or ""
+        result['think'] = getattr(response.choices[0].message, 'reasoning_content', "") or ""
 
-        for t in response.choices[0].message.tool_calls:
-            result['tools'].append({
-                'name': t.function.name,
-                'arguments': json.loads(t.function.arguments)
-            })
+        # Convert tool_calls to dictionary format
+        tool_calls = getattr(response.choices[0].message, 'tool_calls', None)
+        if tool_calls:
+            result['tool_calls'] = self._convert_tool_calls_to_dict(tool_calls)
+        else:
+            result['tool_calls'] = []
 
         return result
 
@@ -354,11 +515,14 @@ class Ollama(BaseLLM):
         response = self._client.chat(model=model, messages=input, **kwargs)
         think, content = self._extract_thinking(response['message']['content'])
 
+        # Convert tool_calls to dictionary format
+        tool_calls = response.get('message', {}).get('tool_calls', None)
+        converted_tool_calls = self._convert_tool_calls_to_dict(tool_calls) if tool_calls else []
+
         return {
             "think": think,
             "content": content,
-            "tools": [{'name': t['function']['name'], 'arguments': t['function']['arguments']}
-                      for t in response.get('message', {}).get('tool_calls', []) or []]
+            "tool_calls": converted_tool_calls
         }
 
 
