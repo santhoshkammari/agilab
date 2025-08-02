@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 from typing import Generator, Dict, Any, List, Callable, Optional, Union
-from .llm import BaseLLM
+from flowgen.llm import BaseLLM
 
 
 class Agent:
