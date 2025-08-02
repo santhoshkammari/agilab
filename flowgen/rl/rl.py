@@ -422,35 +422,9 @@ class RLEnv:
 
 # TrainWithRlEnv class removed - functionality moved to RLEnv.__rshift__
 
-
-# Common reward functions
-def exact_match_reward(prompt: str, completion: str, answer: str, **kwargs) -> float:
-    """Reward exact matches with ground truth."""
-    return 1.0 if answer.strip().lower() in completion.lower() else 0.0
-
-
-def length_reward(prompt: str, completion: str, target_length: int = 100, **kwargs) -> float:
-    """Reward completions close to target length."""
-    return max(0.0, 1.0 - abs(len(completion) - target_length) / target_length)
-
-
-def step_by_step_reward(prompt: str, completion: str, **kwargs) -> float:
-    """Reward step-by-step reasoning (more line breaks = better)."""
-    steps = completion.count('\n') + completion.count('. ')
-    return min(1.0, steps / 5.0)
-
-
-def format_reward(prompt: str, completion: str, required_format: str = None, **kwargs) -> float:
-    """Reward specific formatting patterns."""
-    if required_format is None:
-        return 1.0
-    
-    import re
-    pattern = required_format
-    return 1.0 if re.search(pattern, completion) else 0.0
-
-
 # Example usage and testing
+from flowgen.rl.reward import reward_exact_match,reward_step_by_step,reward_length
+
 if __name__ == '__main__':
     print("=== RL Framework Examples ===\n")
     
@@ -467,7 +441,7 @@ if __name__ == '__main__':
     print("1. Simple exact match environment:")
     env = RLEnv(
         dataset=sample_data,
-        reward_funcs=exact_match_reward,
+        reward_funcs=reward_exact_match,
         max_turns=1
     )
     
@@ -491,7 +465,7 @@ if __name__ == '__main__':
     print("2. Multiple rewards with weights:")
     multi_env = RLEnv(
         dataset=sample_data,
-        reward_funcs=[exact_match_reward, step_by_step_reward, length_reward],
+        reward_funcs=[reward_exact_match, reward_step_by_step, reward_length],
         reward_weights=[1.0, 0.3, 0.1],  # Accuracy most important
         max_turns=1
     )
