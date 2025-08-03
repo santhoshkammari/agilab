@@ -2,6 +2,10 @@ from __future__ import annotations
 import json
 from typing import Generator, Dict, Any, List, Callable, Optional, Union
 from flowgen.llm import BaseLLM
+from rich.console import Console
+from rich.panel import Panel
+from rich.syntax import Syntax
+from rich.text import Text
 
 
 class Agent:
@@ -13,7 +17,7 @@ class Agent:
     
     def __init__(self, llm: BaseLLM, tools: Optional[List[Callable]] = None, 
                  max_iterations: int = 10, stream: bool = False, 
-                 history: Optional[List[Dict]] = None):
+                 history: Optional[List[Dict]] = None, enable_rich_debug: bool = True):
         """Initialize Agent with any LLM and optional tools.
         
         Args:
@@ -22,17 +26,25 @@ class Agent:
             max_iterations: Maximum number of tool-calling iterations
             stream: If True, yields intermediate results during execution
             history: Previous conversation messages to continue from
+            enable_rich_debug: If True, prints rich debug panels during execution
         """
         self.llm = llm
         self.tools = tools or []
         self.max_iterations = max_iterations
         self.stream = stream
         self.history = history or []  # Store conversation history
+        self.enable_rich_debug = enable_rich_debug
         self._tool_functions = {tool.__name__: tool for tool in self.tools}
         self._conversation = []  # Current conversation (gets reset on new calls)
+        self._console = Console()
     
     def __call__(self, input: Union[str, List[Dict]], **kwargs) -> Union[Dict, Generator]:
         """Execute agentic behavior - can be used exactly like an LLM.
+        
+        Args:
+            input: User input as string or message list
+            enable_rich_debug: Override instance setting for rich debug output
+            **kwargs: Additional arguments passed to LLM
         
         Returns final result dict or Generator if stream=True.
         """
@@ -48,12 +60,47 @@ class Agent:
         messages = self.history + messages
         self._conversation = messages.copy()
         
+        # Check for rich debug override
+        enable_debug = kwargs.pop('enable_rich_debug', self.enable_rich_debug)
+        
+        # Debug: Show user message
+        if enable_debug and messages:
+            user_msg = next((msg for msg in reversed(messages) if msg.get('role') == 'user'), None)
+            if user_msg:
+                self._console.print(Panel(
+                    user_msg.get('content', ''),
+                    title="User",
+                    title_align='left',
+                    border_style="blue",
+                    width=80,
+                    padding=(0, 1)
+                ))
+        
         # Override LLM tools with agent tools if provided
         if self.tools:
             kwargs['tools'] = self.tools
         
         for iteration in range(self.max_iterations):
             response = self.llm(messages, **kwargs)
+            
+            # Debug: Show assistant response
+            if enable_debug:
+                content = response.get('content', '')
+                think = response.get('think', '')
+                debug_text = ""
+                if think:
+                    debug_text += f"Think: {think}\n\n"
+                if content:
+                    debug_text += f"Response: {content}"
+
+                self._console.print(Panel(
+                    debug_text.strip(),
+                    title="Assistant",
+                    title_align='center',
+                    border_style="green",
+                    width=80,
+                    padding=(0, 1)
+                ))
             
             # No tool calls - add assistant response and return final result
             if not response.get('tools'):
@@ -82,7 +129,37 @@ class Agent:
             
             # Execute tools and add results
             for i, tool_call in enumerate(response['tools']):
+                # Debug: Show tool call
+                if enable_debug:
+                    tool_info = f"Tool: {tool_call['name']}("
+                    if tool_call.get('arguments'):
+                        tool_info += f"{json.dumps(tool_call['arguments'])}"
+                    else:
+                        tool_info+=")"
+                    
+                    self._console.print(Panel(
+                        tool_info.strip(),
+                        title="Tool Call",
+                        title_align='right',
+                        border_style="yellow",
+                        width=80,
+                        padding=(0, 1)
+                    ))
+                
                 tool_result = self._execute_tool(tool_call)
+                
+                # Debug: Show tool result
+                if enable_debug:
+                    result_text = str(tool_result)
+                    self._console.print(Panel(
+                        result_text,
+                        title=f"Tool Result ({tool_call['name']})",
+                        title_align='right',
+                        border_style="cyan",
+                        width=80,
+                        padding=(0, 1)
+                    ))
+                
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.get('id', f"call_{i}"),
@@ -426,7 +503,7 @@ def create_agent(llm: BaseLLM, tools: Optional[List[Callable]] = None, **kwargs)
 
 # Example usage and demo
 if __name__ == '__main__':
-    from flowgen import vLLM, Gemini,BaseTemplate
+    from ..llm.gemini import Gemini
 
     # Example tools
     def get_weather(location: str) -> str:
@@ -453,14 +530,15 @@ if __name__ == '__main__':
     # 1. Basic agent usage
     print("1. Basic agent with tools:")
     agent = Agent(llm=llm, tools=[get_weather, calculate])
-    result = agent("What's 2+3 and weather in Paris?")
+    result = agent("What's 2+3 and weather in Paris?",enable_rich_debug=True)
     print(f"Result: {result['content'][:100]}...\n")
-    
+
+
     # 2. History management
     print("2. History management:")
     # Continue from previous conversation
     history = [{"role": "system", "content": "You are a helpful assistant"}]
-    agent_with_history = Agent(llm=llm, tools=[calculate], history=history)
+    agent_with_history = Agent(llm=llm, tools=[calculate], history=history,enable_rich_debug=True)
     
     # Add more history
     agent_with_history.add_history([
@@ -468,7 +546,7 @@ if __name__ == '__main__':
         {"role": "assistant", "content": "I'll help you with calculations!"}
     ])
     
-    result = agent_with_history("What's 10 * 15?")
+    result = agent_with_history("What's 10 * 15?",enable_rich_debug=True)
     print(f"Result with history: {result['content'][:50]}...\n")
     
     # 3. Agent chaining with >> operator
