@@ -426,9 +426,8 @@ def create_agent(llm: BaseLLM, tools: Optional[List[Callable]] = None, **kwargs)
 
 # Example usage and demo
 if __name__ == '__main__':
-    from ..flowgen import vLLM, Gemini
-    from .template import BaseTemplate
-    
+    from flowgen import vLLM, Gemini,BaseTemplate
+
     # Example tools
     def get_weather(location: str) -> str:
         """Get current weather for a location."""
