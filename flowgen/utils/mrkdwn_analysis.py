@@ -188,6 +188,11 @@ class MarkdownParser:
                 self.pos += 1
                 continue
 
+            if self.is_table_start():
+                print(f"DEBUG: Table detected at line {self.pos+1}: {repr(line.rstrip())}")
+                self.parse_table()
+                continue
+
             fm = self.FENCE_RE.match(line.strip())
             if fm:
                 lang = fm.group(1).strip()
@@ -287,6 +292,10 @@ class MarkdownParser:
             line = self.lines[self.pos].strip()
             if not line or self.starts_new_block(line):
                 break
+            # Check if this line could be part of a new table (has pipe and next line is separator)
+            if ('|' in line and self.pos + 1 < self.length and 
+                self.TABLE_SEPARATOR_RE.match(self.lines[self.pos + 1].strip())):
+                break
             rows.append(line)
             self.pos += 1
         def parse_row(row):
@@ -301,6 +310,15 @@ class MarkdownParser:
         self.tokens.append(BlockToken('table', meta={"header": header_cells, "rows": data_rows}, line=start+1))
 
     def starts_new_block(self, line):
+        # Check if this line could be the start of a table
+        if '|' in line:
+            # Find the line index for this line to check if next line is separator
+            for i, l in enumerate(self.lines):
+                if l.strip() == line:
+                    if i + 1 < len(self.lines) and self.TABLE_SEPARATOR_RE.match(self.lines[i + 1].strip()):
+                        return True
+                    break
+        
         return (self.ATX_HEADER_RE.match(line) or
                 self.FRONTMATTER_RE.match(line) or
                 self.FENCE_RE.match(line) or
@@ -417,6 +435,9 @@ class MarkdownParser:
         lines = []
         while self.pos < self.length:
             line = self.lines[self.pos]
+            # Debug: Check if we're consuming the target line
+            if '| Sharma in 2024 |' in line:
+                print(f"DEBUG: Paragraph parser consuming target line {self.pos+1}: {repr(line.rstrip())}")
             if not line.strip():
                 self.pos += 1
                 break
@@ -426,6 +447,8 @@ class MarkdownParser:
             self.pos += 1
         content = "\n".join(lines).strip()
         if content:
+            if '| Sharma in 2024 |' in content:
+                print(f"DEBUG: Created paragraph token containing target line, start: {start+1}, end: {self.pos}")
             self.tokens.append(BlockToken('paragraph', content=content, line=start+1))
         
         # Debug: Check if position advanced
