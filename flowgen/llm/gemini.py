@@ -70,13 +70,47 @@ class Gemini(BaseLLM):
 
         result = {"think": "", "content": "", "tools": []}
         
-        result['content'] = response.choices[0].message.content or ""
-        
-        if hasattr(response.choices[0].message, 'tool_calls') and response.choices[0].message.tool_calls:
-            for t in response.choices[0].message.tool_calls:
-                result['tools'].append({
-                    'name': t.function.name,
-                    'arguments': json.loads(t.function.arguments)
-                })
+        # Handle streaming response
+        if hasattr(response, '__class__') and 'Stream' in str(response.__class__):
+            # This is a streaming response - collect all chunks
+            content_parts = []
+            tool_calls = []
+            
+            for chunk in response:
+                if hasattr(chunk, 'choices') and chunk.choices:
+                    choice = chunk.choices[0]
+                    
+                    # Handle content
+                    if hasattr(choice, 'delta') and choice.delta:
+                        if hasattr(choice.delta, 'content') and choice.delta.content:
+                            content_parts.append(choice.delta.content)
+                        
+                        # Handle tool calls
+                        if hasattr(choice.delta, 'tool_calls') and choice.delta.tool_calls:
+                            for tool_call in choice.delta.tool_calls:
+                                if hasattr(tool_call, 'function'):
+                                    tool_calls.append(tool_call)
+            
+            result['content'] = ''.join(content_parts)
+            
+            # Process tool calls
+            if tool_calls:
+                for t in tool_calls:
+                    if hasattr(t, 'function') and t.function:
+                        result['tools'].append({
+                            'name': t.function.name,
+                            'arguments': json.loads(t.function.arguments or '{}')
+                        })
+        else:
+            # This is a regular response
+            print(response)
+            result['content'] = response.choices[0].message.content or ""
+            
+            if hasattr(response.choices[0].message, 'tool_calls') and response.choices[0].message.tool_calls:
+                for t in response.choices[0].message.tool_calls:
+                    result['tools'].append({
+                        'name': t.function.name,
+                        'arguments': json.loads(t.function.arguments)
+                    })
 
         return result
