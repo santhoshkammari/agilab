@@ -33,11 +33,11 @@ def extract_markdown_from_url(url: str):
         url: the html url string
     """
     htmls = extract_html_from_url(url)
-    if isinstance(htmls,list):
-        results = {}
-        for x in htmls:
-            results[x["url"]] = extract_markdown_from_html(x["content"])
-        return json.dumps(results)
+    # if isinstance(htmls,list):
+    #     results = {}
+    #     for x in htmls:
+    #         results[x["url"]] = extract_markdown_from_html(x["content"])
+    #     return json.dumps(results)
 
     name = url.split("/")[-1].split(".")[0]
     with open(f"{name}.md","w") as f:
