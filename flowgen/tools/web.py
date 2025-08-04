@@ -472,8 +472,8 @@ async def _get_browser():
 def search_web(query: str, max_results: int = 5) -> str:
     """Async wrapper for playwright web search - synchronous interface"""
     async def _search():
-        browser = await _get_browser()
-        search_tool = WebSearchTool(browser)
+        # browser = await _get_browser()
+        search_tool = WebSearchTool(PlaywrightBrowser())
         return await search_tool.web_search(query, 'bing', max_results)
     
     return asyncio.run(_search())
