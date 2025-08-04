@@ -1,4 +1,8 @@
 import json
+import os
+from pathlib import Path
+from functools import lru_cache
+
 from ..utils.mrkdwn_analysis import MarkdownAnalyzer
 
 
@@ -283,17 +287,11 @@ def run_example():
 def run_sample():
     print("DEBUG: Starting run_sample()")
     import time
-    start = time.time()
-    
-    # res = markdown_analyzer_get_overview('test/transformers.md')
-    print("DEBUG: Calling markdown_analyzer_get_code_blocks")
+    start = time.perf_counter()
     res = markdown_analyzer_get_code_blocks("/home/ntlpt59/master/own/flowgen/grpo_trainer.md")
-    
-    end = time.time()
-    print(f"DEBUG: run_sample completed in {end-start:.2f} seconds")
-    print("DEBUG: Result:")
-    print(res)
-    print('done')
+    end = time.perf_counter()
+    print(f"DEBUG: run_sample completed in {(end-start)*1000:.4f} milliseconds")
+    Path('run_sample_result.json').write_text(json.dumps(res))
 
 if __name__ == '__main__':
     run_sample()
