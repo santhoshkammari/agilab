@@ -15,7 +15,13 @@ SYSTEM_PROMPT = """You are a markdown analysis assistant. You have access to the
 Each tool takes a file path as parameter and returns data with line numbers for easy navigation. Use these tools to analyze markdown files and provide insights about their structure and content."""
 
 def _get_markdown_analyzer(path:str):
-    return MarkdownAnalyzer(path)
+    print(f"DEBUG: Creating MarkdownAnalyzer for {path}")
+    import time
+    start = time.time()
+    analyzer = MarkdownAnalyzer(path)
+    end = time.time()
+    print(f"DEBUG: MarkdownAnalyzer created in {end-start:.2f} seconds")
+    return analyzer
 
 def markdown_analyzer_get_headers(path:str):
     """Extract all headers from markdown content with line numbers"""
@@ -275,9 +281,19 @@ def run_example():
             })
 
 def run_sample():
+    print("DEBUG: Starting run_sample()")
+    import time
+    start = time.time()
+    
     # res = markdown_analyzer_get_overview('test/transformers.md')
+    print("DEBUG: Calling markdown_analyzer_get_code_blocks")
     res = markdown_analyzer_get_code_blocks("/home/ntlpt59/master/own/flowgen/grpo_trainer.md")
+    
+    end = time.time()
+    print(f"DEBUG: run_sample completed in {end-start:.2f} seconds")
+    print("DEBUG: Result:")
     print(res)
+    print('done')
 
 if __name__ == '__main__':
     run_sample()

@@ -136,7 +136,13 @@ class MarkdownParser:
     def parse(self):
         if self.pos < self.length and self.FRONTMATTER_RE.match(self.lines[self.pos].strip()):
             self.parse_frontmatter()
+        
+        loop_count = 0
         while self.pos < self.length:
+            loop_count += 1
+            if loop_count > 10000:  # Increased safety limit
+                break
+                
             if self.pos >= self.length:
                 break
             line = self.lines[self.pos]
@@ -200,7 +206,7 @@ class MarkdownParser:
                 continue
 
             self.parse_paragraph()
-
+        
         return self.tokens
 
     def parse_indented_code_block(self):
@@ -322,17 +328,24 @@ class MarkdownParser:
 
     def parse_fenced_code_block(self, lang):
         initial_line = self.pos
-        fence_marker = self.lines[self.pos].strip()[:3]
+        fence_marker = self.lines[self.pos].strip()
         self.pos += 1
         start = self.pos
+        iterations = 0
         while self.pos < self.length:
+            iterations += 1
+            if iterations > 1000:  # Safety break
+                break
             line = self.lines[self.pos]
-            if line.strip() == fence_marker:
-                content = "\n".join(self.lines[start:self.pos])
-                end_line = self.pos + 1  # Line where closing fence is
-                self.tokens.append(BlockToken('code', content=content, meta={"language": lang, "end_line": end_line}, line=start+1))
-                self.pos += 1
-                return
+            # Match closing fence - should be at least 3 backticks/tildes and match the opening type
+            if line.strip().startswith(fence_marker[:3]) and len(line.strip()) >= 3:
+                all_same_char = all(c == fence_marker[0] for c in line.strip())
+                if all_same_char:
+                    content = "\n".join(self.lines[start:self.pos])
+                    end_line = self.pos + 1  # Line where closing fence is
+                    self.tokens.append(BlockToken('code', content=content, meta={"language": lang, "end_line": end_line}, line=start+1))
+                    self.pos += 1
+                    return
             self.pos += 1
         self.pos = initial_line
         raise ValueError(f"Unclosed code fence starting at line {initial_line + 1}")
@@ -356,7 +369,11 @@ class MarkdownParser:
         items = []
         current_item = []
         list_pattern = self.ORDERED_LIST_RE if ordered else self.UNORDERED_LIST_RE
+        iterations = 0
         while self.pos < self.length:
+            iterations += 1
+            if iterations > 500:  # Safety break for list parsing
+                break
             line = self.lines[self.pos]
             if not line.strip():
                 if current_item:
@@ -396,6 +413,7 @@ class MarkdownParser:
 
     def parse_paragraph(self):
         start = self.pos
+        initial_pos = self.pos
         lines = []
         while self.pos < self.length:
             line = self.lines[self.pos]
@@ -409,16 +427,24 @@ class MarkdownParser:
         content = "\n".join(lines).strip()
         if content:
             self.tokens.append(BlockToken('paragraph', content=content, line=start+1))
+        
+        # Debug: Check if position advanced
+        if self.pos == initial_pos and self.pos < self.length:
+            # Force advance to prevent infinite loop
+            self.pos += 1
 
 class MarkdownAnalyzer:
     def __init__(self, file_path, encoding='utf-8'):
         with open(file_path, 'r', encoding=encoding) as f:
             self.text = f.read()
         parser = MarkdownParser(self.text)
+        
         self.tokens = parser.parse()
+        
         self.references = parser.references
         self.footnotes = parser.footnotes
         self.inline_parser = InlineParser(references=self.references, footnotes=self.footnotes)
+        
         self._parse_inline_tokens()
 
     @classmethod
@@ -481,10 +507,16 @@ class MarkdownAnalyzer:
 
     def _parse_inline_tokens(self):
         inline_types = ('paragraph', 'header', 'blockquote')
-        for token in self.tokens:
+        count = 0
+        
+        for i, token in enumerate(self.tokens):
             if token.type in inline_types and token.content:
-                inline_data = self.inline_parser.parse_inline(token.content)
-                token.meta.update(inline_data)
+                count += 1
+                try:
+                    inline_data = self.inline_parser.parse_inline(token.content)
+                    token.meta.update(inline_data)
+                except Exception as e:
+                    break
 
     def identify_headers(self):
         result = defaultdict(list)
