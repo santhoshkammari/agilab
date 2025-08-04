@@ -88,9 +88,6 @@ class Agent:
         
         for iteration in range(self.max_iterations):
 
-            print('***************************')
-            print(f'{messages=}')
-            print('***************************')
 
             response = self.llm(messages, **kwargs)
             print(response)
@@ -139,18 +136,17 @@ class Agent:
                 "tool_calls": response['tool_calls']
             })
 
-            print('===========================')
-            print(f'{messages=}')
-            print('===========================')
 
             # Execute tools and add results
             for i, tool_call in enumerate(response['tool_calls']):
+                # Store original tool call for ID
+                original_tool_call = tool_call
                 # Debug: Show tool call
-                tool_call = tool_call['function']
+                tool_call_func = tool_call['function']
                 if enable_debug:
-                    tool_info = f"Tool: {tool_call['name']}("
-                    if tool_call.get('arguments'):
-                        tool_info += f"{json.dumps(tool_call['arguments'])}"
+                    tool_info = f"Tool: {tool_call_func['name']}("
+                    if tool_call_func.get('arguments'):
+                        tool_info += f"{json.dumps(tool_call_func['arguments'])}"
                     else:
                         tool_info+=")"
                     
@@ -163,7 +159,7 @@ class Agent:
                         expand=False
                     ))
                 
-                tool_result = await self._execute_tool(tool_call)
+                tool_result = await self._execute_tool(tool_call_func)
                 
                 # Debug: Show tool result
                 if enable_debug:
@@ -171,7 +167,7 @@ class Agent:
                     # Handle long text by removing width restriction and improving text handling
                     self._console.print(Panel(
                         result_text,
-                        title=f"Tool Result ({tool_call['name']})",
+                        title=f"Tool Result ({tool_call_func['name']})",
                         title_align='right',
                         border_style="cyan",
                         padding=(0, 1),
@@ -180,8 +176,8 @@ class Agent:
                 
                 messages.append({
                     "role": "tool",
-                    "tool_call_id": tool_call.get('id', f"call_{i}"),
-                    "name": tool_call['name'],
+                    "tool_call_id": original_tool_call.get('id', f"call_{i}"),
+                    "name": tool_call_func['name'],
                     "content": str(tool_result)
                 })
         
