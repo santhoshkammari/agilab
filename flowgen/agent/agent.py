@@ -90,7 +90,6 @@ class Agent:
 
 
             response = self.llm(messages, **kwargs)
-            print(response)
 
             # Debug: Show assistant response
             if enable_debug:
