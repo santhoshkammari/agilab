@@ -275,7 +275,8 @@ def run_example():
             })
 
 def run_sample():
-    res = markdown_analyzer_get_overview('test/transformers.md')
+    # res = markdown_analyzer_get_overview('test/transformers.md')
+    res = markdown_analyzer_get_code_blocks("/test/sber.md")
     print(res)
 
 if __name__ == '__main__':
