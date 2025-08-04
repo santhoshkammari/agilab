@@ -423,9 +423,8 @@ class RLEnv:
 # TrainWithRlEnv class removed - functionality moved to RLEnv.__rshift__
 
 # Example usage and testing
-from flowgen.rl.reward import reward_exact_match,reward_step_by_step,reward_length
-
 if __name__ == '__main__':
+    from reward import reward_exact_match,reward_step_by_step,reward_length
     print("=== RL Framework Examples ===\n")
     
     # Create sample dataset
