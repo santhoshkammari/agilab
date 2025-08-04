@@ -87,7 +87,13 @@ class Agent:
             kwargs['tools'] = self.tools
         
         for iteration in range(self.max_iterations):
+
+            print('***************************')
+            print(f'{messages=}')
+            print('***************************')
+
             response = self.llm(messages, **kwargs)
+            print(response)
 
             # Debug: Show assistant response
             if enable_debug:
@@ -132,7 +138,11 @@ class Agent:
                 "role": "assistant", 
                 "tool_calls": response['tool_calls']
             })
-            
+
+            print('===========================')
+            print(f'{messages=}')
+            print('===========================')
+
             # Execute tools and add results
             for i, tool_call in enumerate(response['tool_calls']):
                 # Debug: Show tool call
@@ -295,7 +305,7 @@ class Agent:
                 "id": tool.get('id', f"call_{i}"),
                 "function": {
                     "name": tool['name'],
-                    "arguments": json.dumps(tool['arguments'])
+                    "arguments": json.dumps(tool['arguments']) if isinstance(tool['arguments'],dict) else tool['arguments']
                 },
                 "type": "function"
             }
@@ -305,7 +315,7 @@ class Agent:
     async def _execute_tool(self, tool_call: Dict) -> Any:
         """Execute a single tool call."""
         tool_name = tool_call['name']
-        tool_args = tool_call['arguments']
+        tool_args = tool_call['arguments'] if isinstance(tool_call['arguments'],dict) else json.loads(tool_call['arguments'])
         
         if tool_name not in self._tool_functions:
             return f"Error: Tool '{tool_name}' not found"

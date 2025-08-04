@@ -68,7 +68,7 @@ class Gemini(BaseLLM):
             **kwargs
         )
 
-        result = {"think": "", "content": "", "tools": []}
+        result = {"think": "", "content": "", "tool_calls": []}
         
         # Handle streaming response
         if hasattr(response, '__class__') and 'Stream' in str(response.__class__):
@@ -103,14 +103,13 @@ class Gemini(BaseLLM):
                         })
         else:
             # This is a regular response
-            print(response)
             result['content'] = response.choices[0].message.content or ""
             
             if hasattr(response.choices[0].message, 'tool_calls') and response.choices[0].message.tool_calls:
-                for t in response.choices[0].message.tool_calls:
-                    result['tools'].append({
-                        'name': t.function.name,
-                        'arguments': json.loads(t.function.arguments)
-                    })
-
+                result['tool_calls']  = self._convert_tool_calls_to_dict(response.choices[0].message.tool_calls)
+                # for t in response.choices[0].message.tool_calls:
+                #     result['tool_calls'].append({
+                #         'name': t.function.name,
+                #         'arguments': json.loads(t.function.arguments)
+                #     })
         return result

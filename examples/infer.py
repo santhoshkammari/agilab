@@ -6,8 +6,8 @@ from flowgen.tools.markdown import tool_functions as mt
 from flowgen.tools.text_editor import tool_functions as tt
 from flowgen.tools.content_extract import tool_functions as ct
 
-# llm = Gemini()
-llm = Ollama(host='192.168.170.76',model="qwen3:1.7b")
+llm = Gemini()
+# llm = Ollama(host='192.168.170.76',model="qwen3:1.7b")
 
 agent = Agent(llm,tools=[*list(mt.values()),*list(wt.values()),*list(ct.values())])
 # agent("do websearch for latest ai news, after that do search for latest modi news, and then latest ind vs eng match",temperature=0.0)
