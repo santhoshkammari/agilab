@@ -40,7 +40,7 @@ class Agent:
         self._conversation = []  # Current conversation (gets reset on new calls)
         self._console = Console()
     
-    def __call__(self, input: Union[str, List[Dict]], **kwargs) -> Union[Dict, Generator]:
+    async def run_async(self, input: Union[str, List[Dict]], **kwargs) -> Union[Dict, Generator]:
         """Execute agentic behavior - can be used exactly like an LLM.
         
         Args:
@@ -53,9 +53,13 @@ class Agent:
         if self.stream or kwargs.get('stream', False):
             return self._stream_execute(input, **kwargs)
         else:
-            return self._execute(input, **kwargs)
+            return await self._execute(input, **kwargs)
+
+    def __call__(self, input: Union[str, List[Dict]], **kwargs):
+        return asyncio.run(self.run_async(input=input,**kwargs))
+
     
-    def _execute(self, input: Union[str, List[Dict]], **kwargs) -> Dict:
+    async def _execute(self, input: Union[str, List[Dict]], **kwargs) -> Dict:
         """Non-streaming execution - returns final result."""
         messages = self._normalize_input(input)
         # Prepend history to current conversation
@@ -96,7 +100,7 @@ class Agent:
                     debug_text += f"Response: {content}"
 
                 self._console.print(Panel(
-                    debug_text.strip(),
+                    content,
                     title="Assistant",
                     title_align='center',
                     border_style="green",
@@ -149,7 +153,7 @@ class Agent:
                         expand=False
                     ))
                 
-                tool_result = self._execute_tool(tool_call)
+                tool_result = await self._execute_tool(tool_call)
                 
                 # Debug: Show tool result
                 if enable_debug:
@@ -184,7 +188,7 @@ class Agent:
             'truncated': True
         }
     
-    def _stream_execute(self, input: Union[str, List[Dict]], **kwargs) -> Generator[Dict, None, None]:
+    async def _stream_execute(self, input: Union[str, List[Dict]], **kwargs) -> Generator[Dict, None, None]:
         """Streaming execution - yields intermediate results."""
         messages = self._normalize_input(input)
         # Prepend history to current conversation
@@ -248,7 +252,7 @@ class Agent:
                     'iteration': iteration + 1
                 }
                 
-                tool_result = self._execute_tool(tool_call)
+                tool_result = await self._execute_tool(tool_call)
                 
                 yield {
                     'type': 'tool_result',
@@ -298,7 +302,7 @@ class Agent:
             for i, tool in enumerate(tools)
         ]
     
-    def _execute_tool(self, tool_call: Dict) -> Any:
+    async def _execute_tool(self, tool_call: Dict) -> Any:
         """Execute a single tool call."""
         tool_name = tool_call['name']
         tool_args = tool_call['arguments']
@@ -308,7 +312,7 @@ class Agent:
         
         try:
             if asyncio.iscoroutinefunction(self._tool_functions[tool_name]):
-                return asyncio.run(self._tool_functions[tool_name](**tool_args))
+                return await self._tool_functions[tool_name](**tool_args)
             else:
                 return self._tool_functions[tool_name](**tool_args)
         except Exception as e:

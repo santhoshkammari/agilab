@@ -91,7 +91,7 @@ class PlaywrightBrowser:
                     logger.debug(f"Navigation attempt {attempt + 1}/{max_retries}")
 
                     goto_start = time.time()
-                    await self.page.goto(url, wait_until=wait_until, timeout=30000)
+                    await self.page.goto(url, wait_until=wait_until, timeout=5000)
                     logger.debug(f"Page.goto with wait_until='{wait_until}' took: {time.time() - goto_start:.3f}s")
                     logger.debug(f"Navigation attempt {attempt + 1} successful in: {time.time() - attempt_start:.3f}s")
                     break
@@ -101,7 +101,7 @@ class PlaywrightBrowser:
                     if attempt == max_retries - 1:
                         raise e
                     logger.debug(f"Retrying navigation in 2 seconds...")
-                    await asyncio.sleep(attempt + 1)
+                    await asyncio.sleep(2)
         except Exception as e:
             logger.error(f"TOTAL navigation failed after {time.time() - nav_start:.3f}s: {str(e)}")
             raise e
