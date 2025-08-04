@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import asyncio
 import json
 from typing import Generator, Dict, Any, List, Callable, Optional, Union
 from flowgen.llm import BaseLLM
@@ -82,7 +84,7 @@ class Agent:
         
         for iteration in range(self.max_iterations):
             response = self.llm(messages, **kwargs)
-            
+
             # Debug: Show assistant response
             if enable_debug:
                 content = response.get('content', '')
@@ -103,7 +105,7 @@ class Agent:
                 ))
             
             # No tool calls - add assistant response and return final result
-            if not response.get('tools'):
+            if not response.get('tool_calls'):
                 # Add the assistant's response to conversation
                 messages.append({
                     "role": "assistant",
@@ -124,12 +126,13 @@ class Agent:
             # Add assistant message with tool calls
             messages.append({
                 "role": "assistant", 
-                "tool_calls": self._format_tool_calls(response['tools'])
+                "tool_calls": response['tool_calls']
             })
             
             # Execute tools and add results
-            for i, tool_call in enumerate(response['tools']):
+            for i, tool_call in enumerate(response['tool_calls']):
                 # Debug: Show tool call
+                tool_call = tool_call['function']
                 if enable_debug:
                     tool_info = f"Tool: {tool_call['name']}("
                     if tool_call.get('arguments'):
@@ -304,7 +307,10 @@ class Agent:
             return f"Error: Tool '{tool_name}' not found"
         
         try:
-            return self._tool_functions[tool_name](**tool_args)
+            if asyncio.iscoroutinefunction(self._tool_functions[tool_name]):
+                return asyncio.run(self._tool_functions[tool_name](**tool_args))
+            else:
+                return self._tool_functions[tool_name](**tool_args)
         except Exception as e:
             return f"Error executing {tool_name}: {str(e)}"
     

@@ -1,6 +1,8 @@
 from __future__ import annotations
 import json
 import inspect
+import uuid
+
 import pydantic
 import re
 from abc import abstractmethod, ABC
@@ -444,10 +446,18 @@ class BaseLLM(ABC):
                         'arguments': tool_call.function.arguments
                     }
                 }
-            else:
-                # Already dict format
+            elif isinstance(tool_call, dict):
                 dict_tool_call = tool_call
-            
+            else:
+                dict_tool_call = {
+                    'id': str(uuid.uuid4()),
+                    'type': getattr(tool_call, 'type', 'function'),
+                    'function': {
+                        'name': tool_call.function.name,
+                        'arguments': tool_call.function.arguments
+                    }
+                }
+
             dict_tool_calls.append(dict_tool_call)
         
         return dict_tool_calls
@@ -507,25 +517,30 @@ class Ollama(BaseLLM):
         input = self._normalize_input(input)
         model = self._check_model(kwargs, self._model)
         tools = self._get_tools(kwargs)
-        schema = self._get_format(kwargs)
+        format = self._get_format(kwargs)
 
         if tools:
-            kwargs['tools'] = self._convert_function_to_tools(tools)
-        if schema:
-            kwargs['format'] = schema
+            tools = self._convert_function_to_tools(tools)
 
-        response = self._client.chat(model=model, messages=input, **kwargs)
+        options = {**kwargs}
+        response = self._client.chat(model=model, messages=input,
+                                     format=format,
+                                     tools=tools,
+                                     options=options)
+        result = {"think": "", "content": "", "tool_calls": None}
+
         think, content = self._extract_thinking(response['message']['content'])
 
-        # Convert tool_calls to dictionary format
+        result['think'] = think
+        result['content'] = content
         tool_calls = response.get('message', {}).get('tool_calls', None)
-        converted_tool_calls = self._convert_tool_calls_to_dict(tool_calls) if tool_calls else []
+        if tool_calls:
+            result['tool_calls'] = self._convert_tool_calls_to_dict(tool_calls)
+        else:
+            result['tool_calls'] = []
 
-        return {
-            "think": think,
-            "content": content,
-            "tool_calls": converted_tool_calls
-        }
+        return result
+
 
 
 class Person(BaseModel):

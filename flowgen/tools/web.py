@@ -72,7 +72,6 @@ class PlaywrightBrowser:
 
         self._initialized = True
         logger.debug(f"TOTAL browser initialization took: {time.time() - start_time:.3f}s")
-        await asyncio.sleep(0.1)
 
     async def navigate_to(self, url: str, wait_until: str = "domcontentloaded"):
         """Navigate to a URL with configurable wait_until parameter"""
@@ -473,8 +472,8 @@ async def _get_browser():
 def search_web(query: str, max_results: int = 5) -> str:
     """Async wrapper for playwright web search - synchronous interface"""
     async def _search():
-        # browser = await _get_browser()
-        search_tool = WebSearchTool(PlaywrightBrowser())
+        browser = await _get_browser()
+        search_tool = WebSearchTool(browser)
         return await search_tool.web_search(query, 'bing', max_results)
     
     return asyncio.run(_search())
@@ -491,13 +490,22 @@ def search_web_gui(query: str, max_results: int = 5) -> str:
         return await search_tool.web_search(query,max_results)
     return asyncio.run(_run())
 
+async def async_web_search(query:str,max_results:int=5):
+    browser = await _get_browser()
+    search_tool = WebSearchTool(browser)
+    return await search_tool.web_search(query, 'bing', max_results)
+
 tool_functions = {
-    "search_web": search_web,
+    "search_web": async_web_search,
     # "search_web_ddg": search_web_ddg,
     # "search_web_gui": search_web_gui,
 }
 
 if __name__ == '__main__':
     # Test the wrapper functions
-    result = search_web('who is modi?')
-    print(result)
+    async def run_asyn_example():
+        for i in range(10):
+            print('='*50)
+            result = await async_web_search('who is modi?')
+            print(result[0])
+    asyncio.run(run_asyn_example())
