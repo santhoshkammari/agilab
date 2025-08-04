@@ -16,7 +16,7 @@ class Agent:
     """
     
     def __init__(self, llm: BaseLLM, tools: Optional[List[Callable]] = None, 
-                 max_iterations: int = 10, stream: bool = False, 
+                 max_iterations: int = 25, stream: bool = False,
                  history: Optional[List[Dict]] = None, enable_rich_debug: bool = True):
         """Initialize Agent with any LLM and optional tools.
         
