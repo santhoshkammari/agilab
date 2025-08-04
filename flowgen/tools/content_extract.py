@@ -14,13 +14,13 @@ SYSTEM_PROMPT = """You are a content extraction assistant. You have access to th
 
 Use these tools to extract, parse, and convert web content as requested by the user."""
 
-
+from trafilatura import fetch_url
 def extract_html_from_url(url: str):
-    result = parse(url)
-    if isinstance(result, list):
-        res = [{"url": x.url, "content": x.content} for x in result]
-        return res
-    return {"url": result.url, "content": result.content}
+    content = fetch_url(url)
+    # if isinstance(result, list):
+    #     res = [{"url": x.url, "content": x.content} for x in result]
+    #     return res
+    return {"url": url, "content": content}
 
 
 def extract_markdown_from_html(html: str):
@@ -41,7 +41,7 @@ def extract_markdown_from_url(url: str):
 
     name = url.split("/")[-1].split(".")[0]
     with open(f"{name}.md","w") as f:
-        f.write(htmls['content'])
+        f.write(extract_markdown_from_html(htmls['content']))
     return f"Markdown Saved at {name}.md"
 
 tool_functions = {

@@ -72,8 +72,8 @@ class Agent:
                     title="User",
                     title_align='left',
                     border_style="blue",
-                    width=80,
-                    padding=(0, 1)
+                    padding=(0, 1),
+                    expand=False
                 ))
         
         # Override LLM tools with agent tools if provided
@@ -98,8 +98,8 @@ class Agent:
                     title="Assistant",
                     title_align='center',
                     border_style="green",
-                    width=80,
-                    padding=(0, 1)
+                    padding=(0, 1),
+                    expand=False
                 ))
             
             # No tool calls - add assistant response and return final result
@@ -142,8 +142,8 @@ class Agent:
                         title="Tool Call",
                         title_align='right',
                         border_style="yellow",
-                        width=80,
-                        padding=(0, 1)
+                        padding=(0, 1),
+                        expand=False
                     ))
                 
                 tool_result = self._execute_tool(tool_call)
@@ -151,13 +151,14 @@ class Agent:
                 # Debug: Show tool result
                 if enable_debug:
                     result_text = str(tool_result)
+                    # Handle long text by removing width restriction and improving text handling
                     self._console.print(Panel(
                         result_text,
                         title=f"Tool Result ({tool_call['name']})",
                         title_align='right',
                         border_style="cyan",
-                        width=80,
-                        padding=(0, 1)
+                        padding=(0, 1),
+                        expand=False
                     ))
                 
                 messages.append({

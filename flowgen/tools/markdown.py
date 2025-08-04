@@ -74,7 +74,7 @@ def markdown_analyzer_get_paragraphs(path:str):
     for token in analyzer.tokens:
         if token.type == 'paragraph':
             result["Paragraph"].append({"line": token.line, "content": token.content.strip()})
-    return json.dumps(result,ensure_ascii=False).strip()
+    return result
 
 def markdown_analyzer_get_links(path:str):
     """Extract HTTP/HTTPS links from markdown content with line numbers"""

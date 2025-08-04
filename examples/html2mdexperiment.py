@@ -57,9 +57,9 @@ def format_beautiful_table(table_data, max_width=40, tablefmt='grid'):
 
 
 # Your improved code
-paragraphs = markdown_analyzer_get_paragraphs('/home/ntlpt59/master/own/flowgen/Rohit_Sharma.md')
-print(paragraphs)
-exit()
+# paragraphs = markdown_analyzer_get_paragraphs('/home/ntlpt59/master/own/flowgen/Rohit_Sharma.md')
+# print(paragraphs)
+# exit()
 tables = markdown_analyzer_get_tables_metadata('/home/ntlpt59/master/own/flowgen/Rohit_Sharma.md')
 print(tables)
 
