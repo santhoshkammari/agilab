@@ -72,6 +72,7 @@ class PlaywrightBrowser:
 
         self._initialized = True
         logger.debug(f"TOTAL browser initialization took: {time.time() - start_time:.3f}s")
+        await asyncio.sleep(0.1)
 
     async def navigate_to(self, url: str, wait_until: str = "domcontentloaded"):
         """Navigate to a URL with configurable wait_until parameter"""
@@ -205,7 +206,7 @@ class WebSearchTool:
             logger.debug(f"Found {len(search_results)} results")
 
             json_start = time.time()
-            json_results = json.dumps(search_results)
+            json_results = json.dumps(search_results,ensure_ascii=False)
             logger.debug(f"JSON serialization took: {time.time() - json_start:.3f}s")
 
             logger.debug(f"TOTAL web search took: {time.time() - search_start:.3f}s")

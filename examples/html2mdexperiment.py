@@ -18,7 +18,8 @@ s = Path('/home/ntlpt59/master/own/flowgen/test/sbert.html').read_text()
 # pip install
 import textwrap
 from tabulate import tabulate
-from flowgen.tools.markdown import markdown_analyzer_get_tables
+from flowgen.tools.markdown import markdown_analyzer_get_tables_metadata, markdown_analyzer_get_table_by_line, \
+    markdown_analyzer_get_paragraphs
 
 
 def format_beautiful_table(table_data, max_width=40, tablefmt='grid'):
@@ -56,4 +57,13 @@ def format_beautiful_table(table_data, max_width=40, tablefmt='grid'):
 
 
 # Your improved code
-tables = markdown_analyzer_get_tables('/home/ntlpt59/master/own/flowgen/rohit_wiki.md')
+paragraphs = markdown_analyzer_get_paragraphs('/home/ntlpt59/master/own/flowgen/Rohit_Sharma.md')
+print(paragraphs)
+exit()
+tables = markdown_analyzer_get_tables_metadata('/home/ntlpt59/master/own/flowgen/Rohit_Sharma.md')
+print(tables)
+
+print("="*80)
+print("CAREER STATISTICS TABLE:")
+print("="*80)
+print(markdown_analyzer_get_table_by_line('/home/ntlpt59/master/own/flowgen/Rohit_Sharma.md', 4))

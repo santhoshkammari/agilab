@@ -16,7 +16,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
-from markdownify import markdownify as md
+from .custom_markdownify import custom_markdownify as md
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)

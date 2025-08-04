@@ -3,6 +3,8 @@ from dataclasses import asdict
 from typing import List
 
 from pydantic import BaseModel
+from liteauto.parselite import parse
+from flowgen.utils.custom_markdownify import custom_markdownify
 
 SYSTEM_PROMPT = """You are a content extraction assistant. You have access to the following tools for extracting and processing web content:
 
@@ -14,7 +16,6 @@ Use these tools to extract, parse, and convert web content as requested by the u
 
 
 def extract_html_from_url(url: str):
-    from liteauto.parselite import parse
     result = parse(url)
     if isinstance(result, list):
         res = [{"url": x.url, "content": x.content} for x in result]
@@ -23,8 +24,7 @@ def extract_html_from_url(url: str):
 
 
 def extract_markdown_from_html(html: str):
-    from html_to_markdown import convert_to_markdown
-    return convert_to_markdown(html) if html else ""
+    return custom_markdownify(html) if html else ""
 
 
 def extract_markdown_from_url(url: str):
