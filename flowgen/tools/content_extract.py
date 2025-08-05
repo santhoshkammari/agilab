@@ -39,7 +39,14 @@ def extract_markdown_from_url(url: str):
     #         results[x["url"]] = extract_markdown_from_html(x["content"])
     #     return json.dumps(results)
 
-    name = url.split("/")[-1].split(".")[0]
+    endpoint = url.split("/")
+    name = endpoint[-1].split(".")[0]
+    if not name:
+        try:
+            name = endpoint[-2].split(".")[0]
+        except:
+            name = endpoint
+
     with open(f"{name}.md","w") as f:
         f.write(extract_markdown_from_html(htmls['content']))
     return f"Markdown Saved at {name}.md"
