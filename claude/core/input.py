@@ -90,7 +90,7 @@ class ChatApp(App):
     }
 
     #footer {
-        height: 20vh;
+        height: 10vh;
         dock: bottom;
         background: transparent;
     }
