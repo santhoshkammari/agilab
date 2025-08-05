@@ -483,6 +483,7 @@ class vLLM(BaseLLM):
             extra_body['guided_json'] = schema
             if 'format' in kwargs:
                 kwargs.pop('format')
+                
         response = self._client.chat.completions.create(
             model=model,
             messages=input,
@@ -492,17 +493,66 @@ class vLLM(BaseLLM):
             **kwargs
         )
 
-        result = {"think": "", "content": "", "tool_calls": None}
-
-        result['content'] = response.choices[0].message.content or ""
-        result['think'] = getattr(response.choices[0].message, 'reasoning_content', "") or ""
-
-        # Convert tool_calls to dictionary format
-        tool_calls = getattr(response.choices[0].message, 'tool_calls', None)
-        if tool_calls:
-            result['tool_calls'] = self._convert_tool_calls_to_dict(tool_calls)
+        result = {"think": "", "content": "", "tool_calls": []}
+        
+        # Handle streaming response - check if it's a stream object
+        if hasattr(response, '__class__') and 'Stream' in str(response.__class__):
+            # This is a streaming response - collect all chunks
+            content_parts = []
+            tool_calls_dict = {}  # Track tool calls by ID to accumulate chunks
+            
+            for chunk in response:
+                if hasattr(chunk, 'choices') and chunk.choices:
+                    choice = chunk.choices[0]
+                    
+                    # Handle content
+                    if hasattr(choice, 'delta') and choice.delta:
+                        if hasattr(choice.delta, 'content') and choice.delta.content:
+                            content_parts.append(choice.delta.content)
+                        
+                        # Handle tool calls - accumulate streaming chunks
+                        if hasattr(choice.delta, 'tool_calls') and choice.delta.tool_calls:
+                            for tool_call in choice.delta.tool_calls:
+                                if hasattr(tool_call, 'index'):
+                                    idx = tool_call.index
+                                    if idx not in tool_calls_dict:
+                                        tool_calls_dict[idx] = {
+                                            'id': getattr(tool_call, 'id', f'call_{idx}'),
+                                            'type': 'function',
+                                            'function': {
+                                                'name': '',
+                                                'arguments': ''
+                                            }
+                                        }
+                                    
+                                    # Accumulate function name and arguments
+                                    if hasattr(tool_call, 'function') and tool_call.function:
+                                        if hasattr(tool_call.function, 'name') and tool_call.function.name:
+                                            tool_calls_dict[idx]['function']['name'] = tool_call.function.name
+                                        if hasattr(tool_call.function, 'arguments') and tool_call.function.arguments:
+                                            tool_calls_dict[idx]['function']['arguments'] += tool_call.function.arguments
+            
+            result['content'] = ''.join(content_parts)
+            result['think'] = ""  # vLLM doesn't have reasoning_content in streaming
+            
+            # Convert accumulated tool calls to list
+            if tool_calls_dict:
+                result['tool_calls'] = list(tool_calls_dict.values())
+                # Ensure arguments is valid JSON or empty dict
+                for tool_call in result['tool_calls']:
+                    if not tool_call['function']['arguments']:
+                        tool_call['function']['arguments'] = '{}'
         else:
-            result['tool_calls'] = []
+            # This is a regular response
+            result['content'] = response.choices[0].message.content or ""
+            result['think'] = getattr(response.choices[0].message, 'reasoning_content', "") or ""
+
+            # Convert tool_calls to dictionary format
+            tool_calls = getattr(response.choices[0].message, 'tool_calls', None)
+            if tool_calls:
+                result['tool_calls'] = self._convert_tool_calls_to_dict(tool_calls)
+            else:
+                result['tool_calls'] = []
 
         return result
 

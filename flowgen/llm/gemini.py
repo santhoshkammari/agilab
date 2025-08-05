@@ -93,13 +93,18 @@ class Gemini(BaseLLM):
             
             result['content'] = ''.join(content_parts)
             
-            # Process tool calls
+            # Process tool calls - convert to standard format
             if tool_calls:
-                for t in tool_calls:
+                result['tool_calls'] = []
+                for i, t in enumerate(tool_calls):
                     if hasattr(t, 'function') and t.function:
-                        result['tools'].append({
-                            'name': t.function.name,
-                            'arguments': json.loads(t.function.arguments or '{}')
+                        result['tool_calls'].append({
+                            'id': getattr(t, 'id', f'call_{i}'),
+                            'type': 'function',
+                            'function': {
+                                'name': t.function.name,
+                                'arguments': t.function.arguments or '{}'
+                            }
                         })
         else:
             # This is a regular response

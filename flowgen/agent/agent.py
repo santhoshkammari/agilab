@@ -221,12 +221,12 @@ class Agent:
                 'type': 'llm_response',
                 'content': response.get('content', ''),
                 'think': response.get('think', ''),
-                'tools': response.get('tools', []),
+                'tool_calls': response.get('tool_calls', []),
                 'iteration': iteration + 1
             }
             
             # No tool calls - add assistant response and yield final result
-            if not response.get('tools'):
+            if not response.get('tool_calls'):
                 # Add the assistant's response to conversation
                 messages.append({
                     "role": "assistant",
@@ -248,24 +248,25 @@ class Agent:
             # Add assistant message with tool calls
             messages.append({
                 "role": "assistant",
-                "tool_calls": self._format_tool_calls(response['tools'])
+                "tool_calls": response['tool_calls']
             })
             
             # Execute tools and yield results
-            for i, tool_call in enumerate(response['tools']):
+            for i, tool_call in enumerate(response['tool_calls']):
+                tool_func = tool_call['function']
                 yield {
                     'type': 'tool_start',
-                    'tool_name': tool_call['name'],
-                    'tool_args': tool_call['arguments'],
+                    'tool_name': tool_func['name'],
+                    'tool_args': tool_func['arguments'],
                     'iteration': iteration + 1
                 }
                 
-                tool_result = await self._execute_tool(tool_call)
+                tool_result = await self._execute_tool(tool_func)
                 
                 yield {
                     'type': 'tool_result',
-                    'tool_name': tool_call['name'],
-                    'tool_args': tool_call['arguments'],
+                    'tool_name': tool_func['name'], 
+                    'tool_args': tool_func['arguments'],
                     'result': str(tool_result),
                     'iteration': iteration + 1
                 }
@@ -274,7 +275,7 @@ class Agent:
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.get('id', f"call_{i}"),
-                    "name": tool_call['name'],
+                    "name": tool_func['name'],
                     "content": str(tool_result)
                 })
         
@@ -313,8 +314,8 @@ class Agent:
     async def _execute_tool(self, tool_call: Dict) -> Any:
         """Execute a single tool call."""
         tool_name = tool_call['name']
-        tool_args = tool_call['arguments'] if isinstance(tool_call['arguments'],dict) else json.loads(tool_call['arguments'])
-        
+        tool_args = json.loads(str(tool_call['arguments']))
+
         if tool_name not in self._tool_functions:
             return f"Error: Tool '{tool_name}' not found"
         
@@ -540,7 +541,7 @@ if __name__ == '__main__':
     def search_web(query: str) -> str:
         """Search the web for information."""
         return f"Search results for '{query}': [Mock results]"
-    
+
     print("=== Agent Framework Demo ===\n")
     
     # Create LLM (can be any provider)
@@ -603,12 +604,16 @@ if __name__ == '__main__':
     print("5. Streaming agent:")
     stream_agent = Agent(llm=llm, tools=[get_weather], stream=True)
     
-    for event in stream_agent("Get weather for London"):
-        if event['type'] == 'tool_start':
-            print(f"🔧 {event['tool_name']}")
-        elif event['type'] == 'final':
-            print(f"🏁 {event['content'][:50]}...")
-            break
+    import asyncio
+    async def demo_streaming():
+        async for event in stream_agent.run_async("Get weather for London"):
+            if event['type'] == 'tool_start':
+                print(f"🔧 {event['tool_name']}")
+            elif event['type'] == 'final':
+                print(f"🏁 {event['content'][:50]}...")
+                break
+    
+    asyncio.run(demo_streaming())
     
     print("\n=== New Agent Features ===")
     print("✅ History Management:")
@@ -622,5 +627,9 @@ if __name__ == '__main__':
     print("   • agent.export('markdown') - for other agents")
     print("   • Agent.load(json_data, llm, tools) - restore from export")
     print("   • Full conversation + metadata export")
+    print("✅ Todo Management:")
+    print("   • todo_write(todos) - structured task list management")
+    print("   • Track task status: pending, in_progress, completed")
+    print("   • Priority levels: high, medium, low")
     print("✅ All Previous Features:")
     print("   • Works with any BaseLLM, streaming, pluggable tools")
