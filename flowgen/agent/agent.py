@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Generator, Dict, Any, List, Callable, Optional, Union
-from flowgen.llm import BaseLLM
+from ..llm import BaseLLM
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
+from rich.markdown import Markdown
 
 
 class Agent:
@@ -101,8 +102,10 @@ class Agent:
                 if content:
                     debug_text += f"Response: {content}"
 
+                # Use Markdown for better formatting of assistant response
+                markdown_content = Markdown(content) if content else ""
                 self._console.print(Panel(
-                    content,
+                    markdown_content,
                     title="Assistant",
                     title_align='center',
                     border_style="green",

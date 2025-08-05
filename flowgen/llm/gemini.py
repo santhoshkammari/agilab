@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 from openai import OpenAI
-from flowgen.llm import BaseLLM
+from .llm import BaseLLM
 
 
 class Gemini(BaseLLM):
