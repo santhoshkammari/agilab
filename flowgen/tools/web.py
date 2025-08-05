@@ -53,7 +53,7 @@ class PlaywrightBrowser:
         logger.debug(f"Playwright start took: {time.time() - playwright_start:.3f}s")
 
         browser_start = time.time()
-        self.browser = await self.playwright.chromium.launch(
+        self.browser = await self.playwright.firefox.launch(
             headless=self.headless,
             args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled']
         )

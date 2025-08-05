@@ -3,7 +3,6 @@ from textwrap import fill
 import re
 import six
 
-
 # General-purpose regex patterns
 re_convert_heading = re.compile(r'convert_h(\d+)')
 re_line_with_content = re.compile(r'^(.*)', flags=re.MULTILINE)
@@ -78,6 +77,7 @@ def abstract_inline_conversion(markup_fn):
     the text if it looks like an HTML tag. markup_fn is necessary to allow for
     references to self.strong_em_symbol etc.
     """
+
     def implementation(self, el, text, parent_tags):
         markup_prefix = markup_fn(self)
         if markup_prefix.startswith('<') and markup_prefix.endswith('>'):
@@ -90,6 +90,7 @@ def abstract_inline_conversion(markup_fn):
         if not text:
             return ''
         return '%s%s%s%s%s' % (prefix, markup_prefix, text, markup_suffix, suffix)
+
     return implementation
 
 
@@ -193,13 +194,13 @@ class MarkdownConverter(object):
     def convert(self, html):
         soup = BeautifulSoup(html, 'html.parser')
         result = self.convert_soup(soup)
-        
+
         # Post-process to handle nested tables
         if hasattr(self, '_nested_tables'):
             for i, nested_table in enumerate(self._nested_tables):
                 placeholder = f'[NESTED_TABLE_{i}]'
-                result = result.replace(placeholder, f'\n\n**Nested Table {i+1}:**\n\n{nested_table}\n\n')
-        
+                result = result.replace(placeholder, f'\n\n**Nested Table {i + 1}:**\n\n{nested_table}\n\n')
+
         return result
 
     def convert_soup(self, soup):
@@ -235,7 +236,8 @@ class MarkdownConverter(object):
                 elif should_remove_inside and (not el.previous_sibling or not el.next_sibling):
                     # Inside block elements (excluding <pre>), ignore adjacent whitespace elements.
                     return True
-                elif should_remove_whitespace_outside(el.previous_sibling) or should_remove_whitespace_outside(el.next_sibling):
+                elif should_remove_whitespace_outside(el.previous_sibling) or should_remove_whitespace_outside(
+                    el.next_sibling):
                     # Outside block elements (including <pre>), ignore adjacent whitespace elements.
                     return True
                 else:
@@ -343,12 +345,12 @@ class MarkdownConverter(object):
         # block-level element; remove traliing whitespace at the end
         # or just before a block-level element.
         if (should_remove_whitespace_outside(el.previous_sibling)
-                or (should_remove_whitespace_inside(el.parent)
-                    and not el.previous_sibling)):
+            or (should_remove_whitespace_inside(el.parent)
+                and not el.previous_sibling)):
             text = text.lstrip(' \t\r\n')
         if (should_remove_whitespace_outside(el.next_sibling)
-                or (should_remove_whitespace_inside(el.parent)
-                    and not el.next_sibling)):
+            or (should_remove_whitespace_inside(el.parent)
+                and not el.next_sibling)):
             text = text.rstrip()
 
         return text
@@ -421,9 +423,9 @@ class MarkdownConverter(object):
         title = el.get('title')
         # For the replacement see #29: text nodes underscores are escaped
         if (self.options['autolinks']
-                and text.replace(r'\_', '_') == href
-                and not title
-                and not self.options['default_title']):
+            and text.replace(r'\_', '_') == href
+            and not title
+            and not self.options['default_title']):
             # Shortcut syntax
             return '<%s>' % href
         if self.options['default_title'] and not title:
@@ -445,6 +447,7 @@ class MarkdownConverter(object):
         def _indent_for_blockquote(match):
             line_content = match.group(1)
             return '> ' + line_content if line_content else '>'
+
         text = re_line_with_content.sub(_indent_for_blockquote, text)
 
         return '\n' + text + '\n\n'
@@ -491,6 +494,7 @@ class MarkdownConverter(object):
         def _indent_for_dd(match):
             line_content = match.group(1)
             return '    ' + line_content if line_content else ''
+
         text = re_line_with_content.sub(_indent_for_dd, text)
 
         # insert definition marker into first-line indent whitespace
@@ -547,14 +551,14 @@ class MarkdownConverter(object):
         title = el.attrs.get('title', None) or ''
         title_part = ' "%s"' % title.replace('"', r'\"') if title else ''
         if ('_inline' in parent_tags
-                and el.parent.name not in self.options['keep_inline_images_in']):
+            and el.parent.name not in self.options['keep_inline_images_in']):
             return alt
 
         return '![%s](%s%s)' % (alt, src, title_part)
 
     def convert_video(self, el, text, parent_tags):
         if ('_inline' in parent_tags
-                and el.parent.name not in self.options['keep_inline_images_in']):
+            and el.parent.name not in self.options['keep_inline_images_in']):
             return text
         src = el.attrs.get('src', None) or ''
         if not src:
@@ -617,6 +621,7 @@ class MarkdownConverter(object):
         def _indent_for_li(match):
             line_content = match.group(1)
             return bullet_indent + line_content if line_content else ''
+
         text = re_line_with_content.sub(_indent_for_li, text)
 
         # insert bullet into first-line indent whitespace
@@ -686,7 +691,7 @@ class MarkdownConverter(object):
         colspan = 1
         if 'colspan' in el.attrs and el['colspan'].isdigit():
             colspan = int(el['colspan'])
-        
+
         # Check if this cell contains a nested table
         nested_table = el.find('table')
         if nested_table:
@@ -699,9 +704,9 @@ class MarkdownConverter(object):
                 self._nested_tables = [nested_md]
             table_idx = len(self._nested_tables) - 1
             return f' [NESTED_TABLE_{table_idx}] |' * colspan
-        
+
         return ' ' + text.strip().replace("\n", " ") + ' |' * colspan
-    
+
     def _convert_nested_table(self, table_el):
         """Convert a nested table to standalone markdown"""
         # Create a temporary converter to process just this table
@@ -738,7 +743,7 @@ class MarkdownConverter(object):
         if ((is_headrow
              or (is_head_row_missing
                  and self.options['table_infer_header']))
-                and is_first_row):
+            and is_first_row):
             # first row and:
             # - is headline or
             # - headline is missing and header inference is enabled
@@ -762,6 +767,7 @@ class MarkdownConverter(object):
 
 def markdownify(html, **options):
     return MarkdownConverter(**options).convert(html)
+
 
 def custom_markdownify(html, **options):
     """Custom markdownify that handles nested tables properly"""
