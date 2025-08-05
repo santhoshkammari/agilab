@@ -65,4 +65,4 @@ def get_logger(name: str) -> logging.Logger:
     Returns:
         Configured logger instance
     """
-    return setup_logger(name, level="DEBUG")
+    return setup_logger(name, level="ERROR")

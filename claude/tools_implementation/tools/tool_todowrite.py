@@ -1,4 +1,13 @@
-def todo_write(todos):
+import json
+from typing import TypedDict,Literal,List
+
+class Todo(TypedDict):
+    id:str
+    content:str
+    priority:Literal['high','medium','low']
+    status:Literal['pending','in_progress','completed','cancelled']
+
+def todo_write(todos:List[Todo]):
     """
     Create and manage structured task lists for coding sessions.
     
@@ -17,7 +26,10 @@ def todo_write(todos):
         TypeError: If todos is not a list
     """
     if not isinstance(todos, list):
-        raise TypeError("todos must be a list")
+        try:
+            todos = json.loads(todos)
+        except:
+            raise TypeError("todos must be a list")
     
     if len(todos) == 0:
         raise ValueError("todos list must contain at least 1 todo object")
@@ -101,3 +113,4 @@ def todo_write(todos):
             break
     
     return response
+

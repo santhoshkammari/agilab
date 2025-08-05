@@ -302,3 +302,15 @@ class WebSearchTool:
         logger.debug(
             f"TOTAL DuckDuckGo extraction took: {time.time() - extract_start:.3f}s (extracted {len(results)} results)")
         return results
+
+
+async def run_sample():
+    browser = PlaywrightBrowser(headless=False)
+    await browser.initialize()
+    web = WebSearchTool(browser)
+    for x in range(4):
+        res = await web.web_search('what is 2+3?')
+        print(res)
+
+if __name__ == '__main__':
+    asyncio.run(run_sample())
