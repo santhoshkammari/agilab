@@ -18,8 +18,8 @@ class Config:
         # Provider-specific configurations
         self.providers = {
             "ollama": {
-                "host": "http://localhost:11434",
-                "model": "llama3.1:latest",
+                "host": "http://192.168.170.76:11434",
+                "model": "qwen3:1.7b",
                 "num_ctx": 8000,
                 "temperature": 0.0
             },
