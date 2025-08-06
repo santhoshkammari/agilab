@@ -143,6 +143,15 @@ class ChatApp(App):
             'grep_search': 'Grep',
             'list_directory': 'LS',
             'fetch_url': 'Web Fetch',
+            'extract_markdown_from_url': 'Extract Markdown',
+            'markdown_analyzer_get_headers': 'MD Headers',
+            'markdown_analyzer_get_paragraphs': 'MD Paragraphs',
+            'markdown_analyzer_get_links': 'MD Links',
+            'markdown_analyzer_get_code_blocks': 'MD Code Blocks',
+            'markdown_analyzer_get_tables_metadata': 'MD Tables Info',
+            'markdown_analyzer_get_table_by_line': 'MD Table',
+            'markdown_analyzer_get_lists': 'MD Lists',
+            'markdown_analyzer_get_overview': 'MD Overview',
             'async_web_search': 'Web Search',
             'todo_read': 'Todo Read',
             'todo_write': 'Update Todos',
@@ -277,7 +286,7 @@ class ChatApp(App):
         self.chat_history.extend([{"role": "user", "content": input}])
         messages = self.chat_history.copy()
         chat_area = self.query_one("#chat_area")
-        max_iterations = 5
+        max_iterations = 15
 
         try:
             while max_iterations:
@@ -308,7 +317,12 @@ class ChatApp(App):
                             tool_text.append(f'("{list(args.values())[0]}")', style="default")
 
                         st = time.perf_counter()
-                        result = await self.tools[name](**args)
+                        # Check if the tool function is async
+                        import inspect
+                        if inspect.iscoroutinefunction(self.tools[name]):
+                            result = await self.tools[name](**args)
+                        else:
+                            result = self.tools[name](**args)
                         tt = time.perf_counter() - st
                         tool_text.append(f"\n  ⎿ {self.display_toolresult(name,result,tt)}\n", style="default")
 
@@ -439,7 +453,76 @@ class ChatApp(App):
             status_indicator.update("")
             raise
 
-    def display_toolresult(self, name, result,timetaken):
-        if name=='async_web_search':
-            return f"Did 1 search in {int(timetaken)}s"
+    def display_toolresult(self, name, result, timetaken):
+        tt = f"{timetaken:.1f}s" if timetaken >= 1 else f"{timetaken:.2f}s"
+        
+        if name == 'async_web_search':
+            return f"Did 1 search in {tt}"
+        
+        elif name == 'extract_markdown_from_url':
+            if isinstance(result, str) and "Markdown Saved at" in result:
+                filename = result.split("Markdown Saved at ")[-1]
+                return f"Saved markdown to {filename} in {tt}"
+            return f"Extracted markdown in {tt}"
+        
+        elif name == 'markdown_analyzer_get_headers':
+            if isinstance(result, dict) and 'Header' in result:
+                count = len(result['Header'])
+                return f"Found {count} headers in {tt}"
+            elif "No headers found" in str(result):
+                return f"No headers found in {tt}"
+            return f"Analyzed headers in {tt}"
+        
+        elif name == 'markdown_analyzer_get_paragraphs':
+            if isinstance(result, dict) and 'Paragraph' in result:
+                count = len(result['Paragraph'])
+                return f"Extracted {count} paragraphs in {tt}"
+            elif "No paragraphs found" in str(result):
+                return f"No paragraphs found in {tt}"
+            return f"Analyzed paragraphs in {tt}"
+        
+        elif name == 'markdown_analyzer_get_links':
+            if isinstance(result, list):
+                count = len(result)
+                return f"Found {count} HTTP links in {tt}"
+            elif "No HTTP links found" in str(result):
+                return f"No HTTP links found in {tt}"
+            return f"Analyzed links in {tt}"
+        
+        elif name == 'markdown_analyzer_get_code_blocks':
+            if isinstance(result, dict) and 'Code block' in result:
+                count = len(result['Code block'])
+                return f"Found {count} code blocks in {tt}"
+            elif "No code blocks found" in str(result):
+                return f"No code blocks found in {tt}"
+            return f"Analyzed code blocks in {tt}"
+        
+        elif name == 'markdown_analyzer_get_tables_metadata':
+            if "No tables found" in str(result):
+                return f"No tables found in {tt}"
+            else:
+                # Count tables from formatted output
+                table_count = str(result).count("Table #") if "Table #" in str(result) else 0
+                return f"Found {table_count} tables in {tt}"
+        
+        elif name == 'markdown_analyzer_get_table_by_line':
+            if "No table at line" in str(result):
+                return f"No table found at specified line in {tt}"
+            return f"Extracted table in {tt}"
+        
+        elif name == 'markdown_analyzer_get_lists':
+            if isinstance(result, dict):
+                ordered_count = len(result.get('Ordered list', []))
+                unordered_count = len(result.get('Unordered list', []))
+                total_count = ordered_count + unordered_count
+                return f"Found {total_count} lists in {tt}"
+            elif "No lists found" in str(result):
+                return f"No lists found in {tt}"
+            return f"Analyzed lists in {tt}"
+        
+        elif name == 'markdown_analyzer_get_overview':
+            if "Empty document found" in str(result):
+                return f"Document is empty in {tt}"
+            return f"Generated overview in {tt}"
+        
         return str(result)
