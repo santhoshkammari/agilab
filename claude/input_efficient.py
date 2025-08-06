@@ -90,6 +90,7 @@ When referencing specific functions or pieces of code include the pattern `file_
 
 SystemInformation:
 - Current working directory : {cwd}
+
 """
 
 def get_random_status_message():
@@ -273,7 +274,7 @@ class ChatApp(App):
             yield Input(placeholder='Try "write a test for input.py"', compact=True,
                        # value="create a todo and then task: websearch for latest AI news and then fetch the first URL to summarize"
                        #  value = "create 5 todos for building a web scraper project"
-                        value = ("create 5 todods , first serach for virat , next rohith, next get virat test scores, next get rohith test scores, finally show"
+                        value = ("Complete the task by creating 5 todods , first web serach for virat , next rohith, next get virat test scores, next get rohith test scores, finally show"
                                  "in markdown table both guys stats, prefer using markdown analyzer")
                         )
     
@@ -368,7 +369,7 @@ class ChatApp(App):
                 max_iterations-=1
 
                 response = await asyncio.get_event_loop().run_in_executor(None, self.llm, messages)
-                if response['content']:
+                if response['content'].strip():
                     markdown_content = Markdown("● " + response['content'].strip())
                     markdown_widget = Static(markdown_content, classes="ai-response")
                     chat_area.mount(markdown_widget)
