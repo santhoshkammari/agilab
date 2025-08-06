@@ -140,7 +140,7 @@ class ChatApp(App):
     def action_next_command(self) -> None:
         self._navigate_history(1)
 
-    def execute_input(self,value):
+    def _check_slash_command(self,value):
         if value == "/provider":
             provider_msg = self.query_one("#provider_selection_message")
             provider_msg.update(f"Select Provider (current: {self.provider_name}):")
@@ -154,6 +154,16 @@ class ChatApp(App):
                 provider_options.highlighted = current_index
             except ValueError:
                 provider_options.highlighted = 0
+            return True
+
+        return False
+
+    def execute_input(self,value):
+        status = self._check_slash_command(value)
+        if status:
+            return
+
+
 
 
     @on(OptionList.OptionSelected, "#provider_options")
@@ -192,17 +202,17 @@ class ChatApp(App):
             return
             
         if self.provider_name == 'gemini':
-            from flowgen.llm.gemini import Gemini
-            self.llm = Gemini()
+            from flowgen.llm.gemini import GeminiAsync
+            self.llm = GeminiAsync()
         elif self.provider_name == 'ollama':
-            from flowgen.llm.llm import Ollama
-            self.llm = Ollama()
+            from flowgen.llm.llm import OllamaAsync
+            self.llm = OllamaAsync()
         elif self.provider_name == 'openrouter':
             from flowgen.llm import OpenRouter
             self.llm = OpenRouter()
         elif self.provider_name == 'vllm':
-            from flowgen.llm.llm import vLLM
-            self.llm = vLLM()
+            from flowgen.llm.llm import vLLMAsync
+            self.llm = vLLMAsync()
         else:
             raise ValueError(f"Unknown provider: {self.provider_name}")
         
