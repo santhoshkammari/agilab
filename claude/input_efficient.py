@@ -47,6 +47,8 @@ class ChatApp(App):
         super().__init__()
         self.command_history, self.history_index, self.mode_idx = [], -1, 0
         self.modes = ['default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode']
+        self.providers = ["gemini", "ollama", "openrouter", "vllm"]
+        self.provider_name = "gemini"
         self.permission_maps = {
             "default": "[grey]  ? for shortcuts[/grey]",
             'auto-accept-edits': "   ⏵⏵ auto-accept edits on   ",
@@ -54,6 +56,9 @@ class ChatApp(App):
             'plan-mode': "   ⏸ plan mode on   "
         }
         self.permission_mode, self.cwd = 'default', cwd
+
+        self.llm = None
+        self.model_loaded = False
 
     def compose(self) -> ComposeResult:
         for method in [self._create_chat_area, self._create_status_bar, self._create_selection_areas, 
@@ -76,7 +81,7 @@ class ChatApp(App):
         areas = [
             ("permission_area", "", ["1. Yes", "2. Yes, and don't ask again this session", "3. No, and tell Claude what to do differently"]),
             ("command_palette", "Command Palette - Select an option:", ["/host <url> - Set LLM host URL", "/provider - Switch LLM provider", "/think - Enable thinking mode", "/no-think - Disable thinking mode", "/status - Show current configuration", "/clear - Clear conversation history"]),
-            ("provider_selection", "Select Provider:", ["google - Google Generative AI (Gemini models)", "ollama - Local Ollama server", "openrouter - OpenRouter API (multiple models)", "vllm - Local vLLM server"]),
+            ("provider_selection", "Select Provider:", self.providers),
             ("model_selection", "Select Model:", [])
         ]
         
@@ -89,14 +94,14 @@ class ChatApp(App):
         with Horizontal(id="input_area"):
             yield Label(" > ")
             yield Input(placeholder='Try "write a test for input.py"', compact=True,
-                       value="create a todo and then task: websearch for latest AI news and then fetch the first URL to summarize")
+                       # value="create a todo and then task: websearch for latest AI news and then fetch the first URL to summarize"
+                        value = "/provider"
+                        )
     
     def _create_footer(self):
         with Horizontal(id="footer"):
             yield Static(self.permission_maps["default"], id="footer-left")
             yield Static("", id="footer-right")
-
-
 
     def action_cycle_mode(self):
         self.mode_idx = (self.mode_idx + 1) % len(self.modes)
@@ -135,6 +140,34 @@ class ChatApp(App):
     def action_next_command(self) -> None:
         self._navigate_history(1)
 
+    def execute_input(self,value):
+        if value == "/provider":
+            provider_msg = self.query_one("#provider_selection_message")
+            provider_msg.update(f"Select Provider (current: {self.provider_name}):")
+
+            self.query_one("#provider_selection").display = True
+            provider_options = self.query_one("#provider_options")
+            provider_options.focus()
+
+            try:
+                current_index = self.providers.index(self.provider_name)
+                provider_options.highlighted = current_index
+            except ValueError:
+                provider_options.highlighted = 0
+
+
+    @on(OptionList.OptionSelected, "#provider_options")
+    def handle_provider_choice(self, event: OptionList.OptionSelected) -> None:
+        """Handle provider choice from OptionList"""
+        self.provider_name = self.providers[event.option_index]
+        self.model_loaded = False  # Reset flag when provider changes
+        self.hide_provider_selection()
+
+    def hide_provider_selection(self):
+        """Hide provider selection widget and show input"""
+        self.query_one("#provider_selection").display = False
+        self.query_one(Input).focus()
+        self.load_model()
 
     def on_ready(self) -> None:
         self.theme = "gruvbox"
@@ -148,5 +181,29 @@ class ChatApp(App):
 
     @on(Input.Submitted)
     def handle_message(self,event: Input.Submitted):
+        if not self.model_loaded:
+            self.load_model()
         self.command_history.append(event.value.strip())
+        self.execute_input(event.value.strip())
         event.input.clear()
+
+    def load_model(self):
+        if self.model_loaded:
+            return
+            
+        if self.provider_name == 'gemini':
+            from flowgen.llm.gemini import Gemini
+            self.llm = Gemini()
+        elif self.provider_name == 'ollama':
+            from flowgen.llm.llm import Ollama
+            self.llm = Ollama()
+        elif self.provider_name == 'openrouter':
+            from flowgen.llm import OpenRouter
+            self.llm = OpenRouter()
+        elif self.provider_name == 'vllm':
+            from flowgen.llm.llm import vLLM
+            self.llm = vLLM()
+        else:
+            raise ValueError(f"Unknown provider: {self.provider_name}")
+        
+        self.model_loaded = True
