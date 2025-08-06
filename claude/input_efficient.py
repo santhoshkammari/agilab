@@ -262,7 +262,8 @@ class ChatApp(App):
 
     async def _execute_input_async(self, input):
         animation_task = asyncio.create_task(self.animate_thinking_status(input))
-        messages = self.chat_history.extend([{"role": "user", "content": input}])
+        self.chat_history.extend([{"role": "user", "content": input}])
+        messages = self.chat_history.copy()
         chat_area = self.query_one("#chat_area")
         max_iterations = 5
 
