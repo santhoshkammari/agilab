@@ -783,6 +783,279 @@ class OllamaAsync(BaseLLM):
 
 
 
+class hgLLM(BaseLLM):
+    def __init__(self, model=None, tools=None, format=None, timeout=None, device_map="auto", torch_dtype="auto"):
+        super().__init__(model=model, tools=tools, format=format, timeout=timeout)
+        self._device_map = device_map
+        self._torch_dtype = torch_dtype
+        self._model_instance = None
+        self._tokenizer = None
+        
+    def _load_model(self, model_name):
+        """Load the model and tokenizer if not already loaded."""
+        if self._model_instance is None or self._tokenizer is None:
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            
+            self._tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self._model_instance = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=self._torch_dtype,
+                device_map=self._device_map
+            )
+            
+    def chat(self, input, stream=False, **kwargs) -> dict:
+        input = self._normalize_input(input)
+        model = self._check_model(kwargs, self._model)
+        tools = self._get_tools(kwargs)
+        format = self._get_format(kwargs)
+        
+        # Load model if needed
+        self._load_model(model)
+        
+        # Convert messages to text using chat template
+        messages = input
+        text = self._tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=True
+        )
+        model_inputs = self._tokenizer([text], return_tensors="pt").to(self._model_instance.device)
+        
+        # Set generation parameters
+        max_new_tokens = kwargs.pop('max_new_tokens', 500)
+        temperature = kwargs.pop('temperature', 1.0)
+        top_p = kwargs.pop('top_p', 1.0)
+        do_sample = kwargs.pop('do_sample', True if temperature > 0 else False)
+        
+        result = {"think": "", "content": "", "tool_calls": []}
+        
+        if stream:
+            # Streaming generation
+            from transformers import TextIteratorStreamer
+            from threading import Thread
+            
+            streamer = TextIteratorStreamer(self._tokenizer, skip_prompt=True, skip_special_tokens=True)
+            
+            thread = Thread(
+                target=self._model_instance.generate,
+                kwargs={
+                    "input_ids": model_inputs['input_ids'],
+                    "streamer": streamer,
+                    "max_new_tokens": max_new_tokens,
+                    "temperature": temperature,
+                    "top_p": top_p,
+                    "do_sample": do_sample,
+                    **kwargs
+                }
+            )
+            thread.start()
+            
+            # Collect streaming output
+            content_parts = []
+            for new_text in streamer:
+                content_parts.append(new_text)
+            
+            thread.join()
+            full_content = ''.join(content_parts)
+            
+        else:
+            # Regular generation
+            generated_ids = self._model_instance.generate(
+                **model_inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                do_sample=do_sample,
+                **kwargs
+            )
+            
+            output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
+            full_content = self._tokenizer.decode(output_ids, skip_special_tokens=True)
+        
+        # Parse thinking content (similar to user's example)
+        try:
+            # Try to find the thinking end token (</think>)
+            if '</think>' in full_content:
+                parts = full_content.split('</think>', 1)
+                if len(parts) == 2:
+                    thinking_content = parts[0].replace('<think>', '').strip()
+                    actual_content = parts[1].strip()
+                else:
+                    thinking_content = ""
+                    actual_content = full_content.strip()
+            else:
+                thinking_content = ""
+                actual_content = full_content.strip()
+        except Exception:
+            thinking_content = ""
+            actual_content = full_content.strip() if full_content else ""
+        
+        result['think'] = thinking_content
+        result['content'] = actual_content
+        
+        # Tools are not directly supported in basic transformers, but can be added later
+        # For now, return empty tool_calls
+        result['tool_calls'] = []
+        
+        return result
+
+
+class hgLLMAsync(BaseLLM):
+    def __init__(self, model=None, tools=None, format=None, timeout=None, device_map="auto", torch_dtype="auto"):
+        super().__init__(model=model, tools=tools, format=format, timeout=timeout)
+        self._device_map = device_map
+        self._torch_dtype = torch_dtype
+        self._model_instance = None
+        self._tokenizer = None
+        
+    def _load_model(self, model_name):
+        """Load the model and tokenizer if not already loaded."""
+        if self._model_instance is None or self._tokenizer is None:
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            
+            self._tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self._model_instance = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=self._torch_dtype,
+                device_map=self._device_map
+            )
+            
+    async def chat(self, input, stream=False, **kwargs) -> dict:
+        import asyncio
+        
+        # Run the synchronous operations in a thread pool
+        loop = asyncio.get_event_loop()
+        
+        def _sync_chat():
+            input_normalized = self._normalize_input(input)
+            model = self._check_model(kwargs, self._model)
+            tools = self._get_tools(kwargs)
+            format = self._get_format(kwargs)
+            
+            # Load model if needed
+            self._load_model(model)
+            
+            # Convert messages to text using chat template
+            messages = input_normalized
+            text = self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=True
+            )
+            model_inputs = self._tokenizer([text], return_tensors="pt").to(self._model_instance.device)
+            
+            # Set generation parameters
+            max_new_tokens = kwargs.pop('max_new_tokens', 500)
+            temperature = kwargs.pop('temperature', 1.0)
+            top_p = kwargs.pop('top_p', 1.0)
+            do_sample = kwargs.pop('do_sample', True if temperature > 0 else False)
+            
+            result = {"think": "", "content": "", "tool_calls": []}
+            
+            if stream:
+                # Streaming generation
+                from transformers import TextIteratorStreamer
+                from threading import Thread
+                
+                streamer = TextIteratorStreamer(self._tokenizer, skip_prompt=True, skip_special_tokens=True)
+                
+                thread = Thread(
+                    target=self._model_instance.generate,
+                    kwargs={
+                        "input_ids": model_inputs['input_ids'],
+                        "streamer": streamer,
+                        "max_new_tokens": max_new_tokens,
+                        "temperature": temperature,
+                        "top_p": top_p,
+                        "do_sample": do_sample,
+                        **kwargs
+                    }
+                )
+                thread.start()
+                
+                # Collect streaming output
+                content_parts = []
+                for new_text in streamer:
+                    content_parts.append(new_text)
+                
+                thread.join()
+                full_content = ''.join(content_parts)
+                
+            else:
+                # Regular generation
+                generated_ids = self._model_instance.generate(
+                    **model_inputs,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    do_sample=do_sample,
+                    **kwargs
+                )
+                
+                output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
+                full_content = self._tokenizer.decode(output_ids, skip_special_tokens=True)
+            
+            # Parse thinking content (similar to user's example)
+            try:
+                # Try to find the thinking end token (</think>)
+                if '</think>' in full_content:
+                    parts = full_content.split('</think>', 1)
+                    if len(parts) == 2:
+                        thinking_content = parts[0].replace('<think>', '').strip()
+                        actual_content = parts[1].strip()
+                    else:
+                        thinking_content = ""
+                        actual_content = full_content.strip()
+                else:
+                    thinking_content = ""
+                    actual_content = full_content.strip()
+            except Exception:
+                thinking_content = ""
+                actual_content = full_content.strip() if full_content else ""
+            
+            result['think'] = thinking_content
+            result['content'] = actual_content
+            result['tool_calls'] = []
+            
+            return result
+        
+        # Run the sync operation in a thread pool
+        result = await loop.run_in_executor(None, _sync_chat)
+        return result
+    
+    async def batch_call(self, inputs, max_workers=4, **kwargs):
+        async def process_single(input_item):
+            return await self.chat(input=input_item, **kwargs)
+        
+        # Create tasks for all inputs
+        tasks = [process_single(input_item) for input_item in inputs]
+        
+        # Use asyncio.gather to run all tasks concurrently
+        results = await asyncio.gather(*tasks)
+        return results
+
+    async def __call__(self, input, **kwargs) -> dict:
+        # Auto-batch only for list of strings or list of lists
+        if isinstance(input, list) and input:
+            # List of strings - batch processing
+            if isinstance(input[0], str):
+                max_workers = kwargs.pop('max_workers', len(input))
+                return await self.batch_call(input, max_workers=max_workers, **kwargs)
+            # List of lists - batch processing  
+            elif isinstance(input[0], list):
+                max_workers = kwargs.pop('max_workers', len(input))
+                return await self.batch_call(input, max_workers=max_workers, **kwargs)
+            # List of dicts - treat as single conversation, not batch
+            elif isinstance(input[0], dict):
+                return await self.chat(input=input, **kwargs)
+            else:
+                raise ValueError(f"Unsupported input type in list: {type(input[0]).__name__}. Expected str, list, or dict.")
+        
+        return await self.chat(input=input, **kwargs)
+
+
 class Person(BaseModel):
     name: str
     age: int
