@@ -1,4 +1,5 @@
 import json
+import random
 
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -78,7 +79,6 @@ def get_random_status_message():
         'Vibing',
         'Working',
     ]
-    import random
     return random.choice(STATUS_MESSAGES)
 
 class ChatApp(App):
