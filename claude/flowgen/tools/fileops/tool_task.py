@@ -1,4 +1,4 @@
-def task(description, prompt, subagent_type):
+def task_agent(description, prompt, subagent_type):
     """
     Launch specialized agents to handle complex, multi-step tasks autonomously.
     

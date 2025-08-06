@@ -5,7 +5,7 @@ import time
 from typing import Optional, Dict, Any
 
 
-def execute_bash_command(command: str, description: Optional[str] = None, timeout: Optional[int] = None) -> Dict[str, Any]:
+def bash_execute(command: str, description: Optional[str] = None, timeout: Optional[int] = None) -> Dict[str, Any]:
     """
     Execute a bash command in a persistent shell session with security measures and timeout controls.
     

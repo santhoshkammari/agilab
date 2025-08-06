@@ -1,4 +1,4 @@
-def multi_edit(file_path, edits):
+def multi_edit_file(file_path, edits):
     """
     Perform multiple find-and-replace operations on a single file in one atomic transaction.
     
@@ -140,7 +140,7 @@ def create_file_with_multi_edit(file_path, content):
         
         # Use multi_edit to add content
         edits = [{"old_string": "", "new_string": content}]
-        return multi_edit(file_path, edits)
+        return multi_edit_file(file_path, edits)
         
     except PermissionError:
         raise PermissionError(f"Permission denied creating file: {file_path}")

@@ -59,4 +59,15 @@ def write_file(file_path, content):
     # Get file size for confirmation
     file_size = os.path.getsize(abs_path)
     
-    return f"Successfully wrote {file_size} bytes to {abs_path}"
+    # Generate content preview (first few lines)
+    lines = content.splitlines()
+    preview_lines = lines[:5]  # Show first 5 lines
+    
+    return {
+        "success": True,
+        "file_path": abs_path,
+        "file_size": file_size,
+        "preview_lines": preview_lines,
+        "total_lines": len(lines),
+        "simple_message": f"Successfully wrote {file_size} bytes to {abs_path}"
+    }

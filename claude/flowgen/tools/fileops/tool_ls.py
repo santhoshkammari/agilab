@@ -22,19 +22,23 @@ def list_directory(path: str, ignore: Optional[List[str]] = None) -> Dict[str, A
         NotADirectoryError: If path points to a file, not directory
     """
     if not path.startswith('/'):
-        raise ValueError("path must be absolute path")
-    
+        # raise ValueError("path must be absolute path")
+        return "path must be absolute path"
+
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Path not found: {path}")
-    
+        # raise FileNotFoundError(f"Path not found: {path}")
+        return f"FileNotFound at Path: {path}"
+
     if not os.path.isdir(path):
-        raise NotADirectoryError(f"Not a directory: {path}")
-    
+        # raise NotADirectoryError(f"Not a directory: {path}")
+        return f"Not a directory: {path}"
+
     try:
         items = os.listdir(path)
     except PermissionError:
         raise PermissionError(f"Permission denied: {path}")
-    
+        return f"Permission denied: {path}"
+
     ignore_patterns = ignore or []
     entries = []
     

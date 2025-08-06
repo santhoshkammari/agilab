@@ -1,5 +1,6 @@
 import os
 from typing import Optional
+import difflib
 
 
 # Global state to track read files for safety enforcement
@@ -87,6 +88,21 @@ def edit_file(file_path: str, old_string: str, new_string: str, replace_all: boo
         new_content = content.replace(old_string, new_string, 1)
         replaced_count = 1
     
+    # Generate diff for display
+    old_lines = content.splitlines(keepends=True)
+    new_lines = new_content.splitlines(keepends=True)
+    diff_lines = list(difflib.unified_diff(old_lines, new_lines, lineterm=''))
+    
+    # Extract meaningful diff lines (skip header)
+    meaningful_diff = []
+    for line in diff_lines[2:]:  # Skip the file path lines
+        if line.startswith('@@'):
+            continue
+        if line.startswith('-') and not line.startswith('---'):
+            meaningful_diff.append(f"- {line[1:].rstrip()}")
+        elif line.startswith('+') and not line.startswith('+++'):
+            meaningful_diff.append(f"+ {line[1:].rstrip()}")
+    
     # Write updated content back to file
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -96,9 +112,14 @@ def edit_file(file_path: str, old_string: str, new_string: str, replace_all: boo
     except Exception as e:
         raise RuntimeError(f"Error writing to file {file_path}: {str(e)}")
     
-    # Generate success message
-    action = "Replaced" if replaced_count == 1 else f"Replaced all {replaced_count} occurrences of"
-    return f"{action} text in {file_path}. Changes applied successfully."
+    # Return structured data for rich display
+    return {
+        "success": True,
+        "file_path": file_path,
+        "changes_count": replaced_count,
+        "diff_lines": meaningful_diff[:6],  # Limit to first 6 diff lines for display
+        "simple_message": f"{'Replaced' if replaced_count == 1 else f'Replaced all {replaced_count} occurrences of'} text in {file_path}. Changes applied successfully."
+    }
 
 
 def clear_read_files():

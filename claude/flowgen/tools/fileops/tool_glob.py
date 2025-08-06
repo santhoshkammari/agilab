@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Optional
 
 
-def glob_files(pattern: str, path: Optional[str] = None) -> List[str]:
+def glob_find_files(pattern: str, path: Optional[str] = None) -> List[str]:
     """
     Find files matching a glob pattern, sorted by modification time.
     
