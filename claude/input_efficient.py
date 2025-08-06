@@ -121,6 +121,7 @@ class ChatApp(App):
 
     def __init__(self,cwd):
         super().__init__()
+        self.tools = {**wt}
         self.command_history, self.history_index, self.mode_idx = [], -1, 0
         self.modes = ['default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode']
         self.providers = ["gemini", "ollama", "openrouter", "vllm"]
@@ -249,6 +250,17 @@ class ChatApp(App):
             except ValueError:
                 provider_options.highlighted = 0
             return True
+        
+        if value == "/clear":
+            self.chat_history.clear()
+            chat_area = self.query_one("#chat_area")
+            chat_area.remove_children()
+            chat_area.mount(Static(Panel(
+                Text.from_markup(f"[#E27A53]✻ [/][white]Welcome to [/][bold white]Claude Code[/]!\n\n"
+                               f"[italic]/help for help, /status for your current setup\n\ncwd: {self.cwd}[/italic]"),
+                border_style="#E27A53", expand=False, padding=(0, 2, 0, 1)
+            ), classes="welcome"))
+            return True
 
         return False
 
@@ -296,7 +308,7 @@ class ChatApp(App):
                             tool_text.append(f'("{list(args.values())[0]}")', style="default")
 
                         st = time.perf_counter()
-                        result = await wt[name](**args)
+                        result = await self.tools[name](**args)
                         tt = time.perf_counter() - st
                         tool_text.append(f"\n  ⎿ {self.display_toolresult(name,result,tt)}\n", style="default")
 
