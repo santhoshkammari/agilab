@@ -14,8 +14,6 @@ import datetime
 
 from flowgen.tools.web import tool_functions as wt
 
-
-
 def get_random_status_message():
     """Simple status messages for thinking animation"""
     STATUS_MESSAGES = [
