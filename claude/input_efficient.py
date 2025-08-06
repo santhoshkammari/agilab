@@ -79,6 +79,7 @@ NEVER commit changes unless the user explicitly asks you to. It is VERY IMPORTAN
 - You should proactively use the Task tool with specialized agents when the task at hand matches the agent's description.
 - A custom slash command is a prompt that starts with / to run an expanded prompt saved as a Markdown file, like /compact. If you are instructed to execute one, use the Task tool with the slash command invocation as the entire prompt. Slash commands can take arguments; defer to user instructions.
 - You have the capability to call multiple tools in a single response. When multiple independent pieces of information are requested, batch your tool calls together for optimal performance. When making multiple bash tool calls, you MUST send a single message with multiple tools calls to run the calls in parallel. For example, if you need to run "git status" and "git diff", send a single message with two tool calls to run the calls in parallel.
+- IMPORTANT: When using directory listing tools, ALWAYS use absolute paths. Never use relative paths like "." for current directory - instead use the absolute current working directory path provided in SystemInformation.
 
 You MUST answer concisely with fewer than 4 lines of text (not including tool use or code generation), unless user asks for detail.
 
@@ -599,7 +600,27 @@ class ChatApp(App):
         # FileOps tools - clean aesthetic display
         elif name == 'read_file':
             if isinstance(result, str):
+                if "[System Reminder: File exists but has empty contents]" in result:
+                    return "Read empty file"
+                
                 lines = result.count('\n') + 1 if result else 0
+                # Extract first few characters of actual content (skip line numbers)
+                content_lines = result.split('\n')[:3]
+                preview_content = []
+                
+                for line in content_lines:
+                    if '\t' in line:  # Has line number format
+                        content_part = line.split('\t', 1)[1] if len(line.split('\t')) > 1 else line
+                        preview_content.append(content_part[:60])
+                    else:
+                        preview_content.append(line[:60])
+                
+                if preview_content:
+                    preview = '\n'.join(preview_content)
+                    if len(preview) > 150:
+                        preview = preview[:147] + "..."
+                    return f"Read {lines} lines\n{preview}"
+                
                 return f"Read {lines} lines"
             return "Read file"
         
@@ -637,13 +658,35 @@ class ChatApp(App):
             return "Multi Edit"
         
         elif name == 'bash_execute':
-            if isinstance(result, str):
-                # Show command output cleanly
+            if isinstance(result, dict):
+                # New structured return format from tool_bash.py
+                success = result.get('success', False)
+                stdout = result.get('stdout', '')
+                stderr = result.get('stderr', '')
+                exit_code = result.get('exit_code', 0)
+                exec_time = result.get('execution_time', 0)
+                
+                status_icon = "✓" if success else "✗"
+                time_str = f"{exec_time:.2f}s" if exec_time < 1 else f"{exec_time:.1f}s"
+                
+                if success and stdout:
+                    lines = stdout.strip().split('\n')
+                    if len(lines) <= 2:
+                        return f"Bash {status_icon} ({time_str})\n{stdout.strip()}"
+                    else:
+                        preview = '\n'.join(lines[:2])
+                        return f"Bash {status_icon} ({time_str})\n{preview}\n... ({len(lines)-2} more lines)"
+                elif not success:
+                    error_preview = stderr[:100] + "..." if len(stderr) > 100 else stderr
+                    return f"Bash {status_icon} (exit {exit_code}, {time_str})\n{error_preview}"
+                else:
+                    return f"Bash {status_icon} ({time_str})"
+            elif isinstance(result, str):
+                # Fallback for old string format
                 lines = result.strip().split('\n')
                 if len(lines) <= 3:
                     return f"Bash\n{result.strip()}"
                 else:
-                    # Show first 2 lines and indicate more
                     preview = '\n'.join(lines[:2])
                     return f"Bash\n{preview}\n... ({len(lines)-2} more lines)"
             return "Bash"
@@ -661,19 +704,45 @@ class ChatApp(App):
             return "Search completed"
         
         elif name == 'grep_search':
-            if isinstance(result, list):
+            if isinstance(result, str):
+                if not result.strip():
+                    return "No matches found"
+                
+                lines = result.strip().split('\n')
+                count = len(lines)
+                
+                # Show a preview for content mode or count for others
+                if count <= 3:
+                    return f"Found {count} matches\n{result.strip()}"
+                else:
+                    preview = '\n'.join(lines[:2])
+                    return f"Found {count} matches\n{preview}\n... ({count-2} more)"
+            elif isinstance(result, list):
                 count = len(result)
                 return f"Found {count} matches"
-            elif isinstance(result, str):
-                lines = result.count('\n') + 1 if result else 0
-                return f"Found {lines} matches"
             return "Search completed"
         
         elif name == 'list_directory':
-            if isinstance(result, list):
+            if isinstance(result, dict) and 'entries' in result:
+                # New structured format from tool_ls.py
+                entries = result['entries']
+                count = len(entries)
+                dirs = sum(1 for e in entries if e.get('type') == 'directory')
+                files = count - dirs
+                
+                if count <= 5:
+                    preview = '\n'.join(f"{'📁' if e.get('type') == 'directory' else '📄'} {e['name']}" for e in entries)
+                    return f"Listed {count} items ({dirs} dirs, {files} files)\n{preview}"
+                else:
+                    preview = '\n'.join(f"{'📁' if e.get('type') == 'directory' else '📄'} {e['name']}" for e in entries[:3])
+                    return f"Listed {count} items ({dirs} dirs, {files} files)\n{preview}\n... ({count-3} more)"
+            elif isinstance(result, list):
                 count = len(result)
                 return f"Listed {count} paths"
             elif isinstance(result, str):
+                # Handle error messages or fallback format
+                if "FileNotFound" in result or "Not a directory" in result or "Permission denied" in result:
+                    return f"List error: {result}"
                 # Count items in string representation
                 lines = [line for line in result.split('\n') if line.strip()]
                 return f"Listed {len(lines)} paths"
@@ -688,7 +757,25 @@ class ChatApp(App):
         
         
         elif name == 'todo_write':
-            if isinstance(result, str):
+            if isinstance(result, dict) and 'success' in result:
+                # New structured format from tool_todowrite.py
+                summary = result.get('summary', {})
+                total = summary.get('total_tasks', 0)
+                status_breakdown = summary.get('status_breakdown', {})
+                current_task = summary.get('current_task')
+                
+                pending = status_breakdown.get('pending', 0)
+                in_progress = status_breakdown.get('in_progress', 0)
+                completed = status_breakdown.get('completed', 0)
+                
+                status_text = f"{total} tasks: {pending}⏸ {in_progress}⏳ {completed}✓"
+                
+                if current_task:
+                    current_preview = current_task['content'][:50] + "..." if len(current_task['content']) > 50 else current_task['content']
+                    return f"Update Todos\n{status_text}\nCurrent: {current_preview}"
+                else:
+                    return f"Update Todos\n{status_text}"
+            elif isinstance(result, str):
                 return "Update Todos"
             return "Update Todos"
         
