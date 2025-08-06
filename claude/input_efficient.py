@@ -604,23 +604,6 @@ class ChatApp(App):
                     return "Read empty file"
                 
                 lines = result.count('\n') + 1 if result else 0
-                # Extract first few characters of actual content (skip line numbers)
-                content_lines = result.split('\n')[:3]
-                preview_content = []
-                
-                for line in content_lines:
-                    if '\t' in line:  # Has line number format
-                        content_part = line.split('\t', 1)[1] if len(line.split('\t')) > 1 else line
-                        preview_content.append(content_part[:60])
-                    else:
-                        preview_content.append(line[:60])
-                
-                if preview_content:
-                    preview = '\n'.join(preview_content)
-                    if len(preview) > 150:
-                        preview = preview[:147] + "..."
-                    return f"Read {lines} lines\n{preview}"
-                
                 return f"Read {lines} lines"
             return "Read file"
         
@@ -710,13 +693,7 @@ class ChatApp(App):
                 
                 lines = result.strip().split('\n')
                 count = len(lines)
-                
-                # Show a preview for content mode or count for others
-                if count <= 3:
-                    return f"Found {count} matches\n{result.strip()}"
-                else:
-                    preview = '\n'.join(lines[:2])
-                    return f"Found {count} matches\n{preview}\n... ({count-2} more)"
+                return f"Found {count} lines"
             elif isinstance(result, list):
                 count = len(result)
                 return f"Found {count} matches"
@@ -729,13 +706,7 @@ class ChatApp(App):
                 count = len(entries)
                 dirs = sum(1 for e in entries if e.get('type') == 'directory')
                 files = count - dirs
-                
-                if count <= 5:
-                    preview = '\n'.join(f"{'📁' if e.get('type') == 'directory' else '📄'} {e['name']}" for e in entries)
-                    return f"Listed {count} items ({dirs} dirs, {files} files)\n{preview}"
-                else:
-                    preview = '\n'.join(f"{'📁' if e.get('type') == 'directory' else '📄'} {e['name']}" for e in entries[:3])
-                    return f"Listed {count} items ({dirs} dirs, {files} files)\n{preview}\n... ({count-3} more)"
+                return f"Listed {count} items ({dirs} dirs, {files} files)"
             elif isinstance(result, list):
                 count = len(result)
                 return f"Listed {count} paths"
