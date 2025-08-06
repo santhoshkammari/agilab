@@ -5,7 +5,7 @@ Test the exact CLI scenario that's failing
 
 from claude.llm import OAI
 from claude.tools import tools
-from claude.core.config import config
+from claude.config import config
 
 def test_cli_scenario():
     """Test exact CLI scenario with Google provider"""

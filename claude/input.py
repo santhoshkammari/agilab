@@ -14,17 +14,14 @@ Footer Management:
 """
 
 import asyncio
-import json
-from pathlib import Path
-import logging
 
 # Configure logger for debug output using centralized logger
-from claude.utils.logger import get_logger
+from claude.logger import get_logger
 logger = get_logger(__name__)
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
-from textual.widgets import Input, Static, Label, ProgressBar, OptionList
+from textual.widgets import Input, Static, Label, OptionList
 from textual import on
 from textual.binding import Binding
 from rich.panel import Panel
@@ -35,10 +32,10 @@ from claude.tools.web import PlaywrightBrowser, WebSearchTool
 from claude.tools.files import ClaudeTools
 # LLM imports moved to _initialize_llm for lazy loading
 from llama_index.core.tools import FunctionTool
-from llama_index.core.llms import ChatMessage, TextBlock, ImageBlock
-from claude.core.utils import ORANGE_COLORS, get_random_status_message, SYSTEM_PROMPT
-from claude.core.prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
-from claude.core.config import config
+from llama_index.core.llms import ChatMessage
+from utils import ORANGE_COLORS, get_random_status_message, SYSTEM_PROMPT
+from prompt import PLAN_MODE_PROMPT, DEFAULT_MODE_PROMPT
+from claude.config import config
 
 
 class State:

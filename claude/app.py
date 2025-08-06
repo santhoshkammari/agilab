@@ -1,8 +1,8 @@
 import asyncio
 from pathlib import Path
 
-from .core.input import ChatApp
-from .utils.logger import get_logger
+from input_efficient import ChatApp
+from logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -10,9 +10,6 @@ async def main():
     """Start the app with lazy initialization"""
     logger.debug("Starting Claude Code application")
     app = ChatApp(cwd=str(Path(__file__).parent))
-    
-    # Run the app using run_async (browser will be initialized on first use)
-    logger.debug("Running app async")
     await app.run_async()
 
 if __name__ == "__main__":

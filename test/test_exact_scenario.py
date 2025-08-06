@@ -5,7 +5,7 @@ Test the exact failing scenario from screenshot
 
 from claude.llm import OAI
 from claude.tools import tools
-from claude.core.config import config
+from claude.config import config
 
 def test_exact_failing_scenario():
     """Test the exact query that was failing"""

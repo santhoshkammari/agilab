@@ -5,7 +5,6 @@ Test OpenRouter Google Gemini integration with normal chat and tool calling.
 
 import sys
 import os
-import json
 
 # Add claude directory to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'claude'))
@@ -167,7 +166,7 @@ def test_config_integration():
     print("\n⚙️  Testing Config Integration...")
     
     try:
-        from claude.core.config import config
+        from claude.config import config
         
         # Test setting OpenRouter
         config.set_provider("openrouter")

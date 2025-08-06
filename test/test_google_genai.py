@@ -5,7 +5,6 @@ Test Google Generative AI integration with normal chat and tool calling.
 
 import sys
 import os
-import json
 
 # Add claude directory to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'claude'))
@@ -21,7 +20,7 @@ def test_config_setup():
     print("⚙️  Testing Google GenAI Config...")
     
     try:
-        from claude.core.config import config
+        from claude.config import config
         
         # The config should already be set to google by default
         print(f"  📋 Default Provider: {config.provider}")
@@ -135,7 +134,7 @@ def test_full_integration():
     print("\n🔗 Testing Full Integration...")
     
     try:
-        from claude.core.config import config
+        from claude.config import config
         from claude.llm import ChatGoogleGenAI
         from claude.llm.compat import LLMCompatibilityWrapper
         
