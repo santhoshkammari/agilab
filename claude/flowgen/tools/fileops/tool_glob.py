@@ -21,17 +21,20 @@ def glob_find_files(pattern: str, path: Optional[str] = None) -> List[str]:
         OSError: If filesystem error occurs
     """
     if not pattern:
-        raise ValueError("Pattern cannot be empty")
+        # raise ValueError("Pattern cannot be empty")
+        return "ValueError: Pattern cannot be empty"
     
     # Use current working directory if path not provided
     search_path = path if path is not None else os.getcwd()
     
     # Validate path exists and is a directory
     if not os.path.exists(search_path):
-        raise ValueError(f"Path does not exist: {search_path}")
+        # raise ValueError(f"Path does not exist: {search_path}")
+        return f"ValueError: Path does not exist: {search_path}"
     
     if not os.path.isdir(search_path):
-        raise ValueError(f"Path is not a directory: {search_path}")
+        # raise ValueError(f"Path is not a directory: {search_path}")
+        return f"ValueError: Path is not a directory: {search_path}"
     
     try:
         # Change to the search directory for glob operation
@@ -65,9 +68,11 @@ def glob_find_files(pattern: str, path: Optional[str] = None) -> List[str]:
             os.chdir(original_cwd)
             
     except PermissionError as e:
-        raise PermissionError(f"Permission denied accessing directory: {search_path}")
+        # raise PermissionError(f"Permission denied accessing directory: {search_path}")
+        return f"PermissionError: Permission denied accessing directory: {search_path}"
     except OSError as e:
-        raise OSError(f"Filesystem error: {e}")
+        # raise OSError(f"Filesystem error: {e}")
+        return f"OSError: Filesystem error: {e}"
 
 
 def glob_files_advanced(pattern: str, path: Optional[str] = None, 
@@ -90,17 +95,20 @@ def glob_files_advanced(pattern: str, path: Optional[str] = None,
         OSError: If filesystem error occurs
     """
     if not pattern:
-        raise ValueError("Pattern cannot be empty")
+        # raise ValueError("Pattern cannot be empty")
+        return "ValueError: Pattern cannot be empty"
     
     # Use current working directory if path not provided
     search_path = path if path is not None else os.getcwd()
     
     # Validate path exists and is a directory
     if not os.path.exists(search_path):
-        raise ValueError(f"Path does not exist: {search_path}")
+        # raise ValueError(f"Path does not exist: {search_path}")
+        return f"ValueError: Path does not exist: {search_path}"
     
     if not os.path.isdir(search_path):
-        raise ValueError(f"Path is not a directory: {search_path}")
+        # raise ValueError(f"Path is not a directory: {search_path}")
+        return f"ValueError: Path is not a directory: {search_path}"
     
     try:
         # Change to the search directory for glob operation
@@ -142,6 +150,8 @@ def glob_files_advanced(pattern: str, path: Optional[str] = None,
             os.chdir(original_cwd)
             
     except PermissionError as e:
-        raise PermissionError(f"Permission denied accessing directory: {search_path}")
+        # raise PermissionError(f"Permission denied accessing directory: {search_path}")
+        return f"PermissionError: Permission denied accessing directory: {search_path}"
     except OSError as e:
-        raise OSError(f"Filesystem error: {e}")
+        # raise OSError(f"Filesystem error: {e}")
+        return f"OSError: Filesystem error: {e}"

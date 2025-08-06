@@ -44,22 +44,28 @@ def grep_search(
         subprocess.CalledProcessError: If ripgrep command fails
     """
     if not pattern:
-        raise ValueError("pattern parameter is required and cannot be empty")
+        # raise ValueError("pattern parameter is required and cannot be empty")
+        return "ValueError: pattern parameter is required and cannot be empty"
     
     # Validate path if provided
     if path and not os.path.exists(path):
-        raise FileNotFoundError(f"Path not found: {path}")
+        # raise FileNotFoundError(f"Path not found: {path}")
+        return f"FileNotFoundError: Path not found: {path}"
     
     # Validate context options only work with content mode
     if output_mode != "content":
         if n is not None and n:
-            raise ValueError("-n (line numbers) requires output_mode: 'content'")
+            # raise ValueError("-n (line numbers) requires output_mode: 'content'")
+            return "ValueError: -n (line numbers) requires output_mode: 'content'"
         if A is not None:
-            raise ValueError("-A (after context) requires output_mode: 'content'")
+            # raise ValueError("-A (after context) requires output_mode: 'content'")
+            return "ValueError: -A (after context) requires output_mode: 'content'"
         if B is not None:
-            raise ValueError("-B (before context) requires output_mode: 'content'")
+            # raise ValueError("-B (before context) requires output_mode: 'content'")
+            return "ValueError: -B (before context) requires output_mode: 'content'"
         if C is not None:
-            raise ValueError("-C (context) requires output_mode: 'content'")
+            # raise ValueError("-C (context) requires output_mode: 'content'")
+            return "ValueError: -C (context) requires output_mode: 'content'"
     
     # Build ripgrep command
     cmd = ["rg"]
@@ -121,12 +127,13 @@ def grep_search(
             error_msg = f"Command failed with exit code {result.returncode}"
             if result.stderr:
                 error_msg += f": {result.stderr.strip()}"
-            raise subprocess.CalledProcessError(
-                result.returncode, 
-                cmd, 
-                output=result.stdout, 
-                stderr=result.stderr
-            )
+            # raise subprocess.CalledProcessError(
+            #     result.returncode, 
+            #     cmd, 
+            #     output=result.stdout, 
+            #     stderr=result.stderr
+            # )
+            return f"subprocess.CalledProcessError: Command failed with exit code {result.returncode}: {result.stderr.strip() if result.stderr else 'Unknown error'}"
         
         output = result.stdout.strip()
         
@@ -140,10 +147,12 @@ def grep_search(
         return output
         
     except FileNotFoundError:
-        raise FileNotFoundError("ripgrep (rg) command not found. Please install ripgrep.")
+        # raise FileNotFoundError("ripgrep (rg) command not found. Please install ripgrep.")
+        return "FileNotFoundError: ripgrep (rg) command not found. Please install ripgrep."
     except subprocess.CalledProcessError as e:
         error_msg = f"ripgrep command failed: {e.stderr}" if e.stderr else f"ripgrep command failed with exit code {e.returncode}"
-        raise subprocess.CalledProcessError(e.returncode, e.cmd, e.output, e.stderr) from e
+        # raise subprocess.CalledProcessError(e.returncode, e.cmd, e.output, e.stderr) from e
+        return f"subprocess.CalledProcessError: ripgrep command failed: {e.stderr if e.stderr else f'exit code {e.returncode}'}"
 
 
 # Alias for backwards compatibility and convenience

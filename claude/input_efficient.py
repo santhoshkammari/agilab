@@ -200,7 +200,7 @@ class ChatApp(App):
         self.command_history, self.history_index, self.mode_idx = [], -1, 0
         self.modes = ['default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode']
         self.providers = ["gemini", "ollama", "openrouter", "vllm"]
-        self.provider_name = "gemini"
+        self.provider_name = "vllm"
         self.permission_maps = {
             "default": "[grey]  ? for shortcuts[/grey]",
             'auto-accept-edits': "   ⏵⏵ auto-accept edits on   ",
@@ -228,7 +228,8 @@ class ChatApp(App):
             'markdown_analyzer_get_lists': 'MD Lists',
             'markdown_analyzer_get_overview': 'MD Overview',
             'apply_edit': 'Apply Edit',
-            'discard_edit': 'Discard Edit'
+            'discard_edit': 'Discard Edit',
+            'async_web_search':'Web Search'
         }
         self.permission_mode, self.cwd = 'default', cwd
 
@@ -271,7 +272,9 @@ class ChatApp(App):
             yield Label(" > ")
             yield Input(placeholder='Try "write a test for input.py"', compact=True,
                        # value="create a todo and then task: websearch for latest AI news and then fetch the first URL to summarize"
-                        value = "what is today's ai news?"
+                       #  value = "create 5 todos for building a web scraper project"
+                        value = ("create 5 todods , first serach for virat , next rohith, next get virat test scores, next get rohith test scores, finally show"
+                                 "in markdown table both guys stats, prefer using markdown analyzer")
                         )
     
     def _create_footer(self):
@@ -385,7 +388,7 @@ class ChatApp(App):
                         tool_text = Text()
                         tool_text.append("● ", style="dim #5cf074")
                         tool_text.append(self.display_toolname_maps[name], style="bold")
-                        if args:
+                        if args and name not in ["todo_write"]:
                             tool_text.append(f'("{list(args.values())[0]}")', style="default")
 
                         st = time.perf_counter()
@@ -396,10 +399,22 @@ class ChatApp(App):
                         else:
                             result = self.tools[name](**args)
                         tt = time.perf_counter() - st
-                        tool_text.append(f"\n  ⎿ {self.display_toolresult(name,result,tt)}\n", style="default")
+                        
+                        # Handle Rich Text objects for todo_write specially
+                        tool_result_display = self.display_toolresult(name,result,tt)
+                        if name == 'todo_write' and hasattr(tool_result_display, 'append'):
+                            markdown_widget = Static(tool_text, classes="ai-response")
+                            chat_area.mount(markdown_widget)
 
-                        markdown_widget = Static(tool_text, classes="ai-response")
-                        chat_area.mount(markdown_widget)
+                            # Mount the Rich Text todos separately
+                            todo_widget = Static(tool_result_display, classes="ai-response")
+                            chat_area.mount(todo_widget)
+                        else:
+                            # Regular string result
+                            tool_text.append(f"\n  ⎿ {tool_result_display}\n", style="default")
+                            markdown_widget = Static(tool_text, classes="ai-response")
+                            chat_area.mount(markdown_widget)
+                        
                         chat_area.scroll_end(animate=False)
                         self.refresh()
 
@@ -473,13 +488,19 @@ class ChatApp(App):
             self.llm = Gemini(tools=tools)
         elif self.provider_name == 'ollama':
             from flowgen.llm.llm import Ollama
-            self.llm = Ollama(tools=tools)
+            self.llm = Ollama(tools=tools,host="192.168.170.76",model='qwen3:0.6b-fp16')
         elif self.provider_name == 'openrouter':
             from flowgen.llm import OpenRouter
             self.llm = OpenRouter(tools=tools)
         elif self.provider_name == 'vllm':
             from flowgen.llm.llm import vLLM
-            self.llm = vLLM(tools=tools)
+            self.llm = vLLM(
+                host="192.168.170.76",
+                tools=tools,
+                port="8077",
+                model="/home/ng6309/datascience/santhosh/models/Qwen3-14B",
+                timeout=600
+            )
         else:
             raise ValueError(f"Unknown provider: {self.provider_name}")
         
@@ -728,24 +749,50 @@ class ChatApp(App):
         
         
         elif name == 'todo_write':
-            if isinstance(result, dict) and 'success' in result:
-                # New structured format from tool_todowrite.py
+            if isinstance(result, dict) and 'todos' in result:
+                # Format todos with styled checkboxes using Rich Text like input.py
+                from rich.text import Text
+                todos = result.get('todos', [])
+                if not todos:
+                    return "Update Todos\nNo todos"
+                
+                # Create Rich Text object for colored formatting
+                formatted_todos = Text()
+                
+                # Sort todos by ID to maintain order
+                for todo in sorted(todos, key=lambda x: x.get('id', '0')):
+                    status = todo.get('status', 'pending')
+                    content = todo.get('content', '')
+                    
+                    # Get checkbox symbol and color based on status
+                    if status == 'completed':
+                        checkbox = "☒"
+                        color = "#5cf074"  # Green
+                    elif status == 'in_progress':
+                        checkbox = "☐"
+                        color = "#b19cd9"  # Lavender/purple
+                    else:  # pending
+                        checkbox = "☐"
+                        color = "#a89984"  # Grey
+                    
+                    # Format the todo line with colors
+                    formatted_todos.append(f"  {checkbox} ", style=color)
+                    formatted_todos.append(content, style=color)
+                    formatted_todos.append("\n")
+                
+                return formatted_todos
+            elif isinstance(result, dict) and 'success' in result:
+                # Fallback to old format
                 summary = result.get('summary', {})
                 total = summary.get('total_tasks', 0)
                 status_breakdown = summary.get('status_breakdown', {})
-                current_task = summary.get('current_task')
                 
                 pending = status_breakdown.get('pending', 0)
                 in_progress = status_breakdown.get('in_progress', 0)
                 completed = status_breakdown.get('completed', 0)
                 
                 status_text = f"{total} tasks: {pending}⏸ {in_progress}⏳ {completed}✓"
-                
-                if current_task:
-                    current_preview = current_task['content'][:50] + "..." if len(current_task['content']) > 50 else current_task['content']
-                    return f"Update Todos\n{status_text}\nCurrent: {current_preview}"
-                else:
-                    return f"Update Todos\n{status_text}"
+                return f"Update Todos\n{status_text}"
             elif isinstance(result, str):
                 return "Update Todos"
             return "Update Todos"

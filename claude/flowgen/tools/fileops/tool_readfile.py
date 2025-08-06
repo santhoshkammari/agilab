@@ -16,27 +16,33 @@ def read_file(file_path, offset=None, limit=None):
         ValueError: If offset or limit are invalid
     """
     if not file_path.startswith('/'):
-        raise ValueError("file_path must be absolute path")
+        # raise ValueError("file_path must be absolute path")
+        return "ValueError: file_path must be absolute path"
     
     if offset is not None and offset < 1:
-        raise ValueError("offset must be >= 1")
+        # raise ValueError("offset must be >= 1")
+        return "ValueError: offset must be >= 1"
     
     if limit is not None and limit < 1:
-        raise ValueError("limit must be >= 1")
+        # raise ValueError("limit must be >= 1")
+        return "ValueError: limit must be >= 1"
     
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
     except FileNotFoundError:
-        raise FileNotFoundError(f"File not found: {file_path}")
+        # raise FileNotFoundError(f"File not found: {file_path}")
+        return f"FileNotFoundError: File not found: {file_path}"
     except PermissionError:
-        raise PermissionError(f"Permission denied: {file_path}")
+        # raise PermissionError(f"Permission denied: {file_path}")
+        return f"PermissionError: Permission denied: {file_path}"
     except UnicodeDecodeError:
         try:
             with open(file_path, 'r', encoding='latin-1') as f:
                 lines = f.readlines()
         except Exception:
-            raise ValueError(f"Unable to decode file: {file_path}")
+            # raise ValueError(f"Unable to decode file: {file_path}")
+            return f"ValueError: Unable to decode file: {file_path}"
     
     if not lines:
         return "[System Reminder: File exists but has empty contents]"

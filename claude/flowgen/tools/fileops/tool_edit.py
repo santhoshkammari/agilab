@@ -39,25 +39,31 @@ def edit_file(file_path: str, old_string: str, new_string: str, replace_all: boo
     """
     # Validate file path is absolute
     if not file_path.startswith('/'):
-        raise ValueError("file_path must be absolute path")
+        # raise ValueError("file_path must be absolute path")
+        return "ValueError: file_path must be absolute path"
     
     # Enforce read-before-edit policy
     if file_path not in _read_files:
-        raise RuntimeError("File must be read before editing. Use Read tool on file before attempting edits.")
+        # raise RuntimeError("File must be read before editing. Use Read tool on file before attempting edits.")
+        return "RuntimeError: File must be read before editing. Use Read tool on file before attempting edits."
     
     # Validate strings are different
     if old_string == new_string:
-        raise ValueError("old_string and new_string are identical. No changes would be made.")
+        # raise ValueError("old_string and new_string are identical. No changes would be made.")
+        return "ValueError: old_string and new_string are identical. No changes would be made."
     
     # Check file exists and is readable
     if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
+        # raise FileNotFoundError(f"File not found: {file_path}")
+        return f"FileNotFoundError: File not found: {file_path}"
     
     if not os.access(file_path, os.R_OK):
-        raise PermissionError(f"File not readable: {file_path}")
+        # raise PermissionError(f"File not readable: {file_path}")
+        return f"PermissionError: File not readable: {file_path}"
     
     if not os.access(file_path, os.W_OK):
-        raise PermissionError(f"File not writable: {file_path}")
+        # raise PermissionError(f"File not writable: {file_path}")
+        return f"PermissionError: File not writable: {file_path}"
     
     # Read file content
     try:
@@ -68,16 +74,19 @@ def edit_file(file_path: str, old_string: str, new_string: str, replace_all: boo
             with open(file_path, 'r', encoding='latin-1') as f:
                 content = f.read()
         except Exception:
-            raise ValueError(f"Unable to decode file: {file_path}")
+            # raise ValueError(f"Unable to decode file: {file_path}")
+            return f"ValueError: Unable to decode file: {file_path}"
     
     # Count occurrences of old_string
     occurrence_count = content.count(old_string)
     
     if occurrence_count == 0:
-        raise RuntimeError(f"String not found in file: '{old_string[:100]}{'...' if len(old_string) > 100 else ''}'")
+        # raise RuntimeError(f"String not found in file: '{old_string[:100]}{'...' if len(old_string) > 100 else ''}'")
+        return f"RuntimeError: String not found in file: '{old_string[:100]}{'...' if len(old_string) > 100 else ''}'"
     
     if occurrence_count > 1 and not replace_all:
-        raise RuntimeError(f"Multiple matches found ({occurrence_count} occurrences). Use replace_all=True to replace all instances or provide more context to make the string unique.")
+        # raise RuntimeError(f"Multiple matches found ({occurrence_count} occurrences). Use replace_all=True to replace all instances or provide more context to make the string unique.")
+        return f"RuntimeError: Multiple matches found ({occurrence_count} occurrences). Use replace_all=True to replace all instances or provide more context to make the string unique."
     
     # Perform replacement
     if replace_all:
@@ -108,9 +117,11 @@ def edit_file(file_path: str, old_string: str, new_string: str, replace_all: boo
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
     except PermissionError:
-        raise PermissionError(f"Permission denied writing to file: {file_path}")
+        # raise PermissionError(f"Permission denied writing to file: {file_path}")
+        return f"PermissionError: Permission denied writing to file: {file_path}"
     except Exception as e:
-        raise RuntimeError(f"Error writing to file {file_path}: {str(e)}")
+        # raise RuntimeError(f"Error writing to file {file_path}: {str(e)}")
+        return f"RuntimeError: Error writing to file {file_path}: {str(e)}"
     
     # Return structured data for rich display
     return {

@@ -36,7 +36,8 @@ def list_directory(path: str, ignore: Optional[List[str]] = None) -> Dict[str, A
     try:
         items = os.listdir(path)
     except PermissionError:
-        raise PermissionError(f"Permission denied: {path}")
+        # raise PermissionError(f"Permission denied: {path}")
+        return f"PermissionError: Permission denied: {path}"
         return f"Permission denied: {path}"
 
     ignore_patterns = ignore or []

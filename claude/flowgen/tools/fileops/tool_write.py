@@ -33,28 +33,33 @@ def write_file(file_path, content):
         PermissionError: If insufficient permissions to write
     """
     if not file_path.startswith('/'):
-        raise ValueError("file_path must be absolute path")
+        # raise ValueError("file_path must be absolute path")
+        return "ValueError: file_path must be absolute path"
     
     abs_path = os.path.abspath(file_path)
     
     # Check if file exists and enforce read-before-write policy
     if os.path.exists(abs_path):
         if abs_path not in _read_files:
-            raise ValueError("File must be read before writing. Use Read tool on existing file before overwriting")
+            # raise ValueError("File must be read before writing. Use Read tool on existing file before overwriting")
+            return "ValueError: File must be read before writing. Use Read tool on existing file before overwriting"
     
     # Check if parent directory exists
     parent_dir = os.path.dirname(abs_path)
     if not os.path.exists(parent_dir):
-        raise FileNotFoundError(f"Parent directory does not exist: {parent_dir}")
+        # raise FileNotFoundError(f"Parent directory does not exist: {parent_dir}")
+        return f"FileNotFoundError: Parent directory does not exist: {parent_dir}"
     
     try:
         # Write content atomically
         with open(abs_path, 'w', encoding='utf-8') as f:
             f.write(content)
     except PermissionError:
-        raise PermissionError(f"Permission denied: {abs_path}")
+        # raise PermissionError(f"Permission denied: {abs_path}")
+        return f"PermissionError: Permission denied: {abs_path}"
     except Exception as e:
-        raise RuntimeError(f"Failed to write file {abs_path}: {str(e)}")
+        # raise RuntimeError(f"Failed to write file {abs_path}: {str(e)}")
+        return f"RuntimeError: Failed to write file {abs_path}: {str(e)}"
     
     # Get file size for confirmation
     file_size = os.path.getsize(abs_path)

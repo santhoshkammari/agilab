@@ -6,6 +6,20 @@ from .llm import BaseLLM
 
 
 class Gemini(BaseLLM):
+    # Rate limits for Gemini models (as of 2025)
+    RATE_LIMITS = {
+        "gemini-2.5-pro": {
+            "requests_per_minute": 5,  # Free tier
+            "requests_per_day": 25,    # Free tier
+            "context_window": 1_000_000  # 1M tokens
+        },
+        "gemini-2.5-flash": {
+            "requests_per_minute": 1000,
+            "tokens_per_minute": 4_000_000,
+            "requests_per_day": 15_000
+        }
+    }
+    
     def __init__(self, model="gemini-2.5-flash", tools=None, format=None, timeout=None, api_key="AIzaSyBb8wTvVw9e25aX8XK-eBuu1JzDEPCdqUE"):
         super().__init__(model=model, tools=tools, format=format, timeout=timeout)
         self._client = OpenAI(
@@ -122,6 +136,20 @@ class Gemini(BaseLLM):
 
 
 class GeminiAsync(BaseLLM):
+    # Rate limits for Gemini models (as of 2025)
+    RATE_LIMITS = {
+        "gemini-2.5-pro": {
+            "requests_per_minute": 5,  # Free tier
+            "requests_per_day": 25,    # Free tier
+            "context_window": 1_000_000  # 1M tokens
+        },
+        "gemini-2.5-flash": {
+            "requests_per_minute": 1000,
+            "tokens_per_minute": 4_000_000,
+            "requests_per_day": 15_000
+        }
+    }
+    
     def __init__(self, model="gemini-2.5-flash", tools=None, format=None, timeout=None, api_key="AIzaSyBb8wTvVw9e25aX8XK-eBuu1JzDEPCdqUE"):
         super().__init__(model=model, tools=tools, format=format, timeout=timeout)
         self._client = AsyncOpenAI(
