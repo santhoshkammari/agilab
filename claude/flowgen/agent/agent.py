@@ -341,6 +341,172 @@ class Agent:
             'truncated': True
         }
     
+    def _stream_execute_sync(self, input: Union[str, List[Dict]], **kwargs) -> Generator[Dict, None, None]:
+        """Streaming execution for sync LLMs - yields intermediate results."""
+        messages = self._normalize_input(input)
+        messages = self.history + messages
+        self._conversation = messages.copy()
+        
+        if self.tools:
+            kwargs['tools'] = self.tools
+        
+        for iteration in range(self.max_iterations):
+            yield {
+                'type': 'iteration_start',
+                'iteration': iteration + 1,
+                'messages_count': len(messages)
+            }
+            
+            response = self.llm(messages, **kwargs)
+            
+            yield {
+                'type': 'llm_response',
+                'content': response.get('content', ''),
+                'think': response.get('think', ''),
+                'tool_calls': response.get('tool_calls', []),
+                'iteration': iteration + 1
+            }
+            
+            if not response.get('tool_calls'):
+                messages.append({
+                    "role": "assistant",
+                    "content": response.get('content', '')
+                })
+                self._conversation = messages
+                
+                yield {
+                    'type': 'final',
+                    'content': response.get('content', ''),
+                    'think': response.get('think', ''),
+                    'iterations': iteration + 1,
+                    'messages': messages
+                }
+                return
+            
+            messages.append({
+                "role": "assistant",
+                "tool_calls": response['tool_calls']
+            })
+            
+            for i, tool_call in enumerate(response['tool_calls']):
+                tool_func = tool_call['function']
+                yield {
+                    'type': 'tool_start',
+                    'tool_name': tool_func['name'],
+                    'tool_args': tool_func['arguments'],
+                    'iteration': iteration + 1
+                }
+                
+                tool_result = self._execute_tool_sync(tool_func)
+                
+                yield {
+                    'type': 'tool_result',
+                    'tool_name': tool_func['name'], 
+                    'tool_args': tool_func['arguments'],
+                    'result': str(tool_result),
+                    'iteration': iteration + 1
+                }
+                
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.get('id', f"call_{i}"),
+                    "name": tool_func['name'],
+                    "content": str(tool_result)
+                })
+        
+        self._conversation = messages
+        
+        yield {
+            'type': 'final',
+            'content': 'Max iterations reached',
+            'iterations': self.max_iterations,
+            'messages': messages,
+            'truncated': True
+        }
+
+    async def _stream_execute_async(self, input: Union[str, List[Dict]], **kwargs) -> Generator[Dict, None, None]:
+        """Streaming execution for async LLMs - yields intermediate results."""
+        messages = self._normalize_input(input)
+        messages = self.history + messages
+        self._conversation = messages.copy()
+        
+        if self.tools:
+            kwargs['tools'] = self.tools
+        
+        for iteration in range(self.max_iterations):
+            yield {
+                'type': 'iteration_start',
+                'iteration': iteration + 1,
+                'messages_count': len(messages)
+            }
+            
+            response = await self.llm(messages, **kwargs)
+            
+            yield {
+                'type': 'llm_response',
+                'content': response.get('content', ''),
+                'think': response.get('think', ''),
+                'tool_calls': response.get('tool_calls', []),
+                'iteration': iteration + 1
+            }
+            
+            if not response.get('tool_calls'):
+                messages.append({
+                    "role": "assistant",
+                    "content": response.get('content', '')
+                })
+                self._conversation = messages
+                
+                yield {
+                    'type': 'final',
+                    'content': response.get('content', ''),
+                    'think': response.get('think', ''),
+                    'iterations': iteration + 1,
+                    'messages': messages
+                }
+                return
+            
+            messages.append({
+                "role": "assistant",
+                "tool_calls": response['tool_calls']
+            })
+            
+            for i, tool_call in enumerate(response['tool_calls']):
+                tool_func = tool_call['function']
+                yield {
+                    'type': 'tool_start',
+                    'tool_name': tool_func['name'],
+                    'tool_args': tool_func['arguments'],
+                    'iteration': iteration + 1
+                }
+                
+                tool_result = await self._execute_tool_async(tool_func)
+                
+                yield {
+                    'type': 'tool_result',
+                    'tool_name': tool_func['name'], 
+                    'tool_args': tool_func['arguments'],
+                    'result': str(tool_result),
+                    'iteration': iteration + 1
+                }
+                
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.get('id', f"call_{i}"),
+                    "name": tool_func['name'],
+                    "content": str(tool_result)
+                })
+        
+        self._conversation = messages
+        
+        yield {
+            'type': 'final',
+            'content': 'Max iterations reached',
+            'iterations': self.max_iterations,
+            'messages': messages,
+            'truncated': True
+        }
+
     async def _stream_execute(self, input: Union[str, List[Dict]], **kwargs) -> Generator[Dict, None, None]:
         """Streaming execution - yields intermediate results."""
         messages = self._normalize_input(input)
@@ -456,10 +622,33 @@ class Agent:
             for i, tool in enumerate(tools)
         ]
     
-    async def _execute_tool(self, tool_call: Dict) -> Any:
-        """Execute a single tool call."""
+    def _execute_tool_sync(self, tool_call: Dict) -> Any:
+        """Execute a single tool call synchronously."""
         tool_name = tool_call['name']
-        tool_args = json.loads(str(tool_call['arguments']))
+        try:
+            tool_args = json.loads(str(tool_call['arguments'])) if tool_call['arguments'] else {}
+        except:
+            tool_args = tool_call.get('arguments', {})
+
+        if tool_name not in self._tool_functions:
+            return f"Error: Tool '{tool_name}' not found"
+        
+        try:
+            # Only call sync functions in sync method
+            if asyncio.iscoroutinefunction(self._tool_functions[tool_name]):
+                return f"Error: Cannot call async tool '{tool_name}' in sync context"
+            else:
+                return self._tool_functions[tool_name](**tool_args)
+        except Exception as e:
+            return f"Error executing {tool_name}: {str(e)}"
+
+    async def _execute_tool_async(self, tool_call: Dict) -> Any:
+        """Execute a single tool call asynchronously."""
+        tool_name = tool_call['name']
+        try:
+            tool_args = json.loads(str(tool_call['arguments'])) if tool_call['arguments'] else {}
+        except:
+            tool_args = tool_call.get('arguments', {})
 
         if tool_name not in self._tool_functions:
             return f"Error: Tool '{tool_name}' not found"
@@ -471,6 +660,10 @@ class Agent:
                 return self._tool_functions[tool_name](**tool_args)
         except Exception as e:
             return f"Error executing {tool_name}: {str(e)}"
+
+    async def _execute_tool(self, tool_call: Dict) -> Any:
+        """Execute a single tool call (legacy method, use _execute_tool_async)."""
+        return await self._execute_tool_async(tool_call)
     
     def add_tool(self, tool: Callable) -> None:
         """Add a tool function to the agent."""

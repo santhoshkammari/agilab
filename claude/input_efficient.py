@@ -1,3 +1,5 @@
+import json
+
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
@@ -6,6 +8,80 @@ from textual.app import ComposeResult, App
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Static, OptionList, Label, Input
+import asyncio
+import time
+import datetime
+
+from flowgen.tools.web import tool_functions as wt
+
+
+
+def get_random_status_message():
+    """Simple status messages for thinking animation"""
+    STATUS_MESSAGES = [
+        'Accomplishing',
+        'Actioning',
+        'Actualizing',
+        'Baking',
+        'Brewing',
+        'Calculating',
+        'Cerebrating',
+        'Churning',
+        'Clauding',
+        'Coalescing',
+        'Cogitating',
+        'Computing',
+        'Combobulating',
+        'Conjuring',
+        'Considering',
+        'Cooking',
+        'Crafting',
+        'Creating',
+        'Crunching',
+        'Deliberating',
+        'Determining',
+        'Doing',
+        'Effecting',
+        'Finagling',
+        'Forging',
+        'Forming',
+        'Generating',
+        'Hatching',
+        'Herding',
+        'Honking',
+        'Hustling',
+        'Ideating',
+        'Inferring',
+        'Manifesting',
+        'Marinating',
+        'Moseying',
+        'Mulling',
+        'Mustering',
+        'Musing',
+        'Noodling',
+        'Percolating',
+        'Pondering',
+        'Processing',
+        'Puttering',
+        'Reticulating',
+        'Ruminating',
+        'Slepping',
+        'Shucking',
+        'Shimming',
+        'Simmering',
+        'Smooshing',
+        'Spinning',
+        'Stewing',
+        'Synthesizing',
+        'Thinking',
+        'Tinkering',
+        'Transmuting',
+        'Unfurling',
+        'Vibing',
+        'Working',
+    ]
+    import random
+    return random.choice(STATUS_MESSAGES)
 
 class ChatApp(App):
     BINDINGS = [
@@ -55,9 +131,27 @@ class ChatApp(App):
             'bypass-permissions': "   Bypassing Permissions   ",
             'plan-mode': "   ⏸ plan mode on   "
         }
+        self.display_toolname_maps = {
+            'read_file': 'Read',
+            'read_multiple_files': 'Multi Read',
+            'write_file': 'Write',
+            'edit_file': 'Edit',
+            'multi_edit_file': 'Multi Edit',
+            'bash_execute': 'Bash',
+            'glob_find_files': 'Glob',
+            'grep_search': 'Grep',
+            'list_directory': 'LS',
+            'fetch_url': 'Web Fetch',
+            'async_web_search': 'Web Search',
+            'todo_read': 'Todo Read',
+            'todo_write': 'Update Todos',
+            'apply_edit': 'Apply Edit',
+            'discard_edit': 'Discard Edit'
+        }
         self.permission_mode, self.cwd = 'default', cwd
 
         self.llm = None
+        self.chat_history = []
         self.model_loaded = False
 
     def compose(self) -> ComposeResult:
@@ -95,7 +189,7 @@ class ChatApp(App):
             yield Label(" > ")
             yield Input(placeholder='Try "write a test for input.py"', compact=True,
                        # value="create a todo and then task: websearch for latest AI news and then fetch the first URL to summarize"
-                        value = "/provider"
+                        value = "what is today's ai news?"
                         )
     
     def _create_footer(self):
@@ -158,17 +252,76 @@ class ChatApp(App):
 
         return False
 
-    def execute_input(self,input):
+    def execute_input(self, input):
         status = self._check_slash_command(input)
         if status:
             return
 
-        content = ""
-        markdown_content = Markdown("● " + content.strip())
-        markdown_widget = Static(markdown_content, classes="ai-response")
-        chat_area = self.query_one("#chat_area")
-        chat_area.mount(markdown_widget)
+        # Schedule async execution
+        asyncio.create_task(self._execute_input_async(input))
 
+    async def _execute_input_async(self, input):
+        animation_task = asyncio.create_task(self.animate_thinking_status(input))
+        messages = self.chat_history.extend([{"role": "user", "content": input}])
+        chat_area = self.query_one("#chat_area")
+        max_iterations = 5
+
+        try:
+            while max_iterations:
+                max_iterations-=1
+
+                response = await asyncio.get_event_loop().run_in_executor(None, self.llm, messages)
+                if response['content']:
+                    markdown_content = Markdown("● " + response['content'].strip())
+                    markdown_widget = Static(markdown_content, classes="ai-response")
+                    chat_area.mount(markdown_widget)
+                    chat_area.scroll_end(animate=False)
+                    self.refresh()
+
+                messages.append({
+                    "role": "assistant",
+                    "content":response['content'],
+                    "tool_calls": response['tool_calls']
+                })
+
+                if response['tool_calls']:
+                    for t in response['tool_calls']:
+                        name, args = t['function']['name'],json.loads(str(t['function']['arguments']))
+
+                        tool_text = Text()
+                        tool_text.append("● ", style="dim #5cf074")
+                        tool_text.append(self.display_toolname_maps[name], style="bold")
+                        if args:
+                            tool_text.append(f'("{list(args.values())[0]}")', style="default")
+
+                        st = time.perf_counter()
+                        result = await wt[name](**args)
+                        tt = time.perf_counter() - st
+                        tool_text.append(f"\n  ⎿ {self.display_toolresult(name,result,tt)}\n", style="default")
+
+                        markdown_widget = Static(tool_text, classes="ai-response")
+                        chat_area.mount(markdown_widget)
+                        chat_area.scroll_end(animate=False)
+                        self.refresh()
+
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": t.get("id"),
+                            "name": name,
+                            "content": str(result)
+                        })
+                else:
+                    break
+
+        except Exception as e:
+            raise e
+        finally:
+            animation_task.cancel()
+            self.chat_history.extend(messages)
+            try:
+                await animation_task
+            except asyncio.CancelledError:
+                pass
 
 
 
@@ -204,6 +357,8 @@ class ChatApp(App):
         self.command_history.append(input)
         chat_area = self.query_one("#chat_area")
         chat_area.mount(Static(f"\n> {input}\n", classes="message"))
+        chat_area.scroll_end(animate=False)
+        self.refresh()
 
         self.execute_input(input)
         event.input.clear()
@@ -211,20 +366,67 @@ class ChatApp(App):
     def load_model(self):
         if self.model_loaded:
             return
-            
+
+        tools = [*list(wt.values())]
+
         if self.provider_name == 'gemini':
-            from flowgen.llm.gemini import GeminiAsync
-            self.llm = GeminiAsync()
+            from flowgen.llm.gemini import Gemini
+            self.llm = Gemini(tools=tools)
         elif self.provider_name == 'ollama':
-            from flowgen.llm.llm import OllamaAsync
-            self.llm = OllamaAsync()
+            from flowgen.llm.llm import Ollama
+            self.llm = Ollama(tools=tools)
         elif self.provider_name == 'openrouter':
             from flowgen.llm import OpenRouter
-            self.llm = OpenRouter()
+            self.llm = OpenRouter(tools=tools)
         elif self.provider_name == 'vllm':
-            from flowgen.llm.llm import vLLMAsync
-            self.llm = vLLMAsync()
+            from flowgen.llm.llm import vLLM
+            self.llm = vLLM(tools=tools)
         else:
             raise ValueError(f"Unknown provider: {self.provider_name}")
         
         self.model_loaded = True
+
+    async def animate_thinking_status(self, query: str):
+        """Animate the thinking status with flowers and comprehensive status info like Claude Code"""
+        flower_chars = ["✻", "✺", "✵", "✴", "❋", "❊", "❉", "❈", "❇", "❆", "❅", "❄"]
+        flower_index = 0
+
+        # Get one random status message for this entire session
+        status_message = get_random_status_message() + "..."
+
+        status_indicator = self.query_one("#status_indicator")
+        chat_area = self.query_one("#chat_area")
+        start_time = time.time()
+
+        try:
+            while True:
+                elapsed_seconds = int(time.time() - start_time)
+                flower_index = (flower_index + 1) % len(flower_chars)
+
+                # Get current time for timestamp
+                current_time = datetime.datetime.now().strftime("%H:%M:%S")
+                
+                # Estimate token count (simple approximation: ~4 chars per token)
+                estimated_tokens = len(query) // 4 if query else 0
+                
+                # Create comprehensive status message with grey formatting like Claude Code
+                status_msg = (
+                    f"{flower_chars[flower_index]} {status_message} "
+                    f"[grey]({elapsed_seconds}s • {estimated_tokens} tokens • esc to interrupt)[/grey]"
+                )
+
+                status_indicator.update(status_msg)
+
+                # Ensure scroll stays at bottom during long operations every few cycles
+                if flower_index % 10 == 0:
+                    chat_area.scroll_end(animate=False)
+
+                await asyncio.sleep(0.3)
+        except asyncio.CancelledError:
+            status_indicator.update("")
+            raise
+
+    def display_toolresult(self, name, result,timetaken):
+        if name=='async_web_search':
+            return f"Did 1 search in {int(timetaken)}s"
+        return str(result)
