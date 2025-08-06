@@ -14,6 +14,8 @@ import time
 import datetime
 
 from flowgen.tools.web import tool_functions as wt
+from flowgen.tools.markdown import tool_functions as mt
+from flowgen.tools.content_extract import tool_functions as ct
 
 def get_random_status_message():
     """Simple status messages for thinking animation"""
@@ -119,7 +121,7 @@ class ChatApp(App):
 
     def __init__(self,cwd):
         super().__init__()
-        self.tools = {**wt}
+        self.tools = {**wt,**mt,**ct}
         self.command_history, self.history_index, self.mode_idx = [], -1, 0
         self.modes = ['default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode']
         self.providers = ["gemini", "ollama", "openrouter", "vllm"]
@@ -378,7 +380,7 @@ class ChatApp(App):
         if self.model_loaded:
             return
 
-        tools = [*list(wt.values())]
+        tools = [*list(self.tools.values())]
 
         if self.provider_name == 'gemini':
             from flowgen.llm.gemini import Gemini
