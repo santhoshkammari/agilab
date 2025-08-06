@@ -1,4 +1,4 @@
-
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
 from textual import on
@@ -18,7 +18,7 @@ class ChatApp(App):
     ]
 
     CSS = """
-        Screen, Static, Input { background: transparent; }
+        Screen, Static, Input, .ai-response { background: transparent; }
         #chat_area { height: 1fr; padding: 1; overflow-y: auto; scrollbar-size: 0 0; }
         #input_area { height: auto; border: round #7E7E80; }
         #status_bar { height: 1; padding: 0 1; }
@@ -158,10 +158,16 @@ class ChatApp(App):
 
         return False
 
-    def execute_input(self,value):
-        status = self._check_slash_command(value)
+    def execute_input(self,input):
+        status = self._check_slash_command(input)
         if status:
             return
+
+        content = ""
+        markdown_content = Markdown("● " + content.strip())
+        markdown_widget = Static(markdown_content, classes="ai-response")
+        chat_area = self.query_one("#chat_area")
+        chat_area.mount(markdown_widget)
 
 
 
@@ -193,8 +199,13 @@ class ChatApp(App):
     def handle_message(self,event: Input.Submitted):
         if not self.model_loaded:
             self.load_model()
-        self.command_history.append(event.value.strip())
-        self.execute_input(event.value.strip())
+
+        input = event.value.strip()
+        self.command_history.append(input)
+        chat_area = self.query_one("#chat_area")
+        chat_area.mount(Static(f"\n> {input}\n", classes="message"))
+
+        self.execute_input(input)
         event.input.clear()
 
     def load_model(self):
