@@ -254,6 +254,13 @@ class ChatApp(App):
         self.model_loaded = False
         self.pending_tool_calls = []
         self.current_tool_index = 0
+        self.auto_approve_tools = set()  # Tools that user chose "don't ask again" for
+        
+        # Tools that don't need permission in default mode
+        self.no_permission_tools = {'read_file', 'list_directory', 'glob_find_files', 'grep_search', 'todo_read', 'todo_write'}
+        
+        # Tools that are auto-approved in auto-accept-edits mode  
+        self.auto_accept_edit_tools = {'write_file', 'edit_file', 'multi_edit_file'}
 
     def compose(self) -> ComposeResult:
         for method in [self._create_chat_area, self._create_status_bar, self._create_selection_areas, 
@@ -294,7 +301,8 @@ class ChatApp(App):
                        #  value = "create 5 todos for building a web scraper project"
                        #  value = ("Complete the task by creating 5 todods , first web serach for virat , next rohith, next get virat test scores, next get rohith test scores, finally show"
                        #           "in markdown table both guys stats, prefer using markdown analyzer")
-                        value = 'read app.py'
+                       #  value = 'read app.py'
+                        value= 'using websearch tool, search about todays ai news'
                         )
     
     def _create_footer(self):
@@ -402,13 +410,19 @@ class ChatApp(App):
                 })
 
                 if response['tool_calls']:
-                    # Check if we need permission for tool execution
-                    if self.permission_mode == 'default' and not self.pending_tool_calls:
+                    # Check if we need permission for any tools
+                    tools_needing_permission = [t for t in response['tool_calls'] 
+                                               if self.needs_permission(t['function']['name'])]
+                    
+                    if tools_needing_permission and not self.pending_tool_calls:
                         self.pending_tool_calls = response['tool_calls']
                         self.current_tool_index = 0
                         await self.show_tool_permission()
                         break  # Wait for user permission
-                    
+
+                    chat_area.scroll_end(animate=False)
+                    self.refresh()
+
                     # Execute tools (either permission granted or bypassed)
                     tools_to_execute = self.pending_tool_calls if self.pending_tool_calls else response['tool_calls']
                     
@@ -512,6 +526,7 @@ class ChatApp(App):
         tool_options = self.query_one("#tool_options")
         tool_options.focus()
 
+
     @on(OptionList.OptionSelected, "#tool_options")
     def handle_tool_permission_choice(self, event: OptionList.OptionSelected) -> None:
         """Handle tool permission choice"""
@@ -520,9 +535,10 @@ class ChatApp(App):
         if choice == 0:  # Yes
             self.hide_tool_permission()
             asyncio.create_task(self.continue_tool_execution())
-        elif choice == 1:  # Yes, and don't ask again
-            self.permission_mode = 'bypass-permissions'
-            self.action_cycle_mode()  # Update UI
+        elif choice == 1:  # Yes, and don't ask again  
+            if self.pending_tool_calls and self.current_tool_index < len(self.pending_tool_calls):
+                tool_name = self.pending_tool_calls[self.current_tool_index]['function']['name']
+                self.auto_approve_tools.add(tool_name)
             self.hide_tool_permission()
             asyncio.create_task(self.continue_tool_execution())
         else:  # No, tell Claude what to do
@@ -535,6 +551,25 @@ class ChatApp(App):
         """Hide tool permission area"""
         self.query_one("#tool_permission_area").display = False
         self.query_one(Input).focus()
+
+    def needs_permission(self, tool_name):
+        """Check if a tool needs permission based on current mode"""
+        if self.permission_mode == 'bypass-permissions':
+            return False
+        elif self.permission_mode == 'plan-mode':
+            return True  # Plan mode doesn't use tools, so always ask
+        elif self.permission_mode == 'auto-accept-edits':
+            # Auto-approve all tools except those explicitly requiring permission
+            dangerous_tools = {'bash_execute'}  # Only bash needs permission
+            if tool_name in dangerous_tools:
+                return tool_name not in self.auto_approve_tools
+            return False  # All other tools are auto-approved
+        else:  # default mode
+            # Only bash_execute and write operations need permission, everything else is automatic
+            permission_required_tools = {'bash_execute', 'write_file', 'edit_file', 'multi_edit_file'}
+            if tool_name in permission_required_tools:
+                return tool_name not in self.auto_approve_tools
+            return False  # All other tools are automatic
 
     async def continue_tool_execution(self):
         """Continue executing pending tools after permission granted"""

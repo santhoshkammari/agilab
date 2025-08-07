@@ -32,17 +32,53 @@ def extract_markdown_from_url(url: str):
     Args:
         url: the html url string
     """
+    import re
+    import urllib.parse
+    from datetime import datetime
+    from pathlib import Path
+    
     htmls = extract_html_from_url(url)
-    # if isinstance(htmls,list):
-    #     results = {}
-    #     for x in htmls:
-    #         results[x["url"]] = extract_markdown_from_html(x["content"])
-    #     return json.dumps(results)
-
-    name = url.split("/")[-1].split(".")[0]
-    with open(f"{name}.md","w") as f:
+    
+    # Create .claudecode directory if it doesn't exist
+    Path(".claudecode").mkdir(exist_ok=True)
+    
+    # Generate a proper filename from URL
+    parsed_url = urllib.parse.urlparse(url)
+    
+    # Start with domain name
+    domain = parsed_url.netloc.replace('www.', '')
+    
+    # Get the path part and clean it
+    path = parsed_url.path.strip('/')
+    if path:
+        # Replace path separators and clean special chars
+        path_clean = re.sub(r'[^\w\-_.]', '_', path.replace('/', '_'))
+        # Remove multiple underscores
+        path_clean = re.sub(r'_+', '_', path_clean).strip('_')
+        base_name = f"{domain}_{path_clean}"
+    else:
+        base_name = domain
+    
+    # Remove common file extensions to avoid double extensions
+    base_name = re.sub(r'\.(html?|php|asp|jsp)$', '', base_name, flags=re.IGNORECASE)
+    
+    # Clean domain dots and ensure valid filename
+    base_name = base_name.replace('.', '_')
+    base_name = re.sub(r'[^\w\-_]', '_', base_name)
+    base_name = re.sub(r'_+', '_', base_name).strip('_')
+    
+    # Truncate if too long and add timestamp for uniqueness
+    if len(base_name) > 50:
+        base_name = base_name[:50]
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{base_name}_{timestamp}.md"
+    filepath = Path(".claudecode") / filename
+    
+    with open(filepath, "w", encoding="utf-8") as f:
         f.write(extract_markdown_from_html(htmls['content']))
-    return f"Markdown Saved at {name}.md"
+    
+    return f"Markdown saved at {filepath}"
 
 tool_functions = {
     # "extract_html_from_url": extract_html_from_url,
