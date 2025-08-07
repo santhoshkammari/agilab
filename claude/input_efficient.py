@@ -201,9 +201,8 @@ class ChatApp(App):
         .selection-area OptionList { border: none; height: auto; scrollbar-size: 0 0; }
         .selection-area OptionList:focus { border: none; }
         #permission_area { border: round #458588; }
-        #tool_permission_area { border: round #458588; }
         #command_palette { border: round #915FF0; }
-        #provider_selection { border: round #E27A53; }
+        #provider_selection,#tool_permission_area { border: round #E27A53; }
         #model_selection { border: round #fabd2f; }
         .option-list--option { color: #a89984; padding: 0 1; height: 1; }
         .option-list--option-highlighted { color: #fabd2f; text-style: bold; }
