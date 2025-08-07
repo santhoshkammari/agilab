@@ -173,7 +173,7 @@ class ChatApp(App):
         Screen, Static, Input, .ai-response { background: transparent; }
         #chat_area { height: 1fr; padding: 1; overflow-y: auto; scrollbar-size: 0 0; }
         #input_area { height: auto; border: round #7E7E80; }
-        #status_bar { height: 1; padding: 0 1; }
+        #status_bar { height: auto; padding: 1 1; text-align: left;}
         #status_indicator { color: #E27A53; text-style: bold; }
         #footer { height: 10vh; dock: bottom; }
         #footer-left { text-align: left; width: auto; }
@@ -201,7 +201,7 @@ class ChatApp(App):
         self.command_history, self.history_index, self.mode_idx = [], -1, 0
         self.modes = ['default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode']
         self.providers = ["gemini", "ollama", "openrouter", "vllm"]
-        self.provider_name = "vllm"
+        self.provider_name = "gemini"
         self.permission_maps = {
             "default": "[grey]  ? for shortcuts[/grey]",
             'auto-accept-edits': "   ⏵⏵ auto-accept edits on   ",
