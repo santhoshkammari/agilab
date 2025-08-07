@@ -1,5 +1,8 @@
 import json
 import random
+import os
+import re
+from pathlib import Path
 
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -175,6 +178,7 @@ class ToolPermissionWidget(Widget):
 class ChatApp(App):
     BINDINGS = [
         Binding("shift+tab", "cycle_mode", "Cycle Mode", priority=True),
+        Binding("tab", "trigger_file_autocomplete", "File Autocomplete", priority=True),
         Binding("ctrl+c", "clear_input", "Clear Input", priority=True),
         Binding("escape", "interrupt_conversation", "Interrupt Conversation", priority=True),
         Binding("ctrl+l", "clear_screen", "Clear Screen", priority=True),
@@ -202,6 +206,7 @@ class ChatApp(App):
         .selection-area OptionList:focus { border: none; background: transparent; }
         #permission_area { border: round #458588; }
         #command_palette { border: round #915FF0; }
+        #file_autocomplete { border: round #fabd2f; }
         #provider_selection,#tool_permission_area { border: round #E27A53;background: transparent; }
         #tool_permission_area_message { color: #83a598; text-style: italic; }
         #model_selection { border: round #fabd2f; }
@@ -261,6 +266,18 @@ class ChatApp(App):
         
         # Tools that are auto-approved in auto-accept-edits mode  
         self.auto_accept_edit_tools = {'write_file', 'edit_file', 'multi_edit_file'}
+        
+        
+        # For file autocomplete
+        self.is_showing_files = False
+        self.current_word_start = 0
+        self.current_word = ""
+        self.all_files = []
+        self._collect_all_files()
+        
+        # History file management
+        self.history_file = Path.home() / ".claudecode" / "history"
+        self._load_history_from_file()
 
     def compose(self) -> ComposeResult:
         for method in [self._create_chat_area, self._create_status_bar, self._create_selection_areas, 
@@ -285,6 +302,7 @@ class ChatApp(App):
             ("command_palette", "Command Palette - Select an option:", ["/host <url> - Set LLM host URL", "/provider - Switch LLM provider", "/think - Enable thinking mode", "/no-think - Disable thinking mode", "/status - Show current configuration", "/clear - Clear conversation history"]),
             ("provider_selection", "Select Provider:", self.providers),
             ("model_selection", "Select Model:", []),
+            ("file_autocomplete", "Files:", []),
             ("tool_permission_area", "", ["• Execute", "• Execute & remember choice", "• Redirect Claude"])
         ]
         
@@ -323,6 +341,14 @@ class ChatApp(App):
     def action_clear_input(self):
         self.query_one(Input).clear()
 
+    def action_interrupt_conversation(self):
+        """Handle escape key - hide file autocomplete if showing, otherwise interrupt"""
+        if self.is_showing_files:
+            self._hide_file_autocomplete()
+        else:
+            # Original interrupt functionality would go here
+            pass
+
     def _navigate_history(self, direction: int):
         input_widget = self.query_one(Input)
         if not input_widget.has_focus or not self.command_history:
@@ -346,6 +372,199 @@ class ChatApp(App):
 
     def action_next_command(self) -> None:
         self._navigate_history(1)
+
+
+    def _collect_all_files(self):
+        """Collect all files recursively from current directory"""
+        self.all_files = []
+        try:
+            for root, dirs, files in os.walk(self.cwd):
+                # Skip hidden directories and common ignore patterns
+                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['__pycache__', 'node_modules', '.git']]
+                
+                for file in files:
+                    if not file.startswith('.'):  # Skip hidden files
+                        full_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(full_path, self.cwd)
+                        self.all_files.append(rel_path)
+        except Exception:
+            pass  # Silently ignore permission errors
+
+    def _load_history_from_file(self):
+        """Load command history from ~/.claudecode/history file"""
+        try:
+            if self.history_file.exists():
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    lines = f.read().strip().split('\n')
+                    # Load last 10 commands, filter out empty lines
+                    self.command_history = [line for line in lines if line.strip()][-10:]
+        except Exception:
+            pass  # Silently ignore errors, start with empty history
+
+    def _save_history_to_file(self):
+        """Save command history to ~/.claudecode/history file"""
+        try:
+            # Ensure directory exists
+            self.history_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Keep only last 10 commands
+            history_to_save = self.command_history[-10:]
+            
+            with open(self.history_file, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(history_to_save))
+        except Exception:
+            pass  # Silently ignore errors
+
+    def _add_to_history(self, command: str):
+        """Add command to history and save to file"""
+        if command.strip():
+            # Remove duplicates and add to end
+            if command in self.command_history:
+                self.command_history.remove(command)
+            self.command_history.append(command)
+            
+            # Keep only last 10 commands
+            self.command_history = self.command_history[-10:]
+            
+            # Save to file
+            self._save_history_to_file()
+
+    def action_trigger_file_autocomplete(self):
+        """Trigger file autocomplete on tab press"""
+        input_widget = self.query_one(Input)
+        if not input_widget.has_focus:
+            return
+            
+        current_text = input_widget.value
+        cursor_pos = input_widget.cursor_position
+        
+        # Find the last word before cursor
+        words = current_text[:cursor_pos].split()
+        if words:
+            last_word = words[-1]
+            # Find start position of last word
+            word_start = current_text.rfind(last_word, 0, cursor_pos)
+            
+            self.current_word = last_word
+            self.current_word_start = word_start
+            
+            # Find fuzzy matches
+            matched_files = self._fuzzy_match_files(last_word)
+            
+            if matched_files:
+                self._show_file_autocomplete(matched_files)
+
+    def _fuzzy_match_files(self, query):
+        """Simple fuzzy matching for files (basic implementation)"""
+        if not query:
+            return self.all_files[:10]  # Show first 10 if no query
+            
+        query = query.lower()
+        matches = []
+        
+        for file_path in self.all_files:
+            filename = os.path.basename(file_path).lower()
+            dir_path = os.path.dirname(file_path).lower()
+            
+            # Exact filename match gets highest score
+            if filename.startswith(query):
+                score = 100 - len(filename) + len(query) * 10
+                matches.append((score, file_path))
+            # Substring in filename
+            elif query in filename:
+                score = 80 - len(filename) + len(query) * 5
+                matches.append((score, file_path))
+            # Substring in directory
+            elif query in dir_path:
+                score = 40 - len(dir_path) // 10
+                matches.append((score, file_path))
+            # Characters match in order (basic fuzzy)
+            elif self._char_sequence_match(query, filename):
+                score = 20
+                matches.append((score, file_path))
+        
+        # Sort by score and return top matches
+        matches.sort(key=lambda x: x[0], reverse=True)
+        return [match[1] for match in matches[:15]]
+
+    def _char_sequence_match(self, query, text):
+        """Check if characters in query appear in order in text"""
+        query_idx = 0
+        for char in text:
+            if query_idx < len(query) and char == query[query_idx]:
+                query_idx += 1
+        return query_idx == len(query)
+
+    def _show_file_autocomplete(self, files):
+        """Show file autocomplete options"""
+        file_msg = self.query_one("#file_autocomplete_message")
+        file_msg.update(f"Files matching '{self.current_word}':")
+        
+        # Update options
+        file_options = self.query_one("#file_options")
+        file_options.clear_options()
+        
+        # Add files to options (limit to avoid UI overflow)
+        for file_path in files:
+            file_options.add_option(file_path)
+        
+        # Show the autocomplete area
+        self.query_one("#file_autocomplete").display = True
+        file_options.focus()
+        
+        # Auto-select the first (most relevant) option
+        if files:
+            file_options.highlighted = 0
+        
+        self.is_showing_files = True
+
+    def _hide_file_autocomplete(self):
+        """Hide file autocomplete and return focus to input"""
+        self.query_one("#file_autocomplete").display = False
+        self.is_showing_files = False
+        # Focus input after a brief moment to ensure proper cursor handling
+        self.call_later(self.query_one(Input).focus)
+
+    @on(OptionList.OptionSelected, "#file_options")
+    def handle_file_selection(self, event: OptionList.OptionSelected) -> None:
+        """Handle file selection from autocomplete"""
+        selected_file = str(event.option.prompt)
+        
+        # Replace the current word with selected file path
+        input_widget = self.query_one(Input)
+        current_text = input_widget.value
+        
+        # Replace the word
+        new_text = (current_text[:self.current_word_start] + 
+                   selected_file + 
+                   current_text[self.current_word_start + len(self.current_word):])
+        
+        # Calculate cursor position
+        new_cursor_pos = self.current_word_start + len(selected_file)
+        
+        # Hide autocomplete first
+        self.query_one("#file_autocomplete").display = False
+        self.is_showing_files = False
+        
+        # Set the new text and cursor position in one sequence
+        input_widget.value = new_text
+        input_widget.focus()
+        
+        # Use a delayed approach to ensure cursor position is properly set
+        def set_cursor_final():
+            # Move cursor using actions to ensure no selection
+            input_widget.action_end(select=False)  # Go to end first
+            
+            # Calculate how many positions to move back from end
+            positions_from_end = len(new_text) - new_cursor_pos
+            for _ in range(positions_from_end):
+                input_widget.action_cursor_left(select=False)
+        
+        # Delay to ensure input is properly focused and ready
+        self.call_later(set_cursor_final)
+        
+        # Add the final text to history
+        self._add_to_history(new_text)
 
     def _check_slash_command(self,value):
         if value == "/provider":
@@ -608,7 +827,7 @@ class ChatApp(App):
 
     def on_ready(self) -> None:
         self.theme = "gruvbox"
-        areas = ["permission_area", "command_palette", "provider_selection", "model_selection", "tool_permission_area"]
+        areas = ["permission_area", "command_palette", "provider_selection", "model_selection", "file_autocomplete", "tool_permission_area"]
         for area in areas:
             self.query_one(f"#{area}").display = False
         self.query_one(Input).focus()
@@ -622,7 +841,7 @@ class ChatApp(App):
             self.load_model()
 
         input = event.value.strip()
-        self.command_history.append(input)
+        self._add_to_history(input)
         chat_area = self.query_one("#chat_area")
         chat_area.mount(Static(f"\n> {input}\n", classes="message"))
         chat_area.scroll_end(animate=False)
