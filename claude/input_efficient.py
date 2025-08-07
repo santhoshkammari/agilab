@@ -165,7 +165,7 @@ class ToolPermissionWidget(Widget):
         super().__init__()
         self.title = title
         self.content = content
-        self.options = options or ["1. Yes", "2. Yes, and don't ask again this session", "3. No, and tell Claude what to do differently"]
+        self.options = options or ["• Execute", "• Execute & remember choice", "• Redirect Claude"]
         
     def compose(self) -> ComposeResult:
         with Vertical(classes="selection-area"):
@@ -198,14 +198,16 @@ class ChatApp(App):
         .streaming { color: #E77D22; }
         .selection-area { height: auto; padding: 1; margin: 0; }
         .selection-area Static { color: #a89984; text-style: italic; padding: 0 0 1 0; }
-        .selection-area OptionList { border: none; height: auto; scrollbar-size: 0 0; }
-        .selection-area OptionList:focus { border: none; }
+        .selection-area OptionList { border: none; height: auto; scrollbar-size: 0 0; background: transparent;}
+        .selection-area OptionList:focus { border: none; background: transparent; }
         #permission_area { border: round #458588; }
         #command_palette { border: round #915FF0; }
-        #provider_selection,#tool_permission_area { border: round #E27A53; }
+        #provider_selection,#tool_permission_area { border: round #E27A53;background: transparent; }
+        #tool_permission_area_message { color: #83a598; text-style: italic; }
         #model_selection { border: round #fabd2f; }
-        .option-list--option { color: #a89984; padding: 0 1; height: 1; }
-        .option-list--option-highlighted { color: #fabd2f; text-style: bold; }
+        OptionList { background: transparent !important; }
+        OptionList > .option-list--option { color: #a89984; padding: 0 1; height: 1; background: transparent !important;}
+        OptionList > .option-list--option-highlighted { color: #fabd2f; text-style: bold; background: transparent !important; }
         """
 
     def __init__(self,cwd):
@@ -272,11 +274,11 @@ class ChatApp(App):
     
     def _create_selection_areas(self):
         areas = [
-            ("permission_area", "", ["1. Yes", "2. Yes, and don't ask again this session", "3. No, and tell Claude what to do differently"]),
+            ("permission_area", "", ["• Execute", "• Execute & remember choice", "• Redirect Claude"]),
             ("command_palette", "Command Palette - Select an option:", ["/host <url> - Set LLM host URL", "/provider - Switch LLM provider", "/think - Enable thinking mode", "/no-think - Disable thinking mode", "/status - Show current configuration", "/clear - Clear conversation history"]),
             ("provider_selection", "Select Provider:", self.providers),
             ("model_selection", "Select Model:", []),
-            ("tool_permission_area", "", ["1. Yes", "2. Yes, and don't ask again this session", "3. No, and tell Claude what to do differently"])
+            ("tool_permission_area", "", ["• Execute", "• Execute & remember choice", "• Redirect Claude"])
         ]
         
         for area_id, msg, opts in areas:
@@ -290,8 +292,9 @@ class ChatApp(App):
             yield Input(placeholder='Try "write a test for input.py"', compact=True,
                        # value="create a todo and then task: websearch for latest AI news and then fetch the first URL to summarize"
                        #  value = "create 5 todos for building a web scraper project"
-                        value = ("Complete the task by creating 5 todods , first web serach for virat , next rohith, next get virat test scores, next get rohith test scores, finally show"
-                                 "in markdown table both guys stats, prefer using markdown analyzer")
+                       #  value = ("Complete the task by creating 5 todods , first web serach for virat , next rohith, next get virat test scores, next get rohith test scores, finally show"
+                       #           "in markdown table both guys stats, prefer using markdown analyzer")
+                        value = 'read app.py'
                         )
     
     def _create_footer(self):
@@ -485,9 +488,7 @@ class ChatApp(App):
         # Create content description based on tool type
         if name == 'write_file':
             file_path = args.get('file_path', 'unknown')
-            content_preview = args.get('content', '')[:100]
-            if len(content_preview) == 100:
-                content_preview += "..."
+            content_preview = args.get('content', '')
             content = f"Write to {file_path}\nContent: {content_preview}"
         elif name == 'bash_execute':
             command = args.get('command', 'unknown')
@@ -496,11 +497,8 @@ class ChatApp(App):
             file_path = args.get('file_path', 'unknown')
             content = f"Read: {file_path}"
         else:
-            # Generic content display
             if args:
-                first_arg = str(list(args.values())[0])[:50]
-                if len(first_arg) == 50:
-                    first_arg += "..."
+                first_arg = str(list(args.values())[0])
                 content = f"{display_name}: {first_arg}"
             else:
                 content = display_name
