@@ -9,6 +9,7 @@ from textual.app import ComposeResult, App
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Static, OptionList, Label, Input
+from textual.widget import Widget
 import asyncio
 import time
 import datetime
@@ -159,6 +160,18 @@ def get_random_status_message():
     ]
     return random.choice(STATUS_MESSAGES)
 
+class ToolPermissionWidget(Widget):
+    def __init__(self, title: str, content: str, options: list = None):
+        super().__init__()
+        self.title = title
+        self.content = content
+        self.options = options or ["1. Yes", "2. Yes, and don't ask again this session", "3. No, and tell Claude what to do differently"]
+        
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="selection-area"):
+            yield Static(f"{self.title}: {self.content}", id="tool_permission_message")
+            yield OptionList(*self.options, id="tool_permission_options")
+
 class ChatApp(App):
     BINDINGS = [
         Binding("shift+tab", "cycle_mode", "Cycle Mode", priority=True),
@@ -188,6 +201,7 @@ class ChatApp(App):
         .selection-area OptionList { border: none; height: auto; scrollbar-size: 0 0; }
         .selection-area OptionList:focus { border: none; }
         #permission_area { border: round #458588; }
+        #tool_permission_area { border: round #458588; }
         #command_palette { border: round #915FF0; }
         #provider_selection { border: round #E27A53; }
         #model_selection { border: round #fabd2f; }
@@ -237,6 +251,8 @@ class ChatApp(App):
         self.llm = None
         self.chat_history = [{"role":"system","content":SYSTEM_PROMPT.format(cwd=cwd)}]
         self.model_loaded = False
+        self.pending_tool_calls = []
+        self.current_tool_index = 0
 
     def compose(self) -> ComposeResult:
         for method in [self._create_chat_area, self._create_status_bar, self._create_selection_areas, 
@@ -260,7 +276,8 @@ class ChatApp(App):
             ("permission_area", "", ["1. Yes", "2. Yes, and don't ask again this session", "3. No, and tell Claude what to do differently"]),
             ("command_palette", "Command Palette - Select an option:", ["/host <url> - Set LLM host URL", "/provider - Switch LLM provider", "/think - Enable thinking mode", "/no-think - Disable thinking mode", "/status - Show current configuration", "/clear - Clear conversation history"]),
             ("provider_selection", "Select Provider:", self.providers),
-            ("model_selection", "Select Model:", [])
+            ("model_selection", "Select Model:", []),
+            ("tool_permission_area", "", ["1. Yes", "2. Yes, and don't ask again this session", "3. No, and tell Claude what to do differently"])
         ]
         
         for area_id, msg, opts in areas:
@@ -383,7 +400,17 @@ class ChatApp(App):
                 })
 
                 if response['tool_calls']:
-                    for t in response['tool_calls']:
+                    # Check if we need permission for tool execution
+                    if self.permission_mode == 'default' and not self.pending_tool_calls:
+                        self.pending_tool_calls = response['tool_calls']
+                        self.current_tool_index = 0
+                        await self.show_tool_permission()
+                        break  # Wait for user permission
+                    
+                    # Execute tools (either permission granted or bypassed)
+                    tools_to_execute = self.pending_tool_calls if self.pending_tool_calls else response['tool_calls']
+                    
+                    for t in tools_to_execute:
                         name, args = t['function']['name'],json.loads(str(t['function']['arguments']))
 
                         tool_text = Text()
@@ -425,6 +452,10 @@ class ChatApp(App):
                             "name": name,
                             "content": str(result)
                         })
+                    
+                    # Clear pending tool calls after execution
+                    if self.pending_tool_calls:
+                        self.pending_tool_calls = []
                 else:
                     break
 
@@ -439,6 +470,88 @@ class ChatApp(App):
                 pass
 
 
+
+    async def show_tool_permission(self):
+        """Show tool permission dialog for the current tool"""
+        if not self.pending_tool_calls or self.current_tool_index >= len(self.pending_tool_calls):
+            return
+        
+        current_tool = self.pending_tool_calls[self.current_tool_index]
+        name = current_tool['function']['name']
+        args = json.loads(str(current_tool['function']['arguments']))
+        
+        # Format tool info for display
+        display_name = self.display_toolname_maps.get(name, name)
+        
+        # Create content description based on tool type
+        if name == 'write_file':
+            file_path = args.get('file_path', 'unknown')
+            content_preview = args.get('content', '')[:100]
+            if len(content_preview) == 100:
+                content_preview += "..."
+            content = f"Write to {file_path}\nContent: {content_preview}"
+        elif name == 'bash_execute':
+            command = args.get('command', 'unknown')
+            content = f"Execute: {command}"
+        elif name == 'read_file':
+            file_path = args.get('file_path', 'unknown')
+            content = f"Read: {file_path}"
+        else:
+            # Generic content display
+            if args:
+                first_arg = str(list(args.values())[0])[:50]
+                if len(first_arg) == 50:
+                    first_arg += "..."
+                content = f"{display_name}: {first_arg}"
+            else:
+                content = display_name
+
+        # Update permission message
+        tool_msg = self.query_one("#tool_permission_area_message")
+        tool_msg.update(f"Execute {display_name}?\n{content}")
+        
+        # Show permission area and focus
+        self.query_one("#tool_permission_area").display = True
+        tool_options = self.query_one("#tool_options")
+        tool_options.focus()
+
+    @on(OptionList.OptionSelected, "#tool_options")
+    def handle_tool_permission_choice(self, event: OptionList.OptionSelected) -> None:
+        """Handle tool permission choice"""
+        choice = event.option_index
+        
+        if choice == 0:  # Yes
+            self.hide_tool_permission()
+            asyncio.create_task(self.continue_tool_execution())
+        elif choice == 1:  # Yes, and don't ask again
+            self.permission_mode = 'bypass-permissions'
+            self.action_cycle_mode()  # Update UI
+            self.hide_tool_permission()
+            asyncio.create_task(self.continue_tool_execution())
+        else:  # No, tell Claude what to do
+            self.pending_tool_calls = []
+            self.hide_tool_permission()
+            # Focus back to input for user to give new instructions
+            self.query_one(Input).focus()
+
+    def hide_tool_permission(self):
+        """Hide tool permission area"""
+        self.query_one("#tool_permission_area").display = False
+        self.query_one(Input).focus()
+
+    async def continue_tool_execution(self):
+        """Continue executing pending tools after permission granted"""
+        if not self.pending_tool_calls:
+            return
+        
+        # Continue the async execution from where we left off
+        asyncio.create_task(self._continue_async_execution())
+
+    async def _continue_async_execution(self):
+        """Resume tool execution after permission granted"""
+        # This will continue the conversation loop
+        input_value = self.command_history[-1] if self.command_history else ""
+        await self._execute_input_async(input_value)
 
     @on(OptionList.OptionSelected, "#provider_options")
     def handle_provider_choice(self, event: OptionList.OptionSelected) -> None:
@@ -455,7 +568,7 @@ class ChatApp(App):
 
     def on_ready(self) -> None:
         self.theme = "gruvbox"
-        areas = ["permission_area", "command_palette", "provider_selection", "model_selection"]
+        areas = ["permission_area", "command_palette", "provider_selection", "model_selection", "tool_permission_area"]
         for area in areas:
             self.query_one(f"#{area}").display = False
         self.query_one(Input).focus()
