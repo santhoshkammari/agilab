@@ -510,6 +510,14 @@ class ChatApp(App):
         elif name == 'read_file':
             file_path = args.get('file_path', 'unknown')
             content = f"Read: {file_path}"
+        elif name == 'edit_file':
+            file_path = args.get('file_path', 'unknown')
+            old_string = args.get('old_string', '')
+            new_string = args.get('new_string', '')
+            # Show a preview of what will be changed
+            old_preview = old_string[:50] + "..." if len(old_string) > 50 else old_string
+            new_preview = new_string[:50] + "..." if len(new_string) > 50 else new_string
+            content = f"Update: {file_path}\n```diff\n- {old_preview}\n+ {new_preview}\n```"
         else:
             if args:
                 first_arg = str(list(args.values())[0])
@@ -789,11 +797,28 @@ class ChatApp(App):
         
         elif name == 'edit_file':
             if isinstance(result, dict) and 'diff_lines' in result:
-                # Show diff from structured return
-                diff_display = '\n'.join(result['diff_lines'][:4])  # Show max 4 diff lines
+                # Show diff from structured return with code markdown formatting
+                diff_lines = result['diff_lines']
                 count = result.get('changes_count', 1)
-                if diff_display:
-                    return f"Update ({count} {'change' if count == 1 else 'changes'})\n{diff_display}"
+                
+                if diff_lines:
+                    # Format diff with proper code markdown
+                    # Show first few lines with proper formatting
+                    formatted_diff_lines = []
+                    shown_lines = 0
+                    max_display_lines = 6
+                    
+                    for line in diff_lines:
+                        if shown_lines >= max_display_lines:
+                            if len(diff_lines) > max_display_lines:
+                                formatted_diff_lines.append("...")
+                            break
+                        formatted_diff_lines.append(line)
+                        shown_lines += 1
+                    
+                    diff_display = '\n'.join(formatted_diff_lines)
+                    # Wrap in code block for proper syntax highlighting
+                    return f"Update ({count} {'change' if count == 1 else 'changes'})\n```diff\n{diff_display}\n```"
                 else:
                     return f"Update ({count} {'change' if count == 1 else 'changes'})"
             elif isinstance(result, str):

@@ -97,20 +97,33 @@ def edit_file(file_path: str, old_string: str, new_string: str, replace_all: boo
         new_content = content.replace(old_string, new_string, 1)
         replaced_count = 1
     
-    # Generate diff for display
+    # IMPROVED DIFF GENERATION
     old_lines = content.splitlines(keepends=True)
     new_lines = new_content.splitlines(keepends=True)
-    diff_lines = list(difflib.unified_diff(old_lines, new_lines, lineterm=''))
     
-    # Extract meaningful diff lines (skip header)
+    # Generate unified diff with context lines
+    diff_lines = list(difflib.unified_diff(
+        old_lines, 
+        new_lines, 
+        lineterm='',
+        n=3  # Show 3 lines of context
+    ))
+    
+    # Process diff lines to extract meaningful information with better formatting
     meaningful_diff = []
-    for line in diff_lines[2:]:  # Skip the file path lines
+    line_info = []
+    
+    for line in diff_lines:
         if line.startswith('@@'):
-            continue
-        if line.startswith('-') and not line.startswith('---'):
+            # Extract line number information
+            line_info.append(line.strip())
+            meaningful_diff.append(line.strip())
+        elif line.startswith('-') and not line.startswith('---'):
             meaningful_diff.append(f"- {line[1:].rstrip()}")
         elif line.startswith('+') and not line.startswith('+++'):
             meaningful_diff.append(f"+ {line[1:].rstrip()}")
+        elif line.startswith(' '):  # Context lines
+            meaningful_diff.append(f"  {line[1:].rstrip()}")
     
     # Write updated content back to file
     try:
@@ -128,7 +141,9 @@ def edit_file(file_path: str, old_string: str, new_string: str, replace_all: boo
         "success": True,
         "file_path": file_path,
         "changes_count": replaced_count,
-        "diff_lines": meaningful_diff[:6],  # Limit to first 6 diff lines for display
+        "diff_lines": meaningful_diff,  # No limit, show all diff lines
+        "line_info": line_info,  # Include line number information
+        "has_changes": len([l for l in meaningful_diff if l.startswith(('+', '-'))]) > 0,
         "simple_message": f"{'Replaced' if replaced_count == 1 else f'Replaced all {replaced_count} occurrences of'} text in {file_path}. Changes applied successfully."
     }
 
