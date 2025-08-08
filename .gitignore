@@ -56,4 +56,5 @@ logs/
 *.tmp
 *.temp
 temp/
-tmp/
+tmp/datasets/
+datasets/
