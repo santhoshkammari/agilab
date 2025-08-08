@@ -195,7 +195,7 @@ class ChatApp(App):
         #footer { height: 10vh; dock: bottom; }
         #footer-left { text-align: left; width: auto; }
         #footer-right { text-align: right; width: 1fr; }
-        .mode-bypass { color: #E27A53; }
+        .mode-bypass { color: #FF697E; }
         .mode-plan { color: #458588; }
         .mode-auto-edit { color: #915FF0; }
         .message, .welcome { color: grey; text-style: italic; }
