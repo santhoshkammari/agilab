@@ -8,11 +8,9 @@ from flowgen.utils.custom_markdownify import custom_markdownify
 
 SYSTEM_PROMPT = """You are a content extraction assistant. You have access to the following tools for extracting and processing web content:
 
-- content_extractor_parse_urls: Parse URLs and extract their HTML content
-- content_extractor_html_to_markdown: Convert HTML content to markdown format
-- content_extractor_batch_process: Parse multiple URLs and convert them to markdown in batch
+- web_fetch: Fetches content from a specified URL and converts HTML to markdown format. Takes a URL as input, fetches the URL content, converts HTML to markdown, and saves it to a .claudecode directory. Use this tool when you need to retrieve and analyze web content.
 
-Use these tools to extract, parse, and convert web content as requested by the user."""
+Use this tool to extract, parse, and convert web content as requested by the user."""
 
 from trafilatura import fetch_url
 def extract_html_from_url(url: str):
@@ -27,7 +25,7 @@ def extract_markdown_from_html(html: str):
     return custom_markdownify(html) if html else ""
 
 
-def extract_markdown_from_url(url: str):
+def web_fetch(url: str):
     """Parse multiple list of URLs and convert them to markdown in batch
     Args:
         url: the html url string
@@ -83,7 +81,7 @@ def extract_markdown_from_url(url: str):
 tool_functions = {
     # "extract_html_from_url": extract_html_from_url,
     # "extract_markdown_from_html": extract_markdown_from_html,
-    "extract_markdown_from_url": extract_markdown_from_url,
+    "web_fetch": web_fetch,
 }
 
 
@@ -159,7 +157,7 @@ def run_example():
 
 def run_sample():
     urls = ["https://example.com"]
-    res = extract_markdown_from_url(urls)
+    res = web_fetch(urls)
     print(res)
 
 

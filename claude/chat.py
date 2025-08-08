@@ -396,15 +396,15 @@ class ChatApp(App):
             'list_directory': 'List',
             'task_agent': 'Task',
             'todo_write': 'Update Todos',
-            'extract_markdown_from_url': 'Extract Markdown',
-            'markdown_analyzer_get_headers': 'MD Headers',
-            'markdown_analyzer_get_paragraphs': 'MD Paragraphs',
-            'markdown_analyzer_get_links': 'MD Links',
-            'markdown_analyzer_get_code_blocks': 'MD Code Blocks',
-            'markdown_analyzer_get_tables_metadata': 'MD Tables Info',
-            'markdown_analyzer_get_table_by_line': 'MD Table',
-            'markdown_analyzer_get_lists': 'MD Lists',
-            'markdown_analyzer_get_overview': 'MD Overview',
+            'web_fetch': 'WebFetch',
+            'markdown_analyzer_get_headers': 'Extract Headers',
+            'markdown_analyzer_get_paragraphs': 'Extract Paragraphs',
+            'markdown_analyzer_get_links': 'Extract Links',
+            'markdown_analyzer_get_code_blocks': 'Extract Code',
+            'markdown_analyzer_get_tables_metadata': 'Extract Tables Info',
+            'markdown_analyzer_get_table_by_line': 'Extract Table',
+            'markdown_analyzer_get_lists': 'Extract Lists',
+            'markdown_analyzer_get_overview': 'Extract Overview',
             'apply_edit': 'Apply Edit',
             'discard_edit': 'Discard Edit',
             'async_web_search':'Web Search'
@@ -1198,7 +1198,7 @@ class ChatApp(App):
         if name == 'async_web_search':
             return f"Did 1 search in {tt}"
         
-        elif name == 'extract_markdown_from_url':
+        elif name == 'web_fetch':
             if isinstance(result, str) and "Markdown Saved at" in result:
                 filename = result.split("Markdown Saved at ")[-1]
                 return f"Saved markdown to {filename} in {tt}"
