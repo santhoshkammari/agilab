@@ -575,6 +575,37 @@ class ChatApp(App):
         # Add the final text to history
         self._add_to_history(new_text)
 
+    def _extract_file_references(self, input_text):
+        """Extract file references from user input text"""
+        import re
+        from pathlib import Path
+        
+        # Pattern to match file paths (relative or absolute)
+        # Matches common file extensions and path patterns
+        file_patterns = [
+            r'\b[\w\-./]+\.(?:py|js|ts|tsx|jsx|html|css|scss|less|json|yaml|yml|xml|md|txt|ini|cfg|conf|log|sql|sh|bat|ps1|php|rb|go|rs|cpp|c|h|hpp|java|kt|scala|swift|m|mm|pl|r|R|mat|nb|ipynb)\b',
+            r'\b(?:[./][\w\-./]*/?[\w\-]+\.[a-zA-Z0-9]+)\b',
+            r'\b(?:/[\w\-./]*/?[\w\-]+\.[a-zA-Z0-9]+)\b'
+        ]
+        
+        found_files = set()
+        for pattern in file_patterns:
+            matches = re.findall(pattern, input_text, re.IGNORECASE)
+            for match in matches:
+                # Convert to absolute path if relative
+                if match.startswith('./'):
+                    abs_path = str(Path(self.cwd) / match[2:])
+                elif match.startswith('/'):
+                    abs_path = match
+                else:
+                    abs_path = str(Path(self.cwd) / match)
+                
+                # Check if file exists
+                if Path(abs_path).exists() and Path(abs_path).is_file():
+                    found_files.add(abs_path)
+        
+        return list(found_files)
+
     def _check_slash_command(self,value):
         if value == "/provider":
             provider_msg = self.query_one("#provider_selection_message")
@@ -614,7 +645,83 @@ class ChatApp(App):
 
     async def _execute_input_async(self, input):
         animation_task = asyncio.create_task(self.animate_thinking_status(input))
-        self.chat_history.extend([{"role": "user", "content": input}])
+        
+        # Check for file references and auto-execute Read tool calls
+        file_refs = self._extract_file_references(input)
+        if file_refs:
+            # Create mock assistant message with Read tool calls
+            mock_tool_calls = []
+            tool_results = []
+            file_read_info = []  # Store info for display
+            
+            for file_path in file_refs:
+                tool_call_id = f"call_{len(mock_tool_calls)}"
+                mock_tool_calls.append({
+                    "id": tool_call_id,
+                    "type": "function",
+                    "function": {
+                        "name": "read_file",
+                        "arguments": json.dumps({"file_path": file_path})
+                    }
+                })
+                
+                # Execute the read tool
+                try:
+                    result = self.tools["read_file"](file_path=file_path)
+                    tool_results.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "name": "read_file",
+                        "content": str(result)
+                    })
+                    
+                    # Store info for display
+                    lines = str(result).count('\n') + 1 if result else 0
+                    filename = Path(file_path).name
+                    file_read_info.append(f"  ⎿ Read {filename} ({lines} lines)")
+                    
+                except Exception as e:
+                    # Handle file read errors
+                    error_result = f"Error reading {file_path}: {str(e)}"
+                    tool_results.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "name": "read_file",
+                        "content": error_result
+                    })
+                    
+                    filename = Path(file_path).name
+                    file_read_info.append(f"  ⎿ Error reading {filename}")
+            
+            # Add user message
+            self.chat_history.extend([{"role": "user", "content": input}])
+            
+            # Add mock assistant message with tool calls
+            self.chat_history.append({
+                "role": "assistant",
+                "content": "",
+                "tool_calls": mock_tool_calls
+            })
+            
+            # Add tool results
+            self.chat_history.extend(tool_results)
+            
+            # Display enriched user message with auto-read files
+            enriched_message = f"\n> {input}\n" + "\n".join(file_read_info) + "\n"
+            
+            chat_area = self.query_one("#chat_area")
+            chat_area.mount(Static(enriched_message, classes="message"))
+            chat_area.scroll_end(animate=False)
+            self.refresh()
+        else:
+            self.chat_history.extend([{"role": "user", "content": input}])
+            
+            # Display regular user message
+            chat_area = self.query_one("#chat_area")
+            chat_area.mount(Static(f"\n> {input}\n", classes="message"))
+            chat_area.scroll_end(animate=False)
+            self.refresh()
+        
         messages = self.chat_history.copy()
         chat_area = self.query_one("#chat_area")
         max_iterations = 15
@@ -850,10 +957,6 @@ class ChatApp(App):
 
         input = event.value.strip()
         self._add_to_history(input)
-        chat_area = self.query_one("#chat_area")
-        chat_area.mount(Static(f"\n> {input}\n", classes="message"))
-        chat_area.scroll_end(animate=False)
-        self.refresh()
 
         self.execute_input(input)
         event.input.clear()
