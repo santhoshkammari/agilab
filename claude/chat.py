@@ -7,6 +7,9 @@ from pathlib import Path
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
+from rich.console import Console
+from rich.theme import Theme
+from io import StringIO
 from textual import on
 from textual.app import ComposeResult, App
 from textual.binding import Binding
@@ -328,6 +331,45 @@ class ChatApp(App):
         OptionList { background: transparent !important; }
         OptionList > .option-list--option { color: #a89984; padding: 0 1; height: 1; background: transparent !important;}
         OptionList > .option-list--option-highlighted { color: #fabd2f; text-style: bold; background: transparent !important; }
+        
+        /* Claude Code Markdown Theming */
+        .ai-response Markdown {
+            color: #ebdbb2;
+        }
+        .ai-response MarkdownH1 {
+            color: #fabd2f;
+            text-style: bold;
+        }
+        .ai-response MarkdownH2 {
+            color: #83a598;
+            text-style: bold;
+        }
+        .ai-response MarkdownH3 {
+            color: #d3869b;
+            text-style: bold;
+        }
+        .ai-response MarkdownCodeBlock {
+            color: #ebdbb2;
+            background: #3c3836;
+        }
+        .ai-response MarkdownCode {
+            color: #fe8019;
+            background: #3c3836;
+        }
+        .ai-response MarkdownBlockQuote {
+            color: #928374;
+            text-style: italic;
+        }
+        .ai-response MarkdownList {
+            color: #b8bb26;
+        }
+        .ai-response MarkdownListItem {
+            color: #ebdbb2;
+        }
+        .ai-response MarkdownLink {
+            color: #458588;
+            text-style: underline;
+        }
         """
 
     def __init__(self,cwd):
@@ -1147,27 +1189,8 @@ class ChatApp(App):
 
     def _format_claude_response(self, content):
         """Format assistant response to match Claude Code CLI style"""
-        from rich.markdown import Markdown
-        from rich.theme import Theme
-        
-        # Create Claude Code themed markdown
-        claude_theme = Theme({
-            "markdown.h1": "#fabd2f bold",  # Yellow headers
-            "markdown.h2": "#83a598 bold",  # Blue headers  
-            "markdown.h3": "#d3869b bold",  # Pink headers
-            "markdown.code": "#fe8019 on #3c3836",  # Orange code on dark
-            "markdown.code_block": "#ebdbb2 on #3c3836",  # Light text on dark bg
-            "markdown.block_quote": "#928374 italic",  # Grey italic quotes
-            "markdown.list.bullet": "#b8bb26",  # Green bullets
-            "markdown.list.number": "#b8bb26",  # Green numbers
-            "markdown.hr": "#665c54",  # Dark grey horizontal rules
-            "markdown.link": "#458588 underline",  # Blue underlined links
-            "markdown.link_url": "#83a598",  # Light blue URLs
-        })
-        
-        # Create markdown with Claude Code styling
-        markdown_content = Markdown(content.strip(), theme=claude_theme, code_theme="gruvbox-dark")
-        return markdown_content
+        # Just return the markdown with code theme - Textual handles styling via CSS
+        return Markdown(content.strip(), code_theme="gruvbox-dark")
 
     def display_toolresult(self, name, result, timetaken):
         tt = f"{timetaken:.1f}s" if timetaken >= 1 else f"{timetaken:.2f}s"
