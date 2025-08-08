@@ -2,19 +2,19 @@
 
 > A powerful terminal-based chat application with integrated LLM capabilities and extensible tool support.
 
-![img.png](images/img.png)
-
 ## Overview
 
-Claude is a modern TUI (Terminal User Interface) chat application that provides seamless interaction with Large Language Models through Ollama. Built with Python and Textual, it offers a rich, responsive interface for AI-powered conversations with built-in tool integration for enhanced functionality.
+Claude is a sophisticated terminal-based chat application that brings Claude Code's capabilities to your local environment. Built with Python and Textual, it provides a rich TUI interface for seamless AI conversations with comprehensive tool integration and multi-provider LLM support.
 
 ## Key Features
 
-- **Rich Terminal Interface**: Modern, responsive TUI built with Textual framework
-- **LLM Integration**: Native support for Ollama with multiple model compatibility
-- **Extensible Tools**: Built-in file operations and web utilities
-- **Async Architecture**: Non-blocking operations for smooth user experience
-- **Modular Design**: Clean, maintainable codebase with clear separation of concerns
+- **Modern TUI Interface**: Rich terminal interface with Gruvbox theming and markdown rendering
+- **Multi-Provider Support**: Works with Gemini, Ollama, OpenRouter, and vLLM backends
+- **Extensive Tool Integration**: File operations, web search, markdown analysis, and bash execution
+- **Interactive Permissions**: Smart tool execution with configurable permission modes
+- **File Autocomplete**: Tab-completion for file paths with fuzzy matching
+- **Command History**: Persistent history with navigation shortcuts
+- **Async Architecture**: Non-blocking operations with real-time status updates
 
 ## Quick Start
 
@@ -27,44 +27,59 @@ cd claude
 pip install -r requirements.txt
 
 # Run the application
-python app.py
+python claude/app.py
 ```
 
-==========================================================================================
-PERFORMANCE COMPARISON TABLE for 10 Queries
-==========================================================================================
-+------------------+------------+-----------+-----------+-----------+---------------+-------------------+
-| Wait Until       | Headless   |   Avg (s) |   Min (s) |   Max (s) |   Std Dev (s) |   Success Queries |
-+==================+============+===========+===========+===========+===============+===================+
-| load             | True       |     0.894 |     0.669 |     1.212 |         0.155 |                10 |
-+------------------+------------+-----------+-----------+-----------+---------------+-------------------+
-| load             | False      |     0.897 |     0.672 |     1.099 |         0.13  |                10 |
-+------------------+------------+-----------+-----------+-----------+---------------+-------------------+
-| domcontentloaded | True       |     0.807 |     0.656 |     1.039 |         0.115 |                10 |
-+------------------+------------+-----------+-----------+-----------+---------------+-------------------+
-| domcontentloaded | False      |     0.996 |     0.724 |     2.656 |         0.589 |                10 |
-+------------------+------------+-----------+-----------+-----------+---------------+-------------------+
+## Usage
 
-🏆 Fastest: domcontentloaded, headless=True (0.807s avg)
-🐌 Slowest: domcontentloaded, headless=False (0.996s avg)
-⚡ Speed improvement: 0.189s (18.9% faster)
+The application starts with a welcome screen and supports various interaction modes:
 
+- **Default Mode**: Standard operation with permission prompts for file operations
+- **Auto-Accept Edits**: Automatically approve file editing operations
+- **Bypass Permissions**: Skip all permission prompts
+- **Plan Mode**: Planning mode for task organization
+
+### Keyboard Shortcuts
+
+- `Shift+Tab`: Cycle through permission modes
+- `Tab`: Trigger file autocomplete
+- `Ctrl+C`: Clear current input
+- `Escape`: Interrupt conversation or hide autocomplete
+- `Ctrl+L`: Clear screen
+- `Shift+Up/Down`: Navigate command history
+
+### Slash Commands
+
+- `/provider`: Switch between LLM providers
+- `/clear`: Clear conversation history
+- `/help`: Show help information
+- `/status`: Display current configuration
+
+## Architecture
+
+The application consists of two main components:
+
+### `claude/app.py`
+Simple application entry point that initializes the chat interface with the current working directory.
+
+### `claude/chat.py`
+Core application logic featuring:
+- **ChatApp Class**: Main TUI application with Textual framework
+- **Tool Integration**: Comprehensive tool ecosystem including:
+  - File operations (read, write, edit, multi-edit)
+  - Web utilities (search, fetch)
+  - Markdown analysis
+  - Bash command execution
+  - Directory operations
+- **Permission System**: Configurable tool execution permissions
+- **Provider Management**: Support for multiple LLM backends
+- **Rich UI Components**: Status indicators, autocomplete, and styled output
 
 ## Prerequisites
 
 - **Python**: 3.8 or higher
-- **Ollama**: Local installation required
-- **Dependencies**: textual, ollama, pydantic
-
-## Architecture
-
-```
-claude/
-├── core/           # Core application components
-│   └── components/ # UI components and layouts
-├── llm/           # Language model integrations
-└── tools/         # Utility and tool implementations
-```
+- **LLM Provider**: At least one of Gemini, Ollama, OpenRouter, or vLLM configured
+- **Dependencies**: textual, rich, asyncio, and provider-specific packages
 
 ## Contributing
 
