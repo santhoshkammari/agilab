@@ -34,7 +34,7 @@ def write_file(file_path, content):
     """
     if not file_path.startswith('/'):
         # raise ValueError("file_path must be absolute path")
-        return "ValueError: file_path must be absolute path"
+        return "I need an absolute path to write the file. The path should start with '/' (like /home/user/file.txt)."
     
     abs_path = os.path.abspath(file_path)
     
@@ -42,13 +42,13 @@ def write_file(file_path, content):
     if os.path.exists(abs_path):
         if abs_path not in _read_files:
             # raise ValueError("File must be read before writing. Use Read tool on existing file before overwriting")
-            return "ValueError: File must be read before writing. Use Read tool on existing file before overwriting"
+            return "I need to read the existing file before I can overwrite it. Please use the Read tool first to view the current contents."
     
     # Check if parent directory exists
     parent_dir = os.path.dirname(abs_path)
     if not os.path.exists(parent_dir):
         # raise FileNotFoundError(f"Parent directory does not exist: {parent_dir}")
-        return f"FileNotFoundError: Parent directory does not exist: {parent_dir}"
+        return f"I can't write to {abs_path} because the parent directory {parent_dir} doesn't exist. Please create the directory first."
     
     try:
         # Write content atomically
@@ -56,10 +56,10 @@ def write_file(file_path, content):
             f.write(content)
     except PermissionError:
         # raise PermissionError(f"Permission denied: {abs_path}")
-        return f"PermissionError: Permission denied: {abs_path}"
+        return f"I don't have permission to write to {abs_path}. Please check the file and directory permissions."
     except Exception as e:
         # raise RuntimeError(f"Failed to write file {abs_path}: {str(e)}")
-        return f"RuntimeError: Failed to write file {abs_path}: {str(e)}"
+        return f"I encountered an error while trying to write to {abs_path}: {str(e)}"
     
     # Get file size for confirmation
     file_size = os.path.getsize(abs_path)

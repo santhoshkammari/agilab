@@ -23,22 +23,21 @@ def list_directory(path: str, ignore: Optional[List[str]] = None) -> Dict[str, A
     """
     if not path.startswith('/'):
         # raise ValueError("path must be absolute path")
-        return "path must be absolute path"
+        return "I need an absolute path to list the directory. The path should start with '/' (like /home/user/folder)."
 
     if not os.path.exists(path):
         # raise FileNotFoundError(f"Path not found: {path}")
-        return f"FileNotFound at Path: {path}"
+        return f"I couldn't find the directory at {path}. Please check if the path is correct and the directory exists."
 
     if not os.path.isdir(path):
         # raise NotADirectoryError(f"Not a directory: {path}")
-        return f"Not a directory: {path}"
+        return f"The path {path} points to a file, not a directory. I can only list the contents of directories."
 
     try:
         items = os.listdir(path)
     except PermissionError:
         # raise PermissionError(f"Permission denied: {path}")
-        return f"PermissionError: Permission denied: {path}"
-        return f"Permission denied: {path}"
+        return f"I don't have permission to access {path}. Please check the directory permissions."
 
     ignore_patterns = ignore or []
     entries = []
