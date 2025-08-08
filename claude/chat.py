@@ -195,7 +195,7 @@ class ChatApp(App):
         #footer { height: 10vh; dock: bottom; }
         #footer-left { text-align: left; width: auto; }
         #footer-right { text-align: right; width: 1fr; }
-        .mode-bypass { color: #fabd2f; }
+        .mode-bypass { color: #E27A53; }
         .mode-plan { color: #458588; }
         .mode-auto-edit { color: #915FF0; }
         .message, .welcome { color: grey; text-style: italic; }
@@ -225,7 +225,7 @@ class ChatApp(App):
         self.permission_maps = {
             "default": "[grey]  ? for shortcuts[/grey]",
             'auto-accept-edits': "   ⏵⏵ auto-accept edits on   ",
-            'bypass-permissions': "   Bypassing Permissions   ",
+            'bypass-permissions': "   bypass permissions on   ",
             'plan-mode': "   ⏸ plan mode on   "
         }
         self.display_toolname_maps = {
@@ -332,7 +332,16 @@ class ChatApp(App):
         self.mode_idx = (self.mode_idx + 1) % len(self.modes)
         self.permission_mode = self.modes[self.mode_idx]
         footer_left = self.query_one("#footer-left")
-        footer_left.update(self.permission_maps[self.permission_mode])
+        
+        # Add grey "(shift+tab to cycle)" to all modes when cycling
+        base_text = self.permission_maps[self.permission_mode]
+        if self.permission_mode != "default":
+            # Remove trailing spaces from base_text before adding the cycle text
+            display_text = base_text.rstrip() + " [grey](shift+tab to cycle)[/grey]"
+        else:
+            display_text = base_text
+        
+        footer_left.update(display_text)
         footer_left.remove_class("mode-bypass", "mode-plan", "mode-auto-edit")
         mode_classes = {'bypass-permissions': "mode-bypass", 'plan-mode': "mode-plan", 'auto-accept-edits': "mode-auto-edit"}
         if self.permission_mode in mode_classes:
@@ -832,8 +841,7 @@ class ChatApp(App):
             self.query_one(f"#{area}").display = False
         self.query_one(Input).focus()
         fr = self.query_one("#footer-right")
-        fr.update("Try claude doctor or npm i -g @anthropic-ai/claude-code")
-        fr.add_class("mode-bypass")
+        fr.update("")
 
     @on(Input.Submitted)
     def handle_message(self,event: Input.Submitted):
