@@ -29,7 +29,14 @@ def bash_execute(command: str, description: Optional[str] = None, timeout: Optio
     """
     if not command or not command.strip():
         # raise ValueError("Command cannot be empty")
-        return "I need a command to execute. Please provide a bash command to run."
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': "I need a command to execute. Please provide a bash command to run.",
+            'exit_code': -1,
+            'execution_time': 0,
+            'truncated': False
+        }
     
     # Set default timeout and validate
     if timeout is None:
@@ -37,14 +44,28 @@ def bash_execute(command: str, description: Optional[str] = None, timeout: Optio
     
     if timeout < 1 or timeout > 600000:
         # raise ValueError("Timeout must be between 1ms and 600000ms (10 minutes)")
-        return "The timeout value needs to be between 1ms and 600000ms (10 minutes). Please adjust the timeout parameter."
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': "The timeout value needs to be between 1ms and 600000ms (10 minutes). Please adjust the timeout parameter.",
+            'exit_code': -1,
+            'execution_time': 0,
+            'truncated': False
+        }
     
     timeout_seconds = timeout / 1000.0
     
     # Validate command for common issues
     validation_error = _validate_command(command)
     if validation_error:
-        return validation_error
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': validation_error,
+            'exit_code': -1,
+            'execution_time': 0,
+            'truncated': False
+        }
     
     # Track execution time
     start_time = time.time()
@@ -68,7 +89,14 @@ def bash_execute(command: str, description: Optional[str] = None, timeout: Optio
         process.wait()
         execution_time = time.time() - start_time
         # raise TimeoutError(f"Command timed out after {timeout}ms: {command}")
-        return f"The command took too long to execute and was stopped after {timeout}ms. The command was: {command}"
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': f"The command took too long to execute and was stopped after {timeout}ms. The command was: {command}",
+            'exit_code': -1,
+            'execution_time': execution_time,
+            'truncated': False
+        }
     
     except Exception as e:
         execution_time = time.time() - start_time

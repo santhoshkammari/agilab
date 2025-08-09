@@ -1088,9 +1088,142 @@ class ChatApp(App):
 
     async def _continue_async_execution(self):
         """Resume tool execution after permission granted"""
-        # This will continue the conversation loop
-        input_value = self.command_history[-1] if self.command_history else ""
-        await self._execute_input_async(input_value)
+        # Continue executing the pending tools without re-processing input
+        if not self.pending_tool_calls:
+            return
+            
+        chat_area = self.query_one("#chat_area")
+        messages = self.chat_history.copy()
+        
+        try:
+            # Execute the pending tools
+            for t in self.pending_tool_calls:
+                name, args = t['function']['name'], json.loads(str(t['function']['arguments']))
+
+                tool_text = Text()
+                tool_text.append("● ", style="dim #5cf074")
+                tool_text.append(self.display_toolname_maps[name], style="bold")
+                if args and name not in ["todo_write"]:
+                    tool_text.append(f'("{list(args.values())[0]}")', style="default")
+
+                st = time.perf_counter()
+                # Check if the tool function is async
+                import inspect
+                if inspect.iscoroutinefunction(self.tools[name]):
+                    result = await self.tools[name](**args)
+                else:
+                    result = self.tools[name](**args)
+                tt = time.perf_counter() - st
+                
+                # Handle Rich Text objects for todo_write specially
+                tool_result_display = self.display_toolresult(name, result, tt)
+                if name == 'todo_write' and hasattr(tool_result_display, 'append'):
+                    markdown_widget = Static(tool_text, classes="ai-response")
+                    chat_area.mount(markdown_widget)
+
+                    # Mount the Rich Text todos separately
+                    todo_widget = Static(tool_result_display, classes="ai-response")
+                    chat_area.mount(todo_widget)
+                else:
+                    # Regular string result
+                    tool_text.append(f"\n  ⎿ {tool_result_display}\n", style="default")
+                    markdown_widget = Static(tool_text, classes="ai-response")
+                    chat_area.mount(markdown_widget)
+                
+                chat_area.scroll_end(animate=False)
+                self.refresh()
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": t.get("id"),
+                    "name": name,
+                    "content": str(result)
+                })
+            
+            # Clear pending tool calls after execution
+            self.pending_tool_calls = []
+            
+            # Continue the conversation with the updated messages
+            max_iterations = 15
+            while max_iterations > 0:
+                max_iterations -= 1
+                response = await asyncio.get_event_loop().run_in_executor(None, self.llm, messages)
+                
+                if response['content'].strip():
+                    formatted_response = self._format_claude_response(response['content'].strip())
+                    markdown_widget = Static(formatted_response, classes="ai-response")
+                    chat_area.mount(markdown_widget)
+                    chat_area.scroll_end(animate=False)
+                    self.refresh()
+
+                messages.append({
+                    "role": "assistant",
+                    "content": response['content'],
+                    "tool_calls": response['tool_calls']
+                })
+
+                if response['tool_calls']:
+                    # Check if we need permission for any tools
+                    tools_needing_permission = [t for t in response['tool_calls'] 
+                                               if self.needs_permission(t['function']['name'])]
+                    
+                    if tools_needing_permission and not self.pending_tool_calls:
+                        self.pending_tool_calls = response['tool_calls']
+                        self.current_tool_index = 0
+                        await self.show_tool_permission()
+                        break  # Wait for user permission
+
+                    # Execute tools (permission granted or bypassed)
+                    for t in response['tool_calls']:
+                        name, args = t['function']['name'], json.loads(str(t['function']['arguments']))
+
+                        tool_text = Text()
+                        tool_text.append("● ", style="dim #5cf074")
+                        tool_text.append(self.display_toolname_maps[name], style="bold")
+                        if args and name not in ["todo_write"]:
+                            tool_text.append(f'("{list(args.values())[0]}")', style="default")
+
+                        st = time.perf_counter()
+                        # Check if the tool function is async
+                        import inspect
+                        if inspect.iscoroutinefunction(self.tools[name]):
+                            result = await self.tools[name](**args)
+                        else:
+                            result = self.tools[name](**args)
+                        tt = time.perf_counter() - st
+                        
+                        # Handle Rich Text objects for todo_write specially
+                        tool_result_display = self.display_toolresult(name, result, tt)
+                        if name == 'todo_write' and hasattr(tool_result_display, 'append'):
+                            markdown_widget = Static(tool_text, classes="ai-response")
+                            chat_area.mount(markdown_widget)
+
+                            # Mount the Rich Text todos separately
+                            todo_widget = Static(tool_result_display, classes="ai-response")
+                            chat_area.mount(todo_widget)
+                        else:
+                            # Regular string result
+                            tool_text.append(f"\n  ⎿ {tool_result_display}\n", style="default")
+                            markdown_widget = Static(tool_text, classes="ai-response")
+                            chat_area.mount(markdown_widget)
+                        
+                        chat_area.scroll_end(animate=False)
+                        self.refresh()
+
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": t.get("id"),
+                            "name": name,
+                            "content": str(result)
+                        })
+                else:
+                    break
+                    
+            # Update chat history
+            self.chat_history = messages
+                    
+        except Exception as e:
+            raise e
 
     @on(OptionList.OptionSelected, "#provider_options")
     def handle_provider_choice(self, event: OptionList.OptionSelected) -> None:
@@ -1116,6 +1249,10 @@ class ChatApp(App):
 
     @on(Input.Submitted)
     def handle_message(self,event: Input.Submitted):
+        # Only handle if the input widget has focus and there's content
+        if not event.input.has_focus or not event.value.strip():
+            return
+            
         if not self.model_loaded:
             self.load_model()
 
