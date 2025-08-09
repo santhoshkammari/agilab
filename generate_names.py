@@ -1,5 +1,6 @@
 import json
 import string
+from tqdm import tqdm
 
 def is_pronounceable(name):
     vowels = set('aeiouy')
@@ -33,21 +34,24 @@ def generate_names():
     
     names = []
     
-    for c1 in allowed_chars:
+    for c1 in tqdm(allowed_chars):
         for c2 in allowed_chars:
             for c3 in allowed_chars:
                 for c4 in allowed_chars:
                     for c5 in allowed_chars:
-                        name = c1 + c2 + c3 + c4 + c5
-                        unique_chars = set(name)
-                        if len(unique_chars) >= 4 and is_pronounceable(name):
-                            names.append(name)
+                        for c6 in allowed_chars:
+                            name = c1 + c2 + c3 + c4 + c5 + c6
+                            unique_chars = set(name)
+                            if len(unique_chars) >= 4 and is_pronounceable(name):
+                                names.append(name)
     
     with open('names.json', 'w') as f:
         json.dump(names, f, indent=2)
     
     print(f"Generated {len(names)} names and saved to names.json")
     print(f"Using characters: {', '.join(allowed_chars)}")
+    print('claude' in names)
 
 if __name__ == "__main__":
     generate_names()
+    print(is_pronounceable('claude'))

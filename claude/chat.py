@@ -374,6 +374,13 @@ class ChatApp(App):
 
     def __init__(self,cwd):
         super().__init__()
+        
+        # Delete .claudecode folder if it exists at startup
+        import shutil
+        claudecode_path = Path(cwd) / ".claudecode"
+        if claudecode_path.exists():
+            shutil.rmtree(claudecode_path)
+        
         self.tools = {**wt,**mt,**ct,**ft}
         self.command_history, self.history_index, self.mode_idx = [], -1, 0
         self.modes = ['default', 'auto-accept-edits', 'bypass-permissions', 'plan-mode']
