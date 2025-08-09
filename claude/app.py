@@ -1,3 +1,6 @@
+"""
+Cli App
+"""
 import asyncio
 from pathlib import Path
 
