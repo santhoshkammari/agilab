@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Generator, Dict, Any, List, Callable, Optional, Union
 from ..llm import BaseLLM
@@ -12,7 +11,7 @@ from rich.markdown import Markdown
 
 
 class _AgentCall:
-    """Awaitable wrapper that allows agent('hello') and await agent('hello') to both work."""
+    """Sync wrapper that allows lazy execution of agent calls."""
     
     def __init__(self, agent, input, **kwargs):
         self.agent = agent
@@ -20,23 +19,6 @@ class _AgentCall:
         self.kwargs = kwargs
         self._result = None
         self._executed = False
-    
-    def __await__(self):
-        """Makes this object awaitable - used when: await agent('hello')"""
-        async def _async_call():
-            if self.agent._is_async_llm():
-                return await self.agent.run_async(self.input, **self.kwargs)
-            else:
-                # For sync LLMs in async context, run in thread pool
-                import concurrent.futures
-                loop = asyncio.get_event_loop()
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    return await loop.run_in_executor(
-                        executor, 
-                        lambda: self.agent._run_sync(self.input, **self.kwargs)
-                    )
-        
-        return _async_call().__await__()
     
     def __getattr__(self, name):
         """Auto-execute on attribute access - used when: agent('hello').content"""
@@ -79,9 +61,6 @@ class _AgentCall:
         if self._executed:
             return self._result
         
-        if self.agent._is_async_llm():
-            raise RuntimeError("Cannot use sync access with async LLM. Use 'await agent(...)' instead.")
-        
         self._result = self.agent._run_sync(self.input, **self.kwargs)
         self._executed = True
         return self._result
@@ -117,9 +96,6 @@ class Agent:
         self._conversation = []  # Current conversation (gets reset on new calls)
         self._console = Console()
     
-    def _is_async_llm(self) -> bool:
-        """Check if the LLM is async by checking if it has async __call__ method."""
-        return asyncio.iscoroutinefunction(getattr(self.llm, '__call__', None))
     
     def _run_sync(self, input: Union[str, List[Dict]], **kwargs) -> Union[Dict, Generator]:
         """Execute agentic behavior synchronously for sync LLMs."""
@@ -128,35 +104,11 @@ class Agent:
         else:
             return self._execute_sync(input, **kwargs)
     
-    async def run_async(self, input: Union[str, List[Dict]], **kwargs) -> Union[Dict, Generator]:
-        """Execute agentic behavior - can be used exactly like an LLM.
-        
-        Args:
-            input: User input as string or message list
-            enable_rich_debug: Override instance setting for rich debug output
-            **kwargs: Additional arguments passed to LLM
-        
-        Returns final result dict or Generator if stream=True.
-        """
-        if self.stream or kwargs.get('stream', False):
-            return self._stream_execute_async(input, **kwargs)
-        else:
-            return await self._execute_async(input, **kwargs)
 
     def __call__(self, input: Union[str, List[Dict]], **kwargs):
-        """Universal call that works as both sync and async."""
+        """Sync call that returns either result or _AgentCall wrapper."""
         return _AgentCall(self, input, **kwargs)
     
-    async def acall(self, input: Union[str, List[Dict]], **kwargs):
-        """Explicit async call - works with both sync and async LLMs."""
-        if self._is_async_llm():
-            return await self.run_async(input=input, **kwargs)
-        else:
-            # For sync LLMs in async context, run in thread pool
-            import concurrent.futures
-            loop = asyncio.get_event_loop()
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                return await loop.run_in_executor(executor, lambda: self._run_sync(input, **kwargs))
 
     
     def _execute_sync(self, input: Union[str, List[Dict]], **kwargs) -> Dict:
@@ -292,142 +244,9 @@ class Agent:
             'truncated': True
         }
     
-    async def _execute_async(self, input: Union[str, List[Dict]], **kwargs) -> Dict:
-        """Non-streaming execution for async LLMs - returns final result."""
-        messages = self._normalize_input(input)
-        # Prepend history to current conversation
-        messages = self.history + messages
-        self._conversation = messages.copy()
-        
-        # Check for rich debug override
-        enable_debug = kwargs.pop('enable_rich_debug', self.enable_rich_debug)
-        
-        # Debug: Show user message
-        if enable_debug and messages:
-            user_msg = next((msg for msg in reversed(messages) if msg.get('role') == 'user'), None)
-            if user_msg:
-                self._console.print(Panel(
-                    user_msg.get('content', ''),
-                    title="User",
-                    title_align='left',
-                    border_style="blue",
-                    padding=(0, 1),
-                    expand=False
-                ))
-        
-        # Override LLM tools with agent tools if provided
-        if self.tools:
-            kwargs['tools'] = self.tools
-        
-        for iteration in range(self.max_iterations):
-            response = await self.llm(messages, **kwargs)
-
-            # Debug: Show assistant response
-            if enable_debug:
-                content = response.get('content', '')
-                think = response.get('think', '')
-                debug_text = ""
-                if think:
-                    debug_text += f"Think: {think}\n\n"
-                if content:
-                    debug_text += f"Response: {content}"
-
-                # Use Markdown for better formatting of assistant response
-                markdown_content = Markdown(content) if content else ""
-                self._console.print(Panel(
-                    markdown_content,
-                    title="Assistant",
-                    title_align='center',
-                    border_style="green",
-                    padding=(0, 1),
-                    expand=False
-                ))
-            
-            # No tool calls - add assistant response and return final result
-            if not response.get('tool_calls'):
-                # Add the assistant's response to conversation
-                messages.append({
-                    "role": "assistant",
-                    "content": response.get('content', '')
-                })
-                
-                # Update conversation history
-                self._conversation = messages
-                
-                return {
-                    'content': response.get('content', ''),
-                    'think': response.get('think', ''),
-                    'iterations': iteration + 1,
-                    'messages': messages,
-                    'final': True
-                }
-            
-            # Add assistant message with tool calls
-            messages.append({
-                "role": "assistant", 
-                "tool_calls": response['tool_calls']
-            })
-
-
-            # Execute tools and add results
-            for i, tool_call in enumerate(response['tool_calls']):
-                # Store original tool call for ID
-                original_tool_call = tool_call
-                # Debug: Show tool call
-                tool_call_func = tool_call['function']
-                if enable_debug:
-                    tool_info = f"Tool: {tool_call_func['name']}("
-                    if tool_call_func.get('arguments'):
-                        tool_info += f"{json.dumps(tool_call_func['arguments'])}"
-                    else:
-                        tool_info+=")"
-                    
-                    self._console.print(Panel(
-                        tool_info.strip(),
-                        title="Tool Call",
-                        title_align='right',
-                        border_style="yellow",
-                        padding=(0, 1),
-                        expand=False
-                    ))
-                
-                tool_result = await self._execute_tool_async(tool_call_func)
-                
-                # Debug: Show tool result
-                if enable_debug:
-                    result_text = str(tool_result)
-                    # Handle long text by removing width restriction and improving text handling
-                    self._console.print(Panel(
-                        result_text,
-                        title=f"Tool Result ({tool_call_func['name']})",
-                        title_align='right',
-                        border_style="cyan",
-                        padding=(0, 1),
-                        expand=False
-                    ))
-                
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": original_tool_call.get('id', f"call_{i}"),
-                    "name": tool_call_func['name'],
-                    "content": str(tool_result)
-                })
-        
-        # Update conversation history
-        self._conversation = messages
-        
-        # Max iterations reached
-        return {
-            'content': 'Max iterations reached',
-            'think': '',
-            'iterations': self.max_iterations,
-            'messages': messages,
-            'final': True,
-            'truncated': True
-        }
     
     def _stream_execute_sync(self, input: Union[str, List[Dict]], **kwargs) -> Generator[Dict, None, None]:
-        """Streaming execution for sync LLMs - yields intermediate results."""
+        """Streaming execution for sync LLMs - yields intermediate results and token-level streaming."""
         messages = self._normalize_input(input)
         # Prepend history to current conversation
         messages = self.history + messages
@@ -444,9 +263,146 @@ class Agent:
                 'messages_count': len(messages)
             }
             
-            response = self.llm(messages, **kwargs)
+            # Try streaming first, fallback to regular if it fails
+            response = None
             
-            # Yield LLM response
+            try:
+                # Try streaming if requested
+                kwargs_for_llm = kwargs.copy()
+                kwargs_for_llm['stream'] = True
+                
+                llm_stream = self.llm(messages, **kwargs_for_llm)
+                
+                # Check if we got a streaming response from any LLM (vLLM, Gemini, hgLLM)
+                if hasattr(llm_stream, '__class__') and 'Stream' in str(llm_stream.__class__):
+                    # Streaming response from OpenAI-compatible APIs (vLLM, Gemini, etc.)
+                    accumulated_content = ""
+                    accumulated_think = ""
+                    tool_calls_dict = {}
+                    
+                    for chunk in llm_stream:
+                        if hasattr(chunk, 'choices') and chunk.choices:
+                            choice = chunk.choices[0]
+                            
+                            if hasattr(choice, 'delta') and choice.delta:
+                                # Content streaming
+                                if hasattr(choice.delta, 'content') and choice.delta.content:
+                                    token = choice.delta.content
+                                    accumulated_content += token
+                                    
+                                    yield {
+                                        'type': 'token',
+                                        'content': token,
+                                        'accumulated_content': accumulated_content,
+                                        'iteration': iteration + 1
+                                    }
+                                
+                                # Tool calls streaming - handle both vLLM and Gemini patterns
+                                if hasattr(choice.delta, 'tool_calls') and choice.delta.tool_calls:
+                                    for tool_call in choice.delta.tool_calls:
+                                        if hasattr(tool_call, 'index') and tool_call.index is not None:
+                                            # vLLM pattern: incremental streaming with index
+                                            idx = tool_call.index
+                                            if idx not in tool_calls_dict:
+                                                tool_calls_dict[idx] = {
+                                                    'id': getattr(tool_call, 'id', f'call_{idx}'),
+                                                    'type': 'function',
+                                                    'function': {'name': '', 'arguments': ''}
+                                                }
+                                            
+                                            if hasattr(tool_call, 'function') and tool_call.function:
+                                                if hasattr(tool_call.function, 'name') and tool_call.function.name:
+                                                    tool_calls_dict[idx]['function']['name'] = tool_call.function.name
+                                                if hasattr(tool_call.function, 'arguments') and tool_call.function.arguments:
+                                                    tool_calls_dict[idx]['function']['arguments'] += tool_call.function.arguments
+                                        else:
+                                            # Gemini pattern: complete tool calls in chunks
+                                            if hasattr(tool_call, 'function') and tool_call.function:
+                                                idx = len(tool_calls_dict)
+                                                tool_calls_dict[idx] = {
+                                                    'id': getattr(tool_call, 'id', f'call_{idx}'),
+                                                    'type': getattr(tool_call, 'type', 'function'),
+                                                    'function': {
+                                                        'name': tool_call.function.name or '',
+                                                        'arguments': tool_call.function.arguments or '{}'
+                                                    }
+                                                }
+                    
+                    # Build final response from streaming
+                    response = {
+                        'content': accumulated_content,
+                        'think': accumulated_think,
+                        'tool_calls': list(tool_calls_dict.values()) if tool_calls_dict else []
+                    }
+                    
+                    # Ensure tool call arguments are valid JSON
+                    for tool_call in response['tool_calls']:
+                        if not tool_call['function']['arguments']:
+                            tool_call['function']['arguments'] = '{}'
+                
+                elif hasattr(llm_stream, '__iter__') and not isinstance(llm_stream, (str, dict)):
+                    # Custom streaming format (hgLLM style)
+                    accumulated_content = ""
+                    accumulated_think = ""
+                    
+                    for chunk in llm_stream:
+                        if isinstance(chunk, str):
+                            # Raw token streaming
+                            accumulated_content += chunk
+                            
+                            yield {
+                                'type': 'token',
+                                'content': chunk,
+                                'accumulated_content': accumulated_content,
+                                'iteration': iteration + 1
+                            }
+                        elif isinstance(chunk, dict):
+                            # Structured chunk streaming
+                            chunk_type = chunk.get('type', 'token')
+                            
+                            if chunk_type == 'token' or 'content' in chunk:
+                                token = chunk.get('content', chunk.get('token', ''))
+                                accumulated_content += token
+                                
+                                yield {
+                                    'type': 'token',
+                                    'content': token,
+                                    'accumulated_content': accumulated_content,
+                                    'iteration': iteration + 1
+                                }
+                            
+                            elif chunk_type == 'think_token':
+                                think_token = chunk.get('content', chunk.get('token', ''))
+                                accumulated_think += think_token
+                                
+                                yield {
+                                    'type': 'think_token',
+                                    'content': think_token,
+                                    'accumulated_think': accumulated_think,
+                                    'iteration': iteration + 1
+                                }
+                    
+                    response = {
+                        'content': accumulated_content,
+                        'think': accumulated_think,
+                        'tool_calls': []
+                    }
+                
+                else:
+                    # Not a streaming response, use as regular response
+                    response = llm_stream
+                    
+            except Exception as e:
+                # Fallback to non-streaming if streaming fails
+                try:
+                    kwargs_fallback = kwargs.copy()
+                    kwargs_fallback.pop('stream', None)
+                    response = self.llm(messages, **kwargs_fallback)
+                except Exception as fallback_e:
+                    # If both fail, raise the original streaming error
+                    raise e
+            
+            # Yield LLM response (final accumulated or regular)
             yield {
                 'type': 'llm_response',
                 'content': response.get('content', ''),
@@ -521,100 +477,6 @@ class Agent:
             'truncated': True
         }
     
-    async def _stream_execute_async(self, input: Union[str, List[Dict]], **kwargs) -> Generator[Dict, None, None]:
-        """Streaming execution for async LLMs - yields intermediate results."""
-        messages = self._normalize_input(input)
-        # Prepend history to current conversation
-        messages = self.history + messages
-        self._conversation = messages.copy()
-        
-        if self.tools:
-            kwargs['tools'] = self.tools
-        
-        for iteration in range(self.max_iterations):
-            # Yield iteration start
-            yield {
-                'type': 'iteration_start',
-                'iteration': iteration + 1,
-                'messages_count': len(messages)
-            }
-            
-            response = await self.llm(messages, **kwargs)
-            
-            # Yield LLM response
-            yield {
-                'type': 'llm_response',
-                'content': response.get('content', ''),
-                'think': response.get('think', ''),
-                'tool_calls': response.get('tool_calls', []),
-                'iteration': iteration + 1
-            }
-            
-            # No tool calls - add assistant response and yield final result
-            if not response.get('tool_calls'):
-                # Add the assistant's response to conversation
-                messages.append({
-                    "role": "assistant",
-                    "content": response.get('content', '')
-                })
-                
-                # Update conversation history
-                self._conversation = messages
-                
-                yield {
-                    'type': 'final',
-                    'content': response.get('content', ''),
-                    'think': response.get('think', ''),
-                    'iterations': iteration + 1,
-                    'messages': messages
-                }
-                return
-            
-            # Add assistant message with tool calls
-            messages.append({
-                "role": "assistant",
-                "tool_calls": response['tool_calls']
-            })
-            
-            # Execute tools and yield results
-            for i, tool_call in enumerate(response['tool_calls']):
-                tool_func = tool_call['function']
-                yield {
-                    'type': 'tool_start',
-                    'tool_name': tool_func['name'],
-                    'tool_args': tool_func['arguments'],
-                    'iteration': iteration + 1
-                }
-                
-                tool_result = await self._execute_tool_async(tool_func)
-                
-                yield {
-                    'type': 'tool_result',
-                    'tool_name': tool_func['name'], 
-                    'tool_args': tool_func['arguments'],
-                    'result': str(tool_result),
-                    'iteration': iteration + 1
-                }
-                
-                # Add tool result to messages
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.get('id', f"call_{i}"),
-                    "name": tool_func['name'],
-                    "content": str(tool_result)
-                })
-        
-        # Update conversation history
-        self._conversation = messages
-        
-        # Max iterations reached
-        yield {
-            'type': 'final',
-            'content': 'Max iterations reached',
-            'iterations': self.max_iterations,
-            'messages': messages,
-            'truncated': True
-        }
     
     def _normalize_input(self, input: Union[str, List[Dict]]) -> List[Dict]:
         """Convert input to message format."""
@@ -649,21 +511,6 @@ class Agent:
         except Exception as e:
             return f"Error executing {tool_name}: {str(e)}"
     
-    async def _execute_tool_async(self, tool_call: Dict) -> Any:
-        """Execute a single tool call asynchronously."""
-        tool_name = tool_call['name']
-        tool_args = json.loads(str(tool_call['arguments']))
-
-        if tool_name not in self._tool_functions:
-            return f"Error: Tool '{tool_name}' not found"
-        
-        try:
-            if asyncio.iscoroutinefunction(self._tool_functions[tool_name]):
-                return await self._tool_functions[tool_name](**tool_args)
-            else:
-                return self._tool_functions[tool_name](**tool_args)
-        except Exception as e:
-            return f"Error executing {tool_name}: {str(e)}"
     
     def add_tool(self, tool: Callable) -> None:
         """Add a tool function to the agent."""
@@ -945,20 +792,16 @@ if __name__ == '__main__':
     print(f"Restored agent has {len(restored_agent.history)} history items")
     print(f"Restored conversation: {len(restored_agent.get_conversation())} messages\n")
     
-    # 5. Streaming with new features
+    # 5. Streaming with sync execution
     print("5. Streaming agent:")
     stream_agent = Agent(llm=llm, tools=[get_weather], stream=True)
     
-    import asyncio
-    async def demo_streaming():
-        async for event in stream_agent.run_async("Get weather for London"):
-            if event['type'] == 'tool_start':
-                print(f"🔧 {event['tool_name']}")
-            elif event['type'] == 'final':
-                print(f"🏁 {event['content'][:50]}...")
-                break
-    
-    asyncio.run(demo_streaming())
+    for event in stream_agent("Get weather for London", stream=True):
+        if event['type'] == 'tool_start':
+            print(f"🔧 {event['tool_name']}")
+        elif event['type'] == 'final':
+            print(f"🏁 {event['content'][:50]}...")
+            break
     
     print("\n=== New Agent Features ===")
     print("✅ History Management:")
@@ -977,4 +820,4 @@ if __name__ == '__main__':
     print("   • Track task status: pending, in_progress, completed")
     print("   • Priority levels: high, medium, low")
     print("✅ All Previous Features:")
-    print("   • Works with any BaseLLM, streaming, pluggable tools")
+    print("   • Works with any sync BaseLLM, streaming, pluggable tools")

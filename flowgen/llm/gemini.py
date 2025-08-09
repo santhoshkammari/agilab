@@ -1,120 +1,80 @@
-from __future__ import annotations
-import json
-from openai import OpenAI
-from .llm import BaseLLM
+from basellm import GeminiLLM
 
+def validate_messages(messages):
+    """Test if messages is a list of dict with role, content keys"""
+    if not isinstance(messages, list):
+        return False
+    
+    for msg in messages:
+        if not isinstance(msg, dict):
+            return False
+        if not all(key in msg for key in ['role', 'content']):
+            return False
+    
+    return True
 
-class Gemini(BaseLLM):
-    def __init__(self, model="gemini-2.5-flash", tools=None, format=None, timeout=None, api_key="AIzaSyBb8wTvVw9e25aX8XK-eBuu1JzDEPCdqUE"):
-        super().__init__(model=model, tools=tools, format=format, timeout=timeout)
-        self._client = OpenAI(
-            api_key=api_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-        )
+# Test with dict format
+test_messages = [
+    {"role": "system", "content": "You are a pirate with a colorful personality"},
+    {"role": "user", "content": "Tell me a story"}
+]
 
-    def chat(self, input, **kwargs) -> dict:
-        input = self._normalize_input(input)
-        model = self._check_model(kwargs, self._model)
-        tools = self._get_tools(kwargs)
-        schema = self._get_format(kwargs)
-        timeout = self._get_timeout(kwargs)
-        
-        if tools:
-            tools = self._convert_function_to_tools(tools)
-            # Clean up tools for Gemini compatibility
-            cleaned_tools = []
-            for tool in tools:
-                cleaned_tool = {
-                    'type': tool.get('type', 'function'),
-                    'function': {
-                        'name': tool['function']['name'],
-                        'description': tool['function']['description'],
-                        'parameters': {
-                            'type': 'object',
-                            'properties': {},
-                            'required': tool['function']['parameters'].get('required', [])
-                        }
-                    }
-                }
-                # Clean properties
-                for prop_name, prop_def in tool['function']['parameters'].get('properties', {}).items():
-                    cleaned_tool['function']['parameters']['properties'][prop_name] = {
-                        k: v for k, v in prop_def.items() 
-                        if v is not None and k in ['type', 'description', 'enum']
-                    }
-                cleaned_tools.append(cleaned_tool)
-            kwargs['tools'] = cleaned_tools
-            
-        # Remove tools from kwargs if None
-        if 'tools' in kwargs and not kwargs['tools']:
-            kwargs.pop('tools')
-            
-        # Handle structured output using JSON schema
-        if schema:
-            kwargs['response_format'] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "response",
-                    "schema": schema
-                }
-            }
-            # Remove format from kwargs
-            kwargs.pop('format', None)
+print(f"Message validation test: {validate_messages(test_messages)}")
 
-        response = self._client.chat.completions.create(
-            model=model,
-            messages=input,
-            timeout=timeout,
-            **kwargs
-        )
+# Test the Gemini class
+llm = GeminiLLM(model="gemini-2.0-flash")
 
-        result = {"think": "", "content": "", "tool_calls": []}
-        
-        # Handle streaming response
-        if hasattr(response, '__class__') and 'Stream' in str(response.__class__):
-            # This is a streaming response - collect all chunks
-            content_parts = []
-            tool_calls = []
-            
-            for chunk in response:
-                if hasattr(chunk, 'choices') and chunk.choices:
-                    choice = chunk.choices[0]
-                    
-                    # Handle content
-                    if hasattr(choice, 'delta') and choice.delta:
-                        if hasattr(choice.delta, 'content') and choice.delta.content:
-                            content_parts.append(choice.delta.content)
-                        
-                        # Handle tool calls
-                        if hasattr(choice.delta, 'tool_calls') and choice.delta.tool_calls:
-                            for tool_call in choice.delta.tool_calls:
-                                if hasattr(tool_call, 'function'):
-                                    tool_calls.append(tool_call)
-            
-            result['content'] = ''.join(content_parts)
-            
-            # Process tool calls - convert to standard format
-            if tool_calls:
-                result['tool_calls'] = []
-                for i, t in enumerate(tool_calls):
-                    if hasattr(t, 'function') and t.function:
-                        result['tool_calls'].append({
-                            'id': getattr(t, 'id', f'call_{i}'),
-                            'type': 'function',
-                            'function': {
-                                'name': t.function.name,
-                                'arguments': t.function.arguments or '{}'
-                            }
-                        })
-        else:
-            # This is a regular response
-            result['content'] = response.choices[0].message.content or ""
-            
-            if hasattr(response.choices[0].message, 'tool_calls') and response.choices[0].message.tool_calls:
-                result['tool_calls']  = self._convert_tool_calls_to_dict(response.choices[0].message.tool_calls)
-                # for t in response.choices[0].message.tool_calls:
-                #     result['tool_calls'].append({
-                #         'name': t.function.name,
-                #         'arguments': json.loads(t.function.arguments)
-                #     })
-        return result
+# Test with __call__ method (single string)
+print("\n=== Testing with single string ===")
+resp1 = llm("Tell me a joke about pirates")
+print(f"Response: {resp1}")
+
+# Test with __call__ method (list of messages)
+print("\n=== Testing with message list ===")
+resp2 = llm(test_messages)
+print(f"Response: {resp2}")
+
+# Test with chat method directly
+print("\n=== Testing chat method directly ===")
+resp3 = llm.chat(test_messages)
+print(f"Response: {resp3}")
+
+# Test streaming
+print("\n=== Testing streaming ===")
+from llama_index.core.llms import ChatMessage
+
+stream_messages = [
+    ChatMessage(role="user", content="Tell me a short joke about programming"),
+]
+
+gemini_llm = llm.llm  # Get the underlying GoogleGenAI instance
+resp_stream = gemini_llm.stream_chat(stream_messages)
+
+print("Streaming response:")
+full_response = ""
+for r in resp_stream:
+    print(r.delta, end="")
+    full_response += r.delta
+print(f"\n\nFull streamed response: {full_response}")
+
+# Test streaming with Gemini class
+print("\n=== Testing Gemini streaming ===")
+stream_resp = llm.stream_chat("Tell me a very short programming joke")
+
+print("Gemini streaming response:")
+full_gemini_response = ""
+for chunk in stream_resp:
+    print(chunk["delta"], end="")
+    full_gemini_response += chunk["delta"]
+print(f"\n\nFull Gemini streamed response: {full_gemini_response}")
+
+# Test streaming via __call__ method  
+print("\n=== Testing Gemini __call__ with stream=True ===")
+stream_resp2 = llm("Why do developers hate debugging?", stream=True)
+
+print("__call__ streaming response:")
+full_call_response = ""
+for chunk in stream_resp2:
+    print(chunk["delta"], end="")
+    full_call_response += chunk["delta"]
+print(f"\n\nFull __call__ streamed response: {full_call_response}")
