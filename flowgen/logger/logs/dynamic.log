@@ -1,0 +1,2 @@
+{"timestamp": "2025-08-09 18:59:36,435", "level": "ERROR", "logger": "file_dynamic", "message": "This will show"}
+{"timestamp": "2025-08-09 18:59:36,435", "level": "INFO", "logger": "file_dynamic", "message": "Now this shows after level change"}
