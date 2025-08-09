@@ -1,9 +1,93 @@
 from __future__ import annotations
 import json
 import inspect
+import re
 from typing import Any, Callable, Optional, Union, List, Dict
 from datasets import Dataset
 from collections import defaultdict
+
+
+class BaseReward:
+    """
+    Base class for reward collections that auto-discovers reward methods.
+    
+    Reward methods should follow the pattern: reward_<name>_<weight>
+    Examples: reward_sum_p8, reward_max_length_p6, reward_subtract_1p7, reward_div_5
+    
+    Usage:
+        class SimpleMathReward(BaseReward):
+            def reward_sum_p8(self, prompt, completion, **kwargs):
+                return 1.0 if "sum" in completion.lower() else 0.0
+            
+            def reward_max_length_p6(self, prompt, completion, **kwargs):
+                return min(len(completion) / 100.0, 1.0)
+        
+        env = RLEnv(reward_funcs=SimpleMathReward())
+    """
+    
+    def __init__(self):
+        self._reward_methods = self._discover_reward_methods()
+    
+    def _discover_reward_methods(self) -> List[Dict[str, Any]]:
+        """Discover all reward methods and extract their weights."""
+        methods = []
+        
+        for name in dir(self):
+            if name.startswith('reward_') and callable(getattr(self, name)):
+                method = getattr(self, name)
+                
+                # Parse weight from method name (reward_name_weight format)
+                weight = self._parse_weight_from_name(name)
+                
+                methods.append({
+                    'name': name,
+                    'method': method,
+                    'weight': weight
+                })
+        
+        return methods
+    
+    def _parse_weight_from_name(self, method_name: str) -> float:
+        """
+        Parse weight from method name. Supports formats:
+        - reward_name_p8 -> 0.8
+        - reward_name_1p7 -> 1.7  
+        - reward_name_5 -> 5.0
+        """
+        # Remove 'reward_' prefix
+        name_part = method_name[7:]  # len('reward_') = 7
+        
+        # Look for weight patterns at the end
+        patterns = [
+            r'_p(\d+)$',      # _p8 -> 0.8
+            r'_(\d+)p(\d+)$', # _1p7 -> 1.7
+            r'_(\d+)$'        # _5 -> 5.0
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, name_part)
+            if match:
+                if pattern == r'_p(\d+)$':
+                    return float(match.group(1)) / 10.0
+                elif pattern == r'_(\d+)p(\d+)$':
+                    return float(match.group(1)) + float(match.group(2)) / 10.0
+                elif pattern == r'_(\d+)$':
+                    return float(match.group(1))
+        
+        # Default weight if no pattern found
+        return 1.0
+    
+    def get_reward_methods(self) -> List[Dict[str, Any]]:
+        """Get all discovered reward methods with their weights."""
+        return self._reward_methods
+    
+    def get_reward_functions(self) -> List[Callable]:
+        """Get list of reward functions."""
+        return [method['method'] for method in self._reward_methods]
+    
+    def get_reward_weights(self) -> List[float]:
+        """Get list of reward weights."""
+        return [method['weight'] for method in self._reward_methods]
 
 
 class RLEnv:
@@ -26,7 +110,7 @@ class RLEnv:
     def __init__(
         self,
         dataset: Optional[Dataset] = None,
-        reward_funcs: Optional[Union[Callable, List[Callable]]] = None,
+        reward_funcs: Optional[Union[Callable, List[Callable], BaseReward, List[BaseReward]]] = None,
         reward_weights: Optional[List[float]] = None,
         tools: Optional[List[Callable]] = None,
         max_turns: int = 1,
@@ -38,8 +122,8 @@ class RLEnv:
         
         Args:
             dataset: HuggingFace dataset with 'prompt' column (required for trainers)
-            reward_funcs: Single reward function or list of reward functions
-            reward_weights: Weights for combining multiple rewards (defaults to equal weights)
+            reward_funcs: Single reward function, list of reward functions, BaseReward class instance, or list of BaseReward instances
+            reward_weights: Weights for combining multiple rewards (defaults to equal weights or auto-extracted from BaseReward)
             tools: List of tool functions for multi-turn interactions
             max_turns: Maximum conversation turns (1 for single-turn tasks)
             auto_execute_tools: Automatically execute tools in agentic loops (True by default)
@@ -47,19 +131,45 @@ class RLEnv:
         """
         self.dataset = dataset
         
-        # Normalize reward functions to list
-        if reward_funcs is None:
+        # Handle BaseReward class instances (single or list)
+        if isinstance(reward_funcs, BaseReward):
+            self.reward_funcs = reward_funcs.get_reward_functions()
+            # Use class-provided weights unless explicitly overridden
+            if reward_weights is None:
+                self.reward_weights = reward_funcs.get_reward_weights()
+            else:
+                self.reward_weights = reward_weights
+        elif isinstance(reward_funcs, list) and len(reward_funcs) > 0 and isinstance(reward_funcs[0], BaseReward):
+            # Handle list of BaseReward objects
             self.reward_funcs = []
-        elif callable(reward_funcs):
-            self.reward_funcs = [reward_funcs]
+            auto_weights = []
+            
+            for reward_obj in reward_funcs:
+                if not isinstance(reward_obj, BaseReward):
+                    raise TypeError(f"All items in reward_funcs list must be BaseReward instances, got {type(reward_obj)}")
+                self.reward_funcs.extend(reward_obj.get_reward_functions())
+                auto_weights.extend(reward_obj.get_reward_weights())
+            
+            # Use combined auto weights unless explicitly overridden
+            if reward_weights is None:
+                self.reward_weights = auto_weights
+            else:
+                self.reward_weights = reward_weights
         else:
-            self.reward_funcs = list(reward_funcs)
-        
-        # Set default weights
-        if reward_weights is None:
-            self.reward_weights = [1.0] * len(self.reward_funcs)
-        else:
-            self.reward_weights = reward_weights
+            # Normalize reward functions to list (existing behavior for functions)
+            if reward_funcs is None:
+                self.reward_funcs = []
+            elif callable(reward_funcs):
+                self.reward_funcs = [reward_funcs]
+            else:
+                # Check if it's a list of functions (not BaseReward objects)
+                self.reward_funcs = list(reward_funcs)
+            
+            # Set default weights
+            if reward_weights is None:
+                self.reward_weights = [1.0] * len(self.reward_funcs)
+            else:
+                self.reward_weights = reward_weights
             
         if len(self.reward_weights) != len(self.reward_funcs):
             raise ValueError(f"Number of reward_weights ({len(self.reward_weights)}) must match number of reward_funcs ({len(self.reward_funcs)})")
@@ -422,6 +532,65 @@ class RLEnv:
 
 # TrainWithRlEnv class removed - functionality moved to RLEnv.__rshift__
 
+
+# Example SimpleMathReward class
+class SimpleMathReward(BaseReward):
+    """
+    Example reward class demonstrating the reward_name_weight pattern.
+    
+    Methods:
+    - reward_sum_p8: Rewards presence of "sum" keyword (weight: 0.8)
+    - reward_max_length_p6: Rewards completion length up to 100 chars (weight: 0.6)  
+    - reward_subtract_1p7: Rewards presence of "subtract" keyword (weight: 1.7)
+    - reward_div_5: Rewards presence of "divide" keyword (weight: 5.0)
+    """
+    
+    def reward_sum_p8(self, prompt, completion, **kwargs):
+        """Reward if completion mentions sum/addition."""
+        return 1.0 if any(word in completion.lower() for word in ['sum', 'add', 'plus', '+']) else 0.0
+    
+    def reward_max_length_p6(self, prompt, completion, **kwargs):
+        """Reward based on completion length (normalized to max 1.0)."""
+        return min(len(completion) / 100.0, 1.0)
+    
+    def reward_subtract_1p7(self, prompt, completion, **kwargs):
+        """Reward if completion mentions subtraction."""
+        return 1.0 if any(word in completion.lower() for word in ['subtract', 'minus', '-']) else 0.0
+    
+    def reward_div_5(self, prompt, completion, **kwargs):
+        """Reward if completion mentions division."""
+        return 1.0 if any(word in completion.lower() for word in ['divide', 'division', '/']) else 0.0
+    
+    def shared_state_example(self):
+        """Example of shared state/statistics that can be maintained across rewards."""
+        return {"total_calls": getattr(self, '_calls', 0)}
+
+
+class QualityReward(BaseReward):
+    """
+    Example quality-focused reward class.
+    
+    Methods:
+    - reward_politeness_p5: Rewards polite language (weight: 0.5)
+    - reward_clarity_2p0: Rewards clear explanations (weight: 2.0)
+    - reward_brevity_p1: Rewards concise responses (weight: 0.1)
+    """
+    
+    def reward_politeness_p5(self, prompt, completion, **kwargs):
+        """Reward polite language."""
+        polite_words = ['please', 'thank', 'sorry', 'kindly', 'appreciate']
+        return 1.0 if any(word in completion.lower() for word in polite_words) else 0.0
+    
+    def reward_clarity_2p0(self, prompt, completion, **kwargs):
+        """Reward clear explanations."""
+        clear_indicators = ['because', 'therefore', 'first', 'second', 'step', 'explain']
+        return 1.0 if any(word in completion.lower() for word in clear_indicators) else 0.0
+    
+    def reward_brevity_p1(self, prompt, completion, **kwargs):
+        """Reward concise responses (inverse of length)."""
+        return max(0.0, 1.0 - len(completion) / 200.0)
+
+
 # Example usage and testing
 if __name__ == '__main__':
     from reward import reward_exact_match,reward_step_by_step,reward_length
@@ -472,8 +641,53 @@ if __name__ == '__main__':
     result = multi_env(mock_llm, "What is 2+3?", answer="5", target_length=20)
     print(f"Multi-reward result: {result['reward']}\n")
     
-    # Example 3: Direct piping with >>
-    print("3. Direct environment piping:")
+    # Example 3: Class-based rewards with auto weight discovery
+    print("3. Class-based rewards with auto weight discovery:")
+    math_rewards = SimpleMathReward()
+    class_env = RLEnv(
+        dataset=sample_data,
+        reward_funcs=math_rewards,
+        max_turns=1
+    )
+    
+    # Enhanced MockLLM for testing class-based rewards
+    class EnhancedMockLLM:
+        def __call__(self, messages, **kwargs):
+            last_msg = messages[-1]['content']
+            if "2+3" in last_msg:
+                return {"content": "To find the sum, we add 2 plus 3 which equals 5"}
+            elif "7*8" in last_msg:
+                return {"content": "We multiply 7 times 8 equals 56"}
+            elif "10-4" in last_msg:
+                return {"content": "We subtract 4 from 10 which equals 6"}
+            else:
+                return {"content": "I don't know"}
+    
+    enhanced_llm = EnhancedMockLLM()
+    result = class_env(enhanced_llm, "What is 2+3?")
+    print(f"Class-based reward result: {result['reward']}")
+    print(f"Discovered weights: {math_rewards.get_reward_weights()}")
+    print(f"Completion: {result['completion']}\n")
+    
+    # Example 4: Multiple reward classes (list of BaseReward objects)
+    print("4. Multiple reward classes combined:")
+    math_rewards = SimpleMathReward()
+    quality_rewards = QualityReward()
+    
+    combined_env = RLEnv(
+        dataset=sample_data,
+        reward_funcs=[math_rewards, quality_rewards],
+        max_turns=1
+    )
+    
+    result = combined_env(enhanced_llm, "What is 2+3?")
+    print(f"Combined reward result: {result['reward']}")
+    print(f"Total functions: {len(combined_env.reward_funcs)}")
+    print(f"Combined weights: {combined_env.reward_weights}")
+    print(f"Completion: {result['completion']}\n")
+    
+    # Example 5: Direct piping with >>
+    print("5. Direct environment piping:")
     
     # Mock trainer for testing
     class MockTrainer:
@@ -505,3 +719,6 @@ if __name__ == '__main__':
     print("• Batch process: env(llm, ['prompt1', 'prompt2'])")
     print("• Pipe to trainer: env >> trainer")
     print("• Chain training: (env >> trainer).train()")
+    print("• Class-based rewards: env = RLEnv(reward_funcs=SimpleMathReward())")
+    print("• Multiple reward classes: env = RLEnv(reward_funcs=[MathReward(), QualityReward()])")
+    print("• Auto weight discovery: reward methods follow reward_name_weight pattern")
