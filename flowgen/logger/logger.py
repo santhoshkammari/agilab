@@ -364,21 +364,26 @@ class UniversalLogger:
         if self._should_log(level):
             self._log(data, level, "rich")
     
-    def ai(self, data: Union[List[dict], dict, str], level: str = "INFO"):
+    def ai(self, data: Union[List[dict], dict, str], role: str = "user", level: str = "INFO"):
         """
         AI conversation logging with rich panels
         
         Handles:
         - List[dict] with role/content format
         - Single dict message
-        - String message
+        - String message with optional role (defaults to "user")
+        
+        Args:
+            data: Message data (string, dict, or list of dicts)
+            role: Default role for string messages ("user", "assistant", "system")
+            level: Log level
         """
         if not self._should_log(level):
             return
         
         if isinstance(data, str):
-            # Simple string message
-            messages = [{"role": "user", "content": data}]
+            # Simple string message with specified role
+            messages = [{"role": role, "content": data}]
         elif isinstance(data, dict):
             # Single message dict
             messages = [data]

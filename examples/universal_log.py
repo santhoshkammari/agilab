@@ -23,6 +23,27 @@ ai_log.ai([
     {"role": "assistant", "content": "Quantum computing uses quantum mechanics..."}
 ])
 
+# Different ways to log AI messages
+ai_log.ai({"role": "user", "content": "Explain quantum computing"})
+ai_log.ai("Explain quantum computing")  # Defaults to user role
+ai_log.ai("Quantum computing uses quantum mechanics...", "assistant")
+
+# AI conversation with tool calling and results
+ai_log.ai([
+    {"role": "user", "content": "What's the weather in New York?"},
+    {"role": "assistant", "content": "I'll check the weather for you.", "tool_calls": [
+        {"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"location\": \"New York\"}"}}
+    ]},
+    {"role": "tool", "content": "{\"temperature\": 72, \"condition\": \"sunny\", \"humidity\": 45}", "tool_call_id": "call_1"},
+    {"role": "assistant", "content": "The weather in New York is currently 72°F and sunny with 45% humidity."}
+])
+
+# Individual tool call logging
+ai_log.ai("I need to check the current weather for you.", "assistant")
+ai_log.ai("Tool called: get_weather(location='New York')", "system")
+ai_log.ai("{\"temperature\": 72, \"condition\": \"sunny\", \"humidity\": 45}", "tool")
+ai_log.ai("The weather in New York is currently 72°F and sunny.", "assistant")
+
 # API logging with rich table formatting
 api_log.rich([
     {"endpoint": "/api/chat", "status": 200, "duration": "1.2s"},

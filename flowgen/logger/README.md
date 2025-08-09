@@ -135,14 +135,30 @@ api_log.rich([
 
 ## 🤖 AI Conversation Logging
 
-Perfect for tracking AI interactions:
+Perfect for tracking AI interactions with flexible input options:
 
+### Method 1: Full conversation list
 ```python
 log.ai([
     {"role": "user", "content": "What's the weather like?"},
     {"role": "assistant", "content": "I'll check the current weather for you."},
     {"role": "system", "content": "Weather API called successfully"}
 ])
+```
+
+### Method 2: Simple string with default role
+```python
+# Defaults to "user" role
+log.ai("What's the weather like?")
+
+# Specify role directly
+log.ai("I'll check the current weather for you.", "assistant")
+log.ai("Weather API called successfully", "system")
+```
+
+### Method 3: Single message dict
+```python
+log.ai({"role": "user", "content": "What's the weather like?"})
 ```
 
 **Rich Output:**
@@ -278,11 +294,15 @@ ai_log.rich({
     "temperature": 0.7
 })
 
-# AI conversation tracking
+# AI conversation tracking - multiple ways
 ai_log.ai([
     {"role": "user", "content": "Explain quantum computing"},
     {"role": "assistant", "content": "Quantum computing uses quantum mechanics..."}
 ])
+
+# Or use the simple string format with role
+ai_log.ai("Explain quantum computing")  # Defaults to user role
+ai_log.ai("Quantum computing uses quantum mechanics...", "assistant")
 
 # API logging - Option 1: Simple text table (server environment)
 api_log.info([
