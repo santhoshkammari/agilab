@@ -51,20 +51,45 @@ log.info(["Starting pipeline", "Loading model", "Ready to process"])
 
 ### 4. List of Dictionaries - Structured records
 ```python
+# Simple text table (when enable_rich=False or using .info())
 log.info([
     {"step": 1, "action": "validate", "status": "✅"},
     {"step": 2, "action": "process", "status": "⏳"},
     {"step": 3, "action": "save", "status": "pending"}
 ])
-# Output: Beautiful table format
+# Output: Simple text table
 # step | action   | status
 # -----|----------|--------
 # 1    | validate | ✅
 # 2    | process  | ⏳  
 # 3    | save     | pending
+
+# Rich formatted table (when enable_rich=True and using .rich())
+log.rich([
+    {"step": 1, "action": "validate", "status": "✅"},
+    {"step": 2, "action": "process", "status": "⏳"},
+    {"step": 3, "action": "save", "status": "pending"}
+])
+# Output: Beautiful rich table with colors and borders
 ```
 
 ## 🎨 Rich Formatting
+
+### Standard vs Rich Methods
+
+**Key Difference:** Regular logging methods (`.info()`, `.error()`, etc.) provide simple formatting, while `.rich()` provides enhanced visual formatting.
+
+```python
+# Standard method - simple formatting
+log.info([{"endpoint": "/api/chat", "status": 200}])
+# Output: Simple text table or key=value format
+
+# Rich method - enhanced formatting  
+log.rich([{"endpoint": "/api/chat", "status": 200}])
+# Output: Beautiful bordered table with colors
+```
+
+### Rich Method Examples
 
 Use `log.rich()` for enhanced visual output:
 
@@ -83,6 +108,29 @@ log.rich([
     {"name": "Bob", "score": 87, "status": "⏳"}
 ])
 # → Beautiful rich table with colors and styling
+```
+
+### Table Formatting Options
+
+```python
+# Option 1: Simple text table (works in any environment)
+api_log = UniversalLogger("api", enable_rich=False)  
+api_log.info([
+    {"endpoint": "/api/chat", "status": 200, "duration": "1.2s"},
+    {"endpoint": "/api/status", "status": 200, "duration": "0.1s"}
+])
+# Output: endpoint | status | duration
+#         ---------|--------|----------
+#         /api/chat | 200 | 1.2s
+#         /api/status | 200 | 0.1s
+
+# Option 2: Rich formatted table (best visual experience)
+api_log = UniversalLogger("api", enable_rich=True)
+api_log.rich([
+    {"endpoint": "/api/chat", "status": 200, "duration": "1.2s"},
+    {"endpoint": "/api/status", "status": 200, "duration": "0.1s"}
+])
+# Output: Beautiful bordered table with colors and styling
 ```
 
 ## 🤖 AI Conversation Logging
@@ -236,8 +284,14 @@ ai_log.ai([
     {"role": "assistant", "content": "Quantum computing uses quantum mechanics..."}
 ])
 
-# API logging without rich formatting (server environment)
+# API logging - Option 1: Simple text table (server environment)
 api_log.info([
+    {"endpoint": "/api/chat", "status": 200, "duration": "1.2s"},
+    {"endpoint": "/api/status", "status": 200, "duration": "0.1s"}
+])
+
+# API logging - Option 2: Rich formatted table (enhanced visual)
+api_log.rich([
     {"endpoint": "/api/chat", "status": 200, "duration": "1.2s"},
     {"endpoint": "/api/status", "status": 200, "duration": "0.1s"}
 ])

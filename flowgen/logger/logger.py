@@ -412,7 +412,7 @@ class UniversalLogger:
                 
                 panel = Panel(
                     content,
-                    title=f"{icon} {role.title()}",
+                    title=f"{role.title()}",
                     border_style=style
                 )
                 self.console.print(panel)

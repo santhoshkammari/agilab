@@ -3,7 +3,7 @@ from flowgen.logger import UniversalLogger
 # Setup loggers for different components
 main_log = UniversalLogger("main", level="INFO")
 ai_log = UniversalLogger("ai_chat", subdir="ai_conversations")  
-api_log = UniversalLogger("api", subdir="api_calls", enable_rich=False)
+api_log = UniversalLogger("api", subdir="api_calls", enable_rich=True)
 
 # Standard logging with automatic data type handling
 main_log.info("Application started")
@@ -23,8 +23,8 @@ ai_log.ai([
     {"role": "assistant", "content": "Quantum computing uses quantum mechanics..."}
 ])
 
-# API logging without rich formatting (server environment)
-api_log.info([
+# API logging with rich table formatting
+api_log.rich([
     {"endpoint": "/api/chat", "status": 200, "duration": "1.2s"},
     {"endpoint": "/api/status", "status": 200, "duration": "0.1s"}
 ])
