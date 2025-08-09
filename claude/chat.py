@@ -27,18 +27,10 @@ from flowgen.tools.fileops import tool_functions as ft
 
 SYSTEM_PROMPT="""
 You are Claude Code, Anthropic's official CLI for Claude.
-You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
+You are an AI assistant that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
 IMPORTANT: Assist with defensive security tasks only. Refuse to create, modify, or improve code that may be used maliciously. Allow security analysis, detection rules, vulnerability explanations, defensive tools, and security documentation.
 IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that the URLs are for helping the user with programming. You may use URLs provided by the user in their messages or local files.
-
-If the user asks for help or wants to give feedback inform them of the following: 
-- /help: Get help with using Claude Code
-- To give feedback, users should report the issue at https://github.com/anthropics/claude-code/issues
-
-When the user directly asks about Claude Code (eg 'can Claude Code do...', 'does Claude Code have...') or asks in second person (eg 'are you able...', 'can you do...'), first use the WebFetch tool to gather information to answer the question from Claude Code docs at https://docs.anthropic.com/en/docs/claude-code.
-  - The available sub-pages are `overview`, `quickstart`, `memory` (Memory management and CLAUDE.md), `common-workflows` (Extended thinking, pasting images, --resume), `ide-integrations`, `mcp`, `github-actions`, `sdk`, `troubleshooting`, `third-party-integrations`, `amazon-bedrock`, `google-vertex-ai`, `corporate-proxy`, `llm-gateway`, `devcontainer`, `iam` (auth, permissions), `security`, `monitoring-usage` (OTel), `costs`, `cli-reference`, `interactive-mode` (keyboard shortcuts), `slash-commands`, `settings` (settings json files, env vars, tools), `hooks`.
-  - Example: https://docs.anthropic.com/en/docs/claude-code/cli-usage
 
 # Tone and style
 You should be concise, direct, and to the point.
@@ -392,6 +384,9 @@ class ChatApp(App):
             'bypass-permissions': "   bypass permissions on   ",
             'plan-mode': "   ⏸ plan mode on   "
         }
+        
+        # Add interruption flag
+        self.conversation_interrupted = False
         self.display_toolname_maps = {
             'read_file': 'Read',
             'write_file': 'Write',
@@ -515,12 +510,28 @@ class ChatApp(App):
         self.query_one(Input).clear()
 
     def action_interrupt_conversation(self):
-        """Handle escape key - hide file autocomplete if showing, otherwise interrupt"""
+        """Handle escape key - hide file autocomplete if showing, otherwise interrupt conversation"""
         if self.is_showing_files:
             self._hide_file_autocomplete()
         else:
-            # Original interrupt functionality would go here
-            pass
+            self.conversation_interrupted = True
+            status_indicator = self.query_one("#status_indicator")
+            status_indicator.update("[red]Interrupted by user[/red]")
+            
+            # Close any open permission dialogs
+            self.hide_tool_permission()
+            
+            # Clear pending tool calls since conversation is interrupted
+            self.pending_tool_calls = []
+            self.current_tool_index = 0
+            
+            # Add interruption message to chat history for model context
+            if self.chat_history and self.chat_history[-1].get("role") == "user":
+                interrupt_msg = {
+                    "role": "user", 
+                    "content": "[CONVERSATION INTERRUPTED BY USER - Please acknowledge the interruption and wait for further instructions]"
+                }
+                self.chat_history.append(interrupt_msg)
 
     def _navigate_history(self, direction: int):
         input_widget = self.query_one(Input)
@@ -808,6 +819,8 @@ class ChatApp(App):
         asyncio.create_task(self._execute_input_async(input))
 
     async def _execute_input_async(self, input):
+        # Reset interruption flag at start of new conversation
+        self.conversation_interrupted = False
         animation_task = asyncio.create_task(self.animate_thinking_status(input))
         
         # Check for file references and auto-execute Read tool calls
@@ -891,7 +904,7 @@ class ChatApp(App):
         max_iterations = 15
 
         try:
-            while max_iterations:
+            while max_iterations and not self.conversation_interrupted:
                 max_iterations-=1
 
                 response = await asyncio.get_event_loop().run_in_executor(None, self.llm, messages)
@@ -908,7 +921,7 @@ class ChatApp(App):
                     "tool_calls": response['tool_calls']
                 })
 
-                if response['tool_calls']:
+                if response['tool_calls'] and not self.conversation_interrupted:
                     # Check if we need permission for any tools
                     tools_needing_permission = [t for t in response['tool_calls'] 
                                                if self.needs_permission(t['function']['name'])]
@@ -926,6 +939,9 @@ class ChatApp(App):
                     tools_to_execute = self.pending_tool_calls if self.pending_tool_calls else response['tool_calls']
                     
                     for t in tools_to_execute:
+                        if self.conversation_interrupted:
+                            break
+                            
                         name, args = t['function']['name'],json.loads(str(t['function']['arguments']))
 
                         tool_text = Text()
@@ -1145,7 +1161,7 @@ class ChatApp(App):
             
             # Continue the conversation with the updated messages
             max_iterations = 15
-            while max_iterations > 0:
+            while max_iterations > 0 and not self.conversation_interrupted:
                 max_iterations -= 1
                 response = await asyncio.get_event_loop().run_in_executor(None, self.llm, messages)
                 
@@ -1162,7 +1178,7 @@ class ChatApp(App):
                     "tool_calls": response['tool_calls']
                 })
 
-                if response['tool_calls']:
+                if response['tool_calls'] and not self.conversation_interrupted:
                     # Check if we need permission for any tools
                     tools_needing_permission = [t for t in response['tool_calls'] 
                                                if self.needs_permission(t['function']['name'])]
@@ -1175,6 +1191,9 @@ class ChatApp(App):
 
                     # Execute tools (permission granted or bypassed)
                     for t in response['tool_calls']:
+                        if self.conversation_interrupted:
+                            break
+                            
                         name, args = t['function']['name'], json.loads(str(t['function']['arguments']))
 
                         tool_text = Text()
