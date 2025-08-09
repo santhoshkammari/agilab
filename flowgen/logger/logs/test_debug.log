@@ -1,3 +1,0 @@
-{"timestamp": "2025-08-09 19:00:14,013", "level": "INFO", "logger": "file_test_debug", "message": "This should show with DEBUG env"}
-{"timestamp": "2025-08-09 19:00:14,013", "level": "DEBUG", "logger": "file_test_debug", "message": "Debug message should show"}
-{"timestamp": "2025-08-09 19:00:14,013", "level": "INFO", "logger": "file_test_debug", "message": "Info should show"}

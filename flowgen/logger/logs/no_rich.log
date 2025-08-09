@@ -1,2 +1,0 @@
-{"timestamp": "2025-08-09 19:00:07,257", "level": "INFO", "logger": "file_no_rich", "message": "This is plain text output"}
-{"timestamp": "2025-08-09 19:00:07,257", "level": "INFO", "logger": "file_no_rich", "message": "[{\"role\": \"user\", \"content\": \"Test without rich\"}]"}

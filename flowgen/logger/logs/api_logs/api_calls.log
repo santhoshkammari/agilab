@@ -1,2 +1,0 @@
-{"timestamp": "2025-08-09 18:59:36,432", "level": "INFO", "logger": "file_api_calls", "message": "{\"endpoint\": \"/api/chat\", \"status\": 200, \"duration\": \"1.2s\"}"}
-{"timestamp": "2025-08-09 18:59:36,434", "level": "INFO", "logger": "file_api_calls", "message": "[{\"request\": \"POST /chat\", \"status\": \"✅\"}, {\"request\": \"GET /status\", \"status\": \"✅\"}]"}
