@@ -1,3 +1,5 @@
+# WhiteMode
+
 #D97757
 ![img.png](img.png)
 
@@ -22,4 +24,17 @@
 
 #CBCADB
 ![img_6.png](img_6.png)
+
+
+
+# DarkMode
+
+#2A2420
+![img_7.png](img_7.png)
+
+#DAA520
+![img_8.png](img_8.png)
+
+#A1958B
+![img_9.png](img_9.png)
 

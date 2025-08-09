@@ -4,19 +4,39 @@ import gradio as gr
 import random
 import time
 from rich import print
-from flowgen.llm.gemini import Gemini
-from flowgen import Agent
 
 def get_weather(location: str) -> str:
     """Get current weather for a location."""
     return f"Weather in {location}: Sunny, 25°C"
 
-llm = Gemini()
-agent = Agent(llm=llm,tools=[get_weather])
+class MockAgent:
+    def __init__(self, tools=None):
+        self.tools = tools or []
+    
+    def __call__(self, messages, stream=False):
+        if stream:
+            return self._stream_response(messages)
+        else:
+            return self._sync_response(messages)
+    
+    def _stream_response(self, messages):
+        # Mock streaming response
+        events = [
+            {"type": "tool_start", "tool_name": "get_weather", "tool_args": {"location": "gurgaon"}},
+            {"type": "tool_result", "tool_name": "get_weather", "result": "Weather in gurgaon: Sunny, 25°C"},
+            {"type": "llm_response", "content": "The weather in Gurgaon is sunny with a temperature of 25°C."}
+        ]
+        for event in events:
+            yield event
+    
+    def _sync_response(self, messages):
+        return {"content": "Mock response from agent"}
+
+agent = MockAgent(tools=[get_weather])
 
 
 
-async def respond(message, chat_history):
+def respond(message, chat_history):
     chat_history.append({"role": "user", "content": message})
     yield "",chat_history
     response_stream = agent(chat_history, stream=True)
