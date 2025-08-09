@@ -32,6 +32,9 @@
 #2A2420
 ![img_7.png](img_7.png)
 
+#2D2620
+![img_10.png](img_10.png)
+
 #DAA520
 ![img_8.png](img_8.png)
 
