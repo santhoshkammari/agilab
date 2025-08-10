@@ -2,10 +2,12 @@ from __future__ import annotations
 import json
 import uuid
 from abc import abstractmethod, ABC
+from datetime import datetime
 from typing import Any, Optional, Callable, List
 from concurrent.futures import ThreadPoolExecutor
 
 from llama_index.core.base.llms.types import TextBlock, ImageBlock
+from llama_index.core.tools import FunctionTool
 from pydantic import BaseModel
 
 
@@ -26,8 +28,9 @@ class BaseLLM(ABC):
 
     def chat(self, input, **kwargs):
         """Generate text using Gemini chat."""
-        if self._format:
-            llm = self.llm.as_structured_llm(self._format)
+        format = self._format or kwargs.get('format')
+        if format:
+            llm = self.llm.as_structured_llm(format)
         else:
             llm = self.llm
 
@@ -233,9 +236,29 @@ class Restaurant(BaseModel):
 
 
 
-llm = Gemini("gemini-2.0-flash",format=Restaurant)
+llm = Gemini("gemini-2.0-flash")
 
-print(llm("generate a restaurent in city miami"))
+# print(llm("generate a restaurent in city miami",format=Restaurant))
+
+
+def get_current_time(timezone: str) -> dict:
+    """Get the current time"""
+    return {
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "timezone": timezone,
+    }
+
+tool = FunctionTool.from_defaults(fn=get_current_time)
+
+chat_history = [
+    ChatMessage(role="user", content="What is the current time in New York? first think for a minute")
+]
+resp = llm.llm.chat_with_tools(tools=[tool],chat_history=chat_history,)
+tool_calls = llm.llm.get_tool_calls_from_response(
+    resp, error_on_no_tool_call=False
+)
+print(tool_calls)
+
 
 
 # # Test with __call__ method (single string)

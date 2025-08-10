@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import Any, Optional, Callable, List, get_type_hints
 from concurrent.futures import ThreadPoolExecutor
 
-from openai import OpenAI
+from google import genai
+from google.genai import types
 from pydantic import BaseModel
 
 
@@ -48,15 +49,12 @@ def convert_func_to_oai_tool(func: Any) -> dict:
             required.append(name)
 
     return {
-        "type": "function",
-        "function": {
-            "name": func.__name__,
-            "description": func.__doc__ or f"Call {func.__name__}",
-            "parameters": {
-                "type": "object",
-                "properties": properties,
-                "required": required
-            }
+        "name": func.__name__,
+        "description": func.__doc__ or f"Call {func.__name__}",
+        "parameters": {
+            "type": "object",
+            "properties": properties,
+            "required": required
         }
     }
 
@@ -64,13 +62,12 @@ def convert_func_to_oai_tool(func: Any) -> dict:
 class BaseLLM(ABC):
     """Base class for all LLM implementations."""
 
-    def __init__(self, model=None, api_key=None, tools=None, format=None, timeout=None, base_url=None):
+    def __init__(self, model=None, api_key=None, tools=None, format=None, timeout=None):
         self._model = model
         self._tools = tools
         self._format = format
         self._timeout = timeout
         self._api_key = api_key
-        self._base_url = base_url
         self.llm = self._load_llm()
 
     @abstractmethod
@@ -78,9 +75,8 @@ class BaseLLM(ABC):
         pass
 
     def chat(self, input, **kwargs):
-        """Generate text using vLLM chat."""
+        """Generate text using Gemini chat."""
         input = self._normalize_input(input)
-        model = self._check_model(kwargs, self._model)
         
         # Get parameters
         format_schema = self._get_format(kwargs)
@@ -93,99 +89,98 @@ class BaseLLM(ABC):
         
         # Handle streaming
         if kwargs.get("stream"):
-            return self._stream_chat(input, format_schema, tools, model, timeout, **kwargs)
+            return self._stream_chat(input, format_schema, tools, **kwargs)
+        
+        # Build config
+        config_params = {}
         
         # Handle structured output
-        extra_body = {}
         if format_schema:
-            if hasattr(format_schema, 'model_json_schema'):
-                # Pydantic model
-                extra_body['response_format'] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": format_schema.__name__,
-                        "schema": format_schema.model_json_schema()
-                    }
-                }
+            config_params['response_mime_type'] = 'application/json'
+            config_params['response_schema'] = format_schema
         
-        response = self.llm.chat.completions.create(
-            messages=input,
-            model=model,
-            tools=tools,
-            extra_body=extra_body if extra_body else None,
-            timeout=timeout
+        # Handle tools
+        if tools:
+            function_declarations = []
+            for tool in tools:
+                function_declarations.append(tool)
+            config_params['tools'] = [types.Tool(function_declarations=function_declarations)]
+        
+        config = types.GenerateContentConfig(**config_params) if config_params else None
+        
+        response = self.llm.models.generate_content(
+            model=self._model,
+            contents=input,
+            config=config
         )
-
+        
         result = {"think": "", "content": "", "tool_calls": []}
         
-        # Check if there are tool calls
-        if response.choices[0].message.tool_calls:
-            for tool_call in response.choices[0].message.tool_calls:
-                result['tool_calls'].append({
-                    'id': tool_call.id,
-                    'type': 'function',
-                    'function': {
-                        'name': tool_call.function.name,
-                        'arguments': tool_call.function.arguments
-                    }
-                })
+        # Check if there are function calls
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            if hasattr(candidate, 'content') and candidate.content.parts:
+                for part in candidate.content.parts:
+                    if hasattr(part, 'function_call') and part.function_call:
+                        result['tool_calls'].append({
+                            'id': str(uuid.uuid4()),
+                            'type': 'function',
+                            'function': {
+                                'name': part.function_call.name,
+                                'arguments': json.dumps(part.function_call.args)
+                            }
+                        })
         
-        result['content'] = response.choices[0].message.content or ""
-        result['think'] = getattr(response.choices[0].message, 'reasoning_content', "") or ""
+        result['content'] = response.text or ""
         
         return result
 
-    def _stream_chat(self, messages, format_schema, tools, model, timeout, **kwargs):
-        """Generate streaming text using vLLM chat."""
-        extra_body = {}
+    def _stream_chat(self, messages, format_schema, tools, **kwargs):
+        """Generate streaming text using Gemini chat."""
+        config_params = {}
+        
         if format_schema:
-            if hasattr(format_schema, 'model_json_schema'):
-                extra_body['response_format'] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": format_schema.__name__,
-                        "schema": format_schema.model_json_schema()
-                    }
-                }
+            config_params['response_mime_type'] = 'application/json'
+            config_params['response_schema'] = format_schema
             
-        response_stream = self.llm.chat.completions.create(
-            messages=messages,
-            model=model,
-            tools=tools,
-            stream=True,
-            extra_body=extra_body if extra_body else None,
-            timeout=timeout
+        if tools:
+            function_declarations = []
+            for tool in tools:
+                function_declarations.append(tool)
+            config_params['tools'] = [types.Tool(function_declarations=function_declarations)]
+            
+        config = types.GenerateContentConfig(**config_params) if config_params else None
+        
+        response_stream = self.llm.models.generate_content_stream(
+            model=self._model,
+            contents=messages,
+            config=config
         )
         
         content_parts = []
         tool_calls = []
-        thinking_parts = []
         
         for chunk in response_stream:
-            delta = chunk.choices[0].delta
+            if chunk.text:
+                content_parts.append(chunk.text)
             
-            if delta.content:
-                content_parts.append(delta.content)
-            
-            # Handle tool call streaming
-            if delta.tool_calls:
-                for tool_call in delta.tool_calls:
-                    if tool_call.id:
-                        tool_calls.append({
-                            'id': tool_call.id,
-                            'type': 'function',
-                            'function': {
-                                'name': tool_call.function.name or "",
-                                'arguments': tool_call.function.arguments or ""
-                            }
-                        })
-            
-            # Handle reasoning content
-            if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
-                thinking_parts.append(delta.reasoning_content)
+            # Check for function calls in streaming
+            if hasattr(chunk, 'candidates') and chunk.candidates:
+                candidate = chunk.candidates[0]
+                if hasattr(candidate, 'content') and candidate.content.parts:
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'function_call') and part.function_call:
+                            tool_calls.append({
+                                'id': str(uuid.uuid4()),
+                                'type': 'function',
+                                'function': {
+                                    'name': part.function_call.name,
+                                    'arguments': json.dumps(part.function_call.args)
+                                }
+                            })
         
         return {
-            "think": ''.join(thinking_parts),
+            "think": "",
             "content": ''.join(content_parts),
             "tool_calls": tool_calls
         }
@@ -218,18 +213,24 @@ class BaseLLM(ABC):
         return results
 
     def _normalize_input(self, input):
-        """Convert string input to OpenAI format."""
+        """Convert string input to Gemini API format."""
         if isinstance(input, str):
-            return [{"role": "user", "content": input}]
+            return [input]
         elif isinstance(input, list):
             if all(isinstance(msg, dict) for msg in input):
-                # Already in message format
-                return input
+                # Convert chat messages to simple content strings
+                contents = []
+                for msg in input:
+                    if msg.get("role") == "system":
+                        # System messages can be handled as regular content for now
+                        contents.append(f"System: {msg['content']}")
+                    elif msg.get("role") in ["user", "assistant"]:
+                        contents.append(msg["content"])
+                return contents
             else:
-                # List of strings, convert to user messages
-                return [{"role": "user", "content": str(item)} for item in input]
+                return input
         else:
-            return [{"role": "user", "content": str(input)}]
+            return [input]
 
     def _check_model(self, kwargs, default_model):
         """Check if model is provided, raise error if not."""
@@ -265,26 +266,15 @@ class BaseLLM(ABC):
         return think, content
 
 
-    def _normalize_input(self, input):
-        """Convert string input to OpenAI format."""
-        if isinstance(input, str):
-            return [{"role": "user", "content": input}]
-        elif isinstance(input, list):
-            if all(isinstance(msg, dict) for msg in input):
-                # Already in message format
-                return input
-            else:
-                # List of strings, convert to user messages
-                return [{"role": "user", "content": str(item)} for item in input]
-        else:
-            return [{"role": "user", "content": str(input)}]
+class Gemini(BaseLLM):
+    def __init__(self, model="gemini-2.5-flash", api_key=None, **kwargs):
+        super().__init__(model=model, api_key=api_key, **kwargs)
 
-    def _check_model(self, kwargs, default_model):
-        """Check if model is provided, raise error if not."""
-        model = kwargs.get("model") or default_model
-        if model is None:
-            raise ValueError("model is None")
-        return model
+    def _load_llm(self):
+        if self._api_key:
+            return genai.Client(api_key=self._api_key)
+        else:
+            return genai.Client()
 
     def _get_tools(self, kwargs):
         """Get tools from kwargs or use default tools."""
@@ -307,26 +297,24 @@ class BaseLLM(ABC):
             return []
         return [convert_func_to_oai_tool(f) if not isinstance(f, dict) else f for f in func]
 
-
-class VllmLLM(BaseLLM):
-    def __init__(self, model=None, api_key="EMPTY", base_url="http://localhost:8000/v1", **kwargs):
-        super().__init__(model=model, api_key=api_key, base_url=base_url, **kwargs)
-
-    def _load_llm(self):
-        client = OpenAI(
-            api_key=self._api_key,
-            base_url=self._base_url,
-        )
-        
-        # Get available models and set default if not specified
-        if not self._model:
-            try:
-                models = client.models.list()
-                self._model = models.data[0].id if models.data else "default"
-            except Exception:
-                self._model = "default"
-        
-        return client
+    def _normalize_input(self, input):
+        """Convert string input to message format."""
+        if isinstance(input, str):
+            return [input]
+        elif isinstance(input, list):
+            if all(isinstance(msg, dict) for msg in input):
+                # Convert chat messages to simple content strings for Gemini
+                contents = []
+                for msg in input:
+                    if msg.get("role") == "system":
+                        contents.append(f"System: {msg['content']}")
+                    elif msg.get("role") in ["user", "assistant"]:
+                        contents.append(msg["content"])
+                return contents
+            else:
+                return input
+        else:
+            return [input]
 
 
 # Test classes
@@ -368,67 +356,57 @@ def get_weather(city: str) -> dict:
 
 
 if __name__ == "__main__":
-    # Initialize vLLM
-    # NOTE: Start vLLM server first with: vllm serve <model-name>
-    llm = VllmLLM(base_url="http://localhost:8000/v1",model='HuggingFaceTB/SmolLM2-135M-Instruct')
+    # Initialize Gemini
+    llm = Gemini("gemini-2.5-flash")
     
     print("=== Testing basic chat ===")
     response = llm("Tell me a short joke about programming")
     print(f"Response: {response['content']}")
-
+    
     # Test tools with Python functions - now automatic!
     print("\n=== Testing tools automatically ===")
-    try:
-        response = llm("What's the weather like in New York?", tools=[get_weather])
-        print(f"Tool response: {response}")
-        if response.get('tool_calls'):
-            print("Tool calls detected - would execute functions automatically")
-    except Exception as e:
-        print(f"Error in tool calling: {e}")
-        print("Make sure vLLM server is running with tool calling enabled")
+    response = llm("What's the weather like in New York?", tools=[get_weather])
+    print(f"Tool response: {response}")
+    if response.get('tool_calls'):
+        print("Tool calls detected - would execute functions automatically")
     
     # Test structured output
     print("\n=== Testing structured output ===")
-    try:
-        response = llm("Generate a restaurant in Miami", format=Restaurant)
-        print(f"Structured response: {response['content']}")
-    except Exception as e:
-        print(f"Error in structured output: {e}")
+    response = llm("Generate a restaurant in Miami", format=Restaurant)
+    print(f"Structured response: {response['content']}")
     
     # Test streaming
     print("\n=== Testing streaming ===")
-    try:
-        stream_response = llm("Tell me a short story about AI", stream=True)
-        print("Streaming response:")
-        if isinstance(stream_response, dict):
-            print(stream_response['content'])
-        else:
-            for chunk in stream_response:
-                print(chunk["content"], end="", flush=True)
+    stream_response = llm("Tell me a short story about AI", stream=True)
+    print("Streaming response:")
+    if isinstance(stream_response, dict):
+        print(stream_response['content'])
+    else:
+        for chunk in stream_response:
+            print(chunk["content"], end="", flush=True)
         print()
-    except Exception as e:
-        print(f"Error in streaming: {e}")
     
     # Test with message history
     print("\n=== Testing message history ===")
-    try:
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant"},
-            {"role": "user", "content": "What is the capital of France?"}
-        ]
-        response = llm(messages)
-        print(f"Response: {response['content']}")
-    except Exception as e:
-        print(f"Error in message history: {e}")
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant"},
+        {"role": "user", "content": "What is the capital of France?"}
+    ]
+    response = llm(messages)
+    print(f"Response: {response['content']}")
+    
+    # Test simple weather function call - just pass function in tools
+    print("\n=== Testing simple weather function ===")
+    def simple_weather(location: str) -> str:
+        """Get weather for a location"""
+        return f"Weather in {location}: 25°C, sunny"
+    
+    weather_response = llm("What's the weather in Paris?", tools=[simple_weather])
+    print(f"Weather tool response: {weather_response}")
     
     print("\n=== Simple Usage Examples ===")
     print("llm('Hello')  # Basic chat")
-    print("llm('Generate person', format=PersonSchema)  # Structured output") 
+    print("llm('Generate person', format=PersonSchema)  # Structured output")
     print("llm('What weather?', tools=[weather_func])  # Function calling")
     print("llm(messages)  # Multi-turn chat")
-    print("llm(text, stream=True)  # Streaming")
-    
-    print("\nTo use vLLM, start the server first:")
-    print("vllm serve <model-name>")
-    print("Example: vllm serve microsoft/DialoGPT-medium")
-    print("Or with tools: vllm serve mistralai/Mistral-7B-Instruct-v0.3 --enable-auto-tool-choice --tool-call-parser mistral")
+    print("llm(texts, stream=True)  # Streaming")

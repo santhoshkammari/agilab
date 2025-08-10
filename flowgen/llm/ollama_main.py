@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, Optional, Callable, List, get_type_hints
 from concurrent.futures import ThreadPoolExecutor
 
-from openai import OpenAI
+from ollama import Client, chat
 from pydantic import BaseModel
 
 
@@ -64,13 +64,13 @@ def convert_func_to_oai_tool(func: Any) -> dict:
 class BaseLLM(ABC):
     """Base class for all LLM implementations."""
 
-    def __init__(self, model=None, api_key=None, tools=None, format=None, timeout=None, base_url=None):
+    def __init__(self, model=None, api_key=None, tools=None, format=None, timeout=None, host=None):
         self._model = model
         self._tools = tools
         self._format = format
         self._timeout = timeout
         self._api_key = api_key
-        self._base_url = base_url
+        self._host = host
         self.llm = self._load_llm()
 
     @abstractmethod
@@ -78,7 +78,7 @@ class BaseLLM(ABC):
         pass
 
     def chat(self, input, **kwargs):
-        """Generate text using vLLM chat."""
+        """Generate text using Ollama chat."""
         input = self._normalize_input(input)
         model = self._check_model(kwargs, self._model)
         
@@ -93,100 +93,98 @@ class BaseLLM(ABC):
         
         # Handle streaming
         if kwargs.get("stream"):
-            return self._stream_chat(input, format_schema, tools, model, timeout, **kwargs)
+            return self._stream_chat(input, format_schema, tools, model, **kwargs)
+        
+        # Build options
+        options = {}
+        if timeout:
+            options['timeout'] = timeout
         
         # Handle structured output
-        extra_body = {}
+        format_param = None
         if format_schema:
             if hasattr(format_schema, 'model_json_schema'):
                 # Pydantic model
-                extra_body['response_format'] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": format_schema.__name__,
-                        "schema": format_schema.model_json_schema()
-                    }
-                }
+                format_param = format_schema.model_json_schema()
         
-        response = self.llm.chat.completions.create(
-            messages=input,
+        response = chat(
             model=model,
+            messages=input,
             tools=tools,
-            extra_body=extra_body if extra_body else None,
-            timeout=timeout
+            format=format_param,
+            options=options,
+            host=self._host
         )
-
+        
         result = {"think": "", "content": "", "tool_calls": []}
         
+        # Extract thinking content from <think> tags
+        content = response.message.content or ""
+        think, content = self._extract_thinking(content)
+        result['think'] = think
+        result['content'] = content
+        
         # Check if there are tool calls
-        if response.choices[0].message.tool_calls:
-            for tool_call in response.choices[0].message.tool_calls:
+        if hasattr(response.message, 'tool_calls') and response.message.tool_calls:
+            for tool_call in response.message.tool_calls:
                 result['tool_calls'].append({
-                    'id': tool_call.id,
+                    'id': getattr(tool_call, 'id', str(uuid.uuid4())),
                     'type': 'function',
                     'function': {
                         'name': tool_call.function.name,
-                        'arguments': tool_call.function.arguments
+                        'arguments': json.dumps(tool_call.function.arguments) if isinstance(tool_call.function.arguments, dict) else tool_call.function.arguments
                     }
                 })
         
-        result['content'] = response.choices[0].message.content or ""
-        result['think'] = getattr(response.choices[0].message, 'reasoning_content', "") or ""
-        
         return result
 
-    def _stream_chat(self, messages, format_schema, tools, model, timeout, **kwargs):
-        """Generate streaming text using vLLM chat."""
-        extra_body = {}
+    def _stream_chat(self, messages, format_schema, tools, model, **kwargs):
+        """Generate streaming text using Ollama chat."""
+        options = {}
+        if self._timeout:
+            options['timeout'] = self._timeout
+            
+        format_param = None
         if format_schema:
             if hasattr(format_schema, 'model_json_schema'):
-                extra_body['response_format'] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": format_schema.__name__,
-                        "schema": format_schema.model_json_schema()
-                    }
-                }
-            
-        response_stream = self.llm.chat.completions.create(
-            messages=messages,
+                format_param = format_schema.model_json_schema()
+        
+        response_stream = chat(
             model=model,
+            messages=messages,
             tools=tools,
+            format=format_param,
+            options=options,
             stream=True,
-            extra_body=extra_body if extra_body else None,
-            timeout=timeout
+            host=self._host
         )
         
         content_parts = []
         tool_calls = []
-        thinking_parts = []
         
         for chunk in response_stream:
-            delta = chunk.choices[0].delta
-            
-            if delta.content:
-                content_parts.append(delta.content)
-            
-            # Handle tool call streaming
-            if delta.tool_calls:
-                for tool_call in delta.tool_calls:
-                    if tool_call.id:
+            if hasattr(chunk, 'message') and chunk.message:
+                if hasattr(chunk.message, 'content') and chunk.message.content:
+                    content_parts.append(chunk.message.content)
+                
+                # Handle tool calls in streaming
+                if hasattr(chunk.message, 'tool_calls') and chunk.message.tool_calls:
+                    for tool_call in chunk.message.tool_calls:
                         tool_calls.append({
-                            'id': tool_call.id,
+                            'id': getattr(tool_call, 'id', str(uuid.uuid4())),
                             'type': 'function',
                             'function': {
-                                'name': tool_call.function.name or "",
-                                'arguments': tool_call.function.arguments or ""
+                                'name': tool_call.function.name,
+                                'arguments': json.dumps(tool_call.function.arguments) if isinstance(tool_call.function.arguments, dict) else tool_call.function.arguments
                             }
                         })
-            
-            # Handle reasoning content
-            if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
-                thinking_parts.append(delta.reasoning_content)
+        
+        full_content = ''.join(content_parts)
+        think, content = self._extract_thinking(full_content)
         
         return {
-            "think": ''.join(thinking_parts),
-            "content": ''.join(content_parts),
+            "think": think,
+            "content": content,
             "tool_calls": tool_calls
         }
 
@@ -218,55 +216,7 @@ class BaseLLM(ABC):
         return results
 
     def _normalize_input(self, input):
-        """Convert string input to OpenAI format."""
-        if isinstance(input, str):
-            return [{"role": "user", "content": input}]
-        elif isinstance(input, list):
-            if all(isinstance(msg, dict) for msg in input):
-                # Already in message format
-                return input
-            else:
-                # List of strings, convert to user messages
-                return [{"role": "user", "content": str(item)} for item in input]
-        else:
-            return [{"role": "user", "content": str(input)}]
-
-    def _check_model(self, kwargs, default_model):
-        """Check if model is provided, raise error if not."""
-        model = kwargs.get("model") or default_model
-        if model is None:
-            raise ValueError("model is None")
-        return model
-
-    def _get_tools(self, kwargs):
-        """Get tools from kwargs or use default tools."""
-        return kwargs.pop('tools', None) or self._tools
-
-    def _get_format(self, kwargs):
-        """Get format from kwargs or use default format."""
-        return kwargs.get('format', None) or self._format
-
-    def _get_timeout(self, kwargs):
-        """Get timeout from kwargs or use default timeout."""
-        timeout = kwargs.get('timeout', None) or self._timeout
-        if 'timeout' in kwargs:
-            kwargs.pop("timeout")
-        return timeout
-
-    def _extract_thinking(self, content):
-        """Extract thinking content from <think> tags."""
-        import re
-        think = ''
-        if '<think>' in content and '</think>' in content:
-            think_match = re.search(r'<think>(.*?)</think>', content, re.DOTALL)
-            if think_match:
-                think = think_match.group(1).strip()
-                content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
-        return think, content
-
-
-    def _normalize_input(self, input):
-        """Convert string input to OpenAI format."""
+        """Convert string input to message format."""
         if isinstance(input, str):
             return [{"role": "user", "content": input}]
         elif isinstance(input, list):
@@ -307,26 +257,25 @@ class BaseLLM(ABC):
             return []
         return [convert_func_to_oai_tool(f) if not isinstance(f, dict) else f for f in func]
 
+    def _extract_thinking(self, content):
+        """Extract thinking content from <think> tags."""
+        import re
+        think = ''
+        if '<think>' in content and '</think>' in content:
+            think_match = re.search(r'<think>(.*?)</think>', content, re.DOTALL)
+            if think_match:
+                think = think_match.group(1).strip()
+                content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
+        return think, content
 
-class VllmLLM(BaseLLM):
-    def __init__(self, model=None, api_key="EMPTY", base_url="http://localhost:8000/v1", **kwargs):
-        super().__init__(model=model, api_key=api_key, base_url=base_url, **kwargs)
+
+class OllamaLLM(BaseLLM):
+    def __init__(self, model="llama3.1", host="localhost:11434", **kwargs):
+        super().__init__(model=model, host=host, **kwargs)
 
     def _load_llm(self):
-        client = OpenAI(
-            api_key=self._api_key,
-            base_url=self._base_url,
-        )
-        
-        # Get available models and set default if not specified
-        if not self._model:
-            try:
-                models = client.models.list()
-                self._model = models.data[0].id if models.data else "default"
-            except Exception:
-                self._model = "default"
-        
-        return client
+        # For Ollama, we use the direct chat function, not a client instance
+        return None
 
 
 # Test classes
@@ -342,6 +291,16 @@ class Restaurant(BaseModel):
     city: str
     cuisine: str
     menu_items: List[MenuItem]
+
+
+class FriendInfo(BaseModel):
+    name: str
+    age: int
+    is_available: bool
+
+
+class FriendList(BaseModel):
+    friends: List[FriendInfo]
 
 
 # Test functions for tools
@@ -366,16 +325,33 @@ def get_weather(city: str) -> dict:
         "humidity": random.randint(30, 80)
     }
 
+def add_two_numbers(a: int, b: int) -> int:
+    """
+    Add two numbers
+
+    Args:
+        a (int): The first number
+        b (int): The second number
+
+    Returns:
+        int: The sum of the two numbers
+    """
+    return int(a) + int(b)
+
 
 if __name__ == "__main__":
-    # Initialize vLLM
-    # NOTE: Start vLLM server first with: vllm serve <model-name>
-    llm = VllmLLM(base_url="http://localhost:8000/v1",model='HuggingFaceTB/SmolLM2-135M-Instruct')
+    # Initialize Ollama
+    # NOTE: Make sure Ollama is running with: ollama serve
+    llm = OllamaLLM(model="llama3.1", host="localhost:11434")
     
     print("=== Testing basic chat ===")
-    response = llm("Tell me a short joke about programming")
-    print(f"Response: {response['content']}")
-
+    try:
+        response = llm("Tell me a short joke about programming")
+        print(f"Response: {response['content']}")
+    except Exception as e:
+        print(f"Error in basic chat: {e}")
+        print("Make sure Ollama is running: ollama serve")
+    
     # Test tools with Python functions - now automatic!
     print("\n=== Testing tools automatically ===")
     try:
@@ -385,7 +361,17 @@ if __name__ == "__main__":
             print("Tool calls detected - would execute functions automatically")
     except Exception as e:
         print(f"Error in tool calling: {e}")
-        print("Make sure vLLM server is running with tool calling enabled")
+        print("Make sure you have a model that supports function calling")
+    
+    # Test math tools
+    print("\n=== Testing math tools ===")
+    try:
+        response = llm("What is 25 plus 17?", tools=[add_two_numbers])
+        print(f"Math response: {response}")
+        if response.get('tool_calls'):
+            print("Math tool calls detected")
+    except Exception as e:
+        print(f"Error in math tools: {e}")
     
     # Test structured output
     print("\n=== Testing structured output ===")
@@ -394,6 +380,14 @@ if __name__ == "__main__":
         print(f"Structured response: {response['content']}")
     except Exception as e:
         print(f"Error in structured output: {e}")
+    
+    # Test friends list structured output
+    print("\n=== Testing friends list ===")
+    try:
+        response = llm("I have two friends. Alice is 25 and available, Bob is 30 and busy", format=FriendList)
+        print(f"Friends response: {response['content']}")
+    except Exception as e:
+        print(f"Error in friends list: {e}")
     
     # Test streaming
     print("\n=== Testing streaming ===")
@@ -428,7 +422,8 @@ if __name__ == "__main__":
     print("llm(messages)  # Multi-turn chat")
     print("llm(text, stream=True)  # Streaming")
     
-    print("\nTo use vLLM, start the server first:")
-    print("vllm serve <model-name>")
-    print("Example: vllm serve microsoft/DialoGPT-medium")
-    print("Or with tools: vllm serve mistralai/Mistral-7B-Instruct-v0.3 --enable-auto-tool-choice --tool-call-parser mistral")
+    print("\nTo use Ollama:")
+    print("1. Install: curl -fsSL https://ollama.ai/install.sh | sh")
+    print("2. Start: ollama serve")
+    print("3. Pull model: ollama pull llama3.1")
+    print("4. Run this script!")
