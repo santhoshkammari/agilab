@@ -3,8 +3,7 @@ import json
 import uuid
 
 from ollama import Client
-
-from .basellm import BaseLLM, Restaurant, FriendList, get_weather, get_current_time, add_two_numbers
+from .basellm import BaseLLM
 
 
 class Ollama(BaseLLM):
