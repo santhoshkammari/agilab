@@ -80,7 +80,7 @@ class BaseLLM(ABC):
         pass
 
     def chat(self, input, **kwargs):
-        """Generate text using HuggingFace transformers with XGrammar."""
+        """Generate text using hfLLM transformers with XGrammar."""
         input = self._normalize_input(input)
         model = self._check_model(kwargs, self._model_name)
         
@@ -208,7 +208,7 @@ class BaseLLM(ABC):
         return result
 
     def _stream_chat(self, messages, format_schema, tools, model, **kwargs):
-        """Generate streaming text using HuggingFace transformers."""
+        """Generate streaming text using hfLLM transformers."""
         from transformers import TextIteratorStreamer
         from threading import Thread
         
@@ -346,7 +346,7 @@ class HuggingFaceLLM(BaseLLM):
         super().__init__(model=model, device=device, **kwargs)
 
     def _load_llm(self):
-        """Load HuggingFace model and tokenizer."""
+        """Load hfLLM model and tokenizer."""
         try:
             # Load tokenizer
             tokenizer = AutoTokenizer.from_pretrained(self._model_name)
@@ -371,7 +371,7 @@ class HuggingFaceLLM(BaseLLM):
             return model, tokenizer, config
             
         except Exception as e:
-            raise RuntimeError(f"Failed to load HuggingFace model {self._model_name}: {e}")
+            raise RuntimeError(f"Failed to load hfLLM model {self._model_name}: {e}")
 
 
 # Test classes
@@ -445,7 +445,7 @@ def add_two_numbers(a: int, b: int) -> int:
 
 
 if __name__ == "__main__":
-    # Initialize HuggingFace LLM
+    # Initialize hfLLM LLM
     # NOTE: Make sure you have enough GPU memory for the model
     llm = HuggingFaceLLM(
         model="HuggingFaceTB/SmolLM2-135M-Instruct",  # Small model for testing
@@ -527,7 +527,7 @@ if __name__ == "__main__":
     print("llm(messages)  # Multi-turn chat")
     print("llm(text, stream=True)  # Streaming")
     
-    print("\nTo use HuggingFace with XGrammar:")
+    print("\nTo use hfLLM with XGrammar:")
     print("1. Install: pip install transformers torch xgrammar")
     print("2. Choose a model: microsoft/DialoGPT-medium (small) or larger models")
     print("3. Make sure you have enough GPU memory")

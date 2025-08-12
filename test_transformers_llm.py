@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for HuggingFace Transformers LLM implementation
+Test script for hfLLM Transformers LLM implementation
 """
 
 import asyncio
@@ -13,8 +13,8 @@ sys.path.insert(0, '/home/ntlpt59/master/own/flowgen')
 from flowgen.llm.llm import hgLLM, hgLLMAsync
 
 def test_sync_transformers():
-    """Test synchronous HuggingFace Transformers LLM"""
-    print("=== Testing Sync HuggingFace Transformers LLM ===")
+    """Test synchronous hfLLM Transformers LLM"""
+    print("=== Testing Sync hfLLM Transformers LLM ===")
     
     try:
         # Initialize with a small model (you can change this to any model you have)
@@ -55,8 +55,8 @@ def test_sync_transformers():
         return False
 
 async def test_async_transformers():
-    """Test asynchronous HuggingFace Transformers LLM"""
-    print("=== Testing Async HuggingFace Transformers LLM ===")
+    """Test asynchronous hfLLM Transformers LLM"""
+    print("=== Testing Async hfLLM Transformers LLM ===")
     
     try:
         # Initialize with a small model
@@ -91,7 +91,7 @@ async def test_async_transformers():
 
 def main():
     """Run all tests"""
-    print("Testing HuggingFace Transformers LLM Implementation")
+    print("Testing hfLLM Transformers LLM Implementation")
     print("=" * 60)
     
     # Test sync version

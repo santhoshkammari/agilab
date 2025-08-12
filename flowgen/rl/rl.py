@@ -97,7 +97,7 @@ class RLEnv:
     Designed with the same philosophy as the LLM framework:
     - Simple, pythonic interface
     - Auto-detection of usage patterns
-    - Seamless integration with HuggingFace datasets
+    - Seamless integration with hfLLM datasets
     - Loose coupling with any trainer (GRPOTrainer, PPOTrainer, etc.)
     
     Example:
@@ -121,7 +121,7 @@ class RLEnv:
         Initialize RL Environment.
         
         Args:
-            dataset: HuggingFace dataset with 'prompt' column (required for trainers)
+            dataset: hfLLM dataset with 'prompt' column (required for trainers)
             reward_funcs: Single reward function, list of reward functions, BaseReward class instance, or list of BaseReward instances
             reward_weights: Weights for combining multiple rewards (defaults to equal weights or auto-extracted from BaseReward)
             tools: List of tool functions for multi-turn interactions

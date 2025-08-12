@@ -148,7 +148,7 @@ def main():
     print("\n=== Enhanced Test Complete ===")
     print("✅ Evaluator supports both string metrics and function objects")
     print("✅ Flexible prompt/answer parameter naming")
-    print("✅ HuggingFace datasets integration ready")
+    print("✅ hfLLM datasets integration ready")
     print("✅ Gemini LLM integration working")
     print("✅ tqdm progress bars throughout")
     print("✅ UUID4-based automatic eval naming")

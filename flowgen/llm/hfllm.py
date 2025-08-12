@@ -2,7 +2,6 @@ from __future__ import annotations
 import json
 import uuid
 import inspect
-from abc import abstractmethod, ABC
 from datetime import datetime
 from typing import Any, Optional, Callable, List, get_type_hints
 from concurrent.futures import ThreadPoolExecutor
@@ -12,77 +11,47 @@ import xgrammar as xgr
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 from pydantic import BaseModel
 
-
-def convert_func_to_oai_tool(func: Any) -> dict:
-    """Convert function to OpenAI function-calling tool schema."""
-    if not callable(func):
-        raise TypeError("Expected a callable object")
-
-    signature = inspect.signature(func)
-    hints = get_type_hints(func)
-
-    # Map Python types to JSON schema types
-    type_map = {
-        str: "string",
-        int: "integer", 
-        float: "number",
-        bool: "boolean",
-        list: "array",
-        dict: "object"
-    }
-
-    properties = {}
-    required = []
-
-    for name, param in signature.parameters.items():
-        if name == "self":
-            continue
-
-        param_type = hints.get(name, str)
-        json_type = type_map.get(param_type, "string")
-        
-        properties[name] = {
-            "type": json_type,
-            "description": f"Parameter {name}"
-        }
-
-        if param.default is inspect.Parameter.empty:
-            required.append(name)
-
-    return {
-        "type": "function",
-        "function": {
-            "name": func.__name__,
-            "description": func.__doc__ or f"Call {func.__name__}",
-            "parameters": {
-                "type": "object",
-                "properties": properties,
-                "required": required
-            }
-        }
-    }
+import sys
+import os
+from .basellm import BaseLLM, convert_func_to_oai_tool
 
 
-class BaseLLM(ABC):
-    """Base class for all LLM implementations."""
-
-    def __init__(self, model=None, api_key=None, tools=None, format=None, timeout=None, device=None):
-        self._model_name = model
-        self._tools = tools
-        self._format = format
-        self._timeout = timeout
-        self._api_key = api_key
+class hfLLM(BaseLLM):
+    def __init__(self, model, device=None, torch_dtype=None, **kwargs):
+        self._torch_dtype = torch_dtype or torch.float32
         self._device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        self._model, self._tokenizer, self._config = self._load_llm()
+        super().__init__(model=model, **kwargs)
 
-    @abstractmethod
     def _load_llm(self):
-        pass
+        """Load hfLLM model and tokenizer."""
+        try:
+            # Load tokenizer
+            tokenizer = AutoTokenizer.from_pretrained(self._model)
+            
+            # Set pad token if not set
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+            
+            # Load config
+            config = AutoConfig.from_pretrained(self._model)
+            
+            # Load model
+            model = AutoModelForCausalLM.from_pretrained(
+                self._model,
+                trust_remote_code=True,
+                torch_dtype="auto",
+                device_map="auto"
+            )
+            
+            return model, tokenizer, config
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to load hfLLM model {self._model}: {e}")
 
     def chat(self, input, **kwargs):
         """Generate text using hfLLM transformers with XGrammar."""
         input = self._normalize_input(input)
-        model = self._check_model(kwargs, self._model_name)
+        model = self._check_model(kwargs, self._model)
         
         # Get parameters
         format_schema = self._get_format(kwargs)
@@ -258,120 +227,6 @@ class BaseLLM(ABC):
             thread.join()
         
         return stream_generator()
-
-    def __call__(self, input, **kwargs) -> dict:
-        """Generate text using the LLM. Auto-batches if input is a list of strings/prompts."""
-        # Auto-batch only for list of strings or list of lists
-        if isinstance(input, list) and input:
-            # List of strings - batch processing
-            if isinstance(input[0], str):
-                max_workers = kwargs.pop('max_workers', len(input))
-                return self.batch_call(input, max_workers=max_workers, **kwargs)
-            # List of lists - batch processing
-            elif isinstance(input[0], list):
-                max_workers = kwargs.pop('max_workers', len(input))
-                return self.batch_call(input, max_workers=max_workers, **kwargs)
-            # List of dicts - treat as single conversation, not batch
-            elif isinstance(input[0], dict):
-                return self.chat(input=input, **kwargs)
-            else:
-                raise ValueError(
-                    f"Unsupported input type in list: {type(input[0]).__name__}. Expected str, list, or dict.")
-
-        return self.chat(input=input, **kwargs)
-
-    def batch_call(self, inputs, max_workers=4, **kwargs):
-        """Process multiple inputs in parallel using ThreadPoolExecutor"""
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            results = list(executor.map(lambda text: self(text, **kwargs), inputs))
-        return results
-
-    def _normalize_input(self, input):
-        """Convert string input to message format."""
-        if isinstance(input, str):
-            return [{"role": "user", "content": input}]
-        elif isinstance(input, list):
-            if all(isinstance(msg, dict) for msg in input):
-                # Already in message format
-                return input
-            else:
-                # List of strings, convert to user messages
-                return [{"role": "user", "content": str(item)} for item in input]
-        else:
-            return [{"role": "user", "content": str(input)}]
-
-    def _check_model(self, kwargs, default_model):
-        """Check if model is provided, raise error if not."""
-        model = kwargs.get("model") or default_model
-        if model is None:
-            raise ValueError("model is None")
-        return model
-
-    def _get_tools(self, kwargs):
-        """Get tools from kwargs or use default tools."""
-        return kwargs.pop('tools', None) or self._tools
-
-    def _get_format(self, kwargs):
-        """Get format from kwargs or use default format."""
-        return kwargs.get('format', None) or self._format
-
-    def _get_timeout(self, kwargs):
-        """Get timeout from kwargs or use default timeout."""
-        timeout = kwargs.get('timeout', None) or self._timeout
-        if 'timeout' in kwargs:
-            kwargs.pop("timeout")
-        return timeout
-
-    def _convert_function_to_tools(self, func: Optional[List[Callable]]) -> List[dict]:
-        """Convert functions to tool format."""
-        if not func:
-            return []
-        return [convert_func_to_oai_tool(f) if not isinstance(f, dict) else f for f in func]
-
-    def _extract_thinking(self, content):
-        """Extract thinking content from <think> tags."""
-        import re
-        think = ''
-        if '<think>' in content and '</think>' in content:
-            think_match = re.search(r'<think>(.*?)</think>', content, re.DOTALL)
-            if think_match:
-                think = think_match.group(1).strip()
-                content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
-        return think, content
-
-
-class hfLLM(BaseLLM):
-    def __init__(self, model, device=None, torch_dtype=None, **kwargs):
-        self._torch_dtype = torch_dtype or torch.float32
-        super().__init__(model=model, device=device, **kwargs)
-
-    def _load_llm(self):
-        """Load hfLLM model and tokenizer."""
-        try:
-            # Load tokenizer
-            tokenizer = AutoTokenizer.from_pretrained(self._model_name)
-            
-            # Set pad token if not set
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-            
-            # Load config
-            config = AutoConfig.from_pretrained(self._model_name)
-            
-            # Load model
-            model = AutoModelForCausalLM.from_pretrained(
-                self._model_name,
-                #torch_dtype=self._torch_dtype,
-                #device_map=self._device,
-                trust_remote_code=True,
-                torch_dtype="auto",
-    device_map="auto"
-            )
-            
-            return model, tokenizer, config
-            
-        except Exception as e:
-            raise RuntimeError(f"Failed to load hfLLM model {self._model_name}: {e}")
 
 
 # Test classes

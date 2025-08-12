@@ -157,12 +157,12 @@ class BaseLLM(ABC):
             config=config
         )
         
-        content_parts = []
-        tool_calls = []
-        
         for chunk in response_stream:
+            chunk_result = {"think": "", "content": "", "tool_calls": []}
+            
             if chunk.text:
-                content_parts.append(chunk.text)
+                chunk_result["content"] = chunk.text
+                print("---", end="", flush=True)  # Show streaming progress
             
             # Check for function calls in streaming
             if hasattr(chunk, 'candidates') and chunk.candidates:
@@ -170,7 +170,7 @@ class BaseLLM(ABC):
                 if hasattr(candidate, 'content') and candidate.content.parts:
                     for part in candidate.content.parts:
                         if hasattr(part, 'function_call') and part.function_call:
-                            tool_calls.append({
+                            chunk_result["tool_calls"].append({
                                 'id': str(uuid.uuid4()),
                                 'type': 'function',
                                 'function': {
@@ -178,12 +178,8 @@ class BaseLLM(ABC):
                                     'arguments': json.dumps(part.function_call.args)
                                 }
                             })
-        
-        return {
-            "think": "",
-            "content": ''.join(content_parts),
-            "tool_calls": tool_calls
-        }
+            
+            yield chunk_result
 
     def __call__(self, input, **kwargs) -> dict:
         """Generate text using the LLM. Auto-batches if input is a list of strings/prompts."""
