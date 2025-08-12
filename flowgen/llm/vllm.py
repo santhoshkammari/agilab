@@ -1,14 +1,6 @@
 from __future__ import annotations
-import json
-import uuid
-from datetime import datetime
-from typing import List
-from concurrent.futures import ThreadPoolExecutor
-
 from openai import OpenAI
-from pydantic import BaseModel
-
-from .basellm import BaseLLM, convert_func_to_oai_tool
+from .basellm import BaseLLM
 
 
 class vLLM(BaseLLM):
@@ -21,15 +13,6 @@ class vLLM(BaseLLM):
             api_key=self._api_key,
             base_url=self._base_url,
         )
-        
-        # Get available models and set default if not specified
-        if not self._model:
-            try:
-                models = client.models.list()
-                self._model = models.data[0].id if models.data else "default"
-            except Exception:
-                self._model = "default"
-        
         return client
 
     def chat(self, input, **kwargs):
@@ -145,108 +128,3 @@ class vLLM(BaseLLM):
             "content": ''.join(content_parts),
             "tool_calls": tool_calls
         }
-
-
-# Test classes
-class MenuItem(BaseModel):
-    """A menu item in a restaurant."""
-    course_name: str
-    is_vegetarian: bool
-
-
-class Restaurant(BaseModel):
-    """A restaurant with name, city, and cuisine."""
-    name: str
-    city: str
-    cuisine: str
-    menu_items: List[MenuItem]
-
-
-# Test functions for tools
-def get_current_time(timezone: str) -> dict:
-    """Get the current time for a specific timezone"""
-    return {
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "timezone": timezone,
-    }
-
-def get_weather(city: str) -> dict:
-    """Get weather information for a city"""
-    # Mock weather data - in real use case, call actual weather API
-    import random
-    temperatures = [15, 18, 22, 25, 28, 30, 33]
-    conditions = ["sunny", "cloudy", "rainy", "partly cloudy"]
-    
-    return {
-        "city": city,
-        "temperature": random.choice(temperatures),
-        "condition": random.choice(conditions),
-        "humidity": random.randint(30, 80)
-    }
-
-
-if __name__ == "__main__":
-    # Initialize vLLM
-    # NOTE: Start vLLM server first with: vllm serve <model-name>
-    llm = vLLM(base_url="http://localhost:8000/v1", model='HuggingFaceTB/SmolLM2-135M-Instruct')
-    
-    print("=== Testing basic chat ===")
-    response = llm("Tell me a short joke about programming")
-    print(f"Response: {response['content']}")
-
-    # Test tools with Python functions - now automatic!
-    print("\n=== Testing tools automatically ===")
-    try:
-        response = llm("What's the weather like in New York?", tools=[get_weather])
-        print(f"Tool response: {response}")
-        if response.get('tool_calls'):
-            print("Tool calls detected - would execute functions automatically")
-    except Exception as e:
-        print(f"Error in tool calling: {e}")
-        print("Make sure vLLM server is running with tool calling enabled")
-    
-    # Test structured output
-    print("\n=== Testing structured output ===")
-    try:
-        response = llm("Generate a restaurant in Miami", format=Restaurant)
-        print(f"Structured response: {response['content']}")
-    except Exception as e:
-        print(f"Error in structured output: {e}")
-    
-    # Test streaming
-    print("\n=== Testing streaming ===")
-    try:
-        stream_response = llm("Tell me a short story about AI", stream=True)
-        print("Streaming response:")
-        if isinstance(stream_response, dict):
-            print(stream_response['content'])
-        else:
-            for chunk in stream_response:
-                print(chunk["content"], end="", flush=True)
-        print()
-    except Exception as e:
-        print(f"Error in streaming: {e}")
-    
-    # Test with message history
-    print("\n=== Testing message history ===")
-    try:
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant"},
-            {"role": "user", "content": "What is the capital of France?"}
-        ]
-        response = llm(messages)
-        print(f"Response: {response['content']}")
-    except Exception as e:
-        print(f"Error in message history: {e}")
-    
-    print("\n=== Simple Usage Examples ===")
-    print("llm('Hello')  # Basic chat")
-    print("llm('Generate person', format=PersonSchema)  # Structured output") 
-    print("llm('What weather?', tools=[weather_func])  # Function calling")
-    print("llm(messages)  # Multi-turn chat")
-    print("llm(text, stream=True)  # Streaming")
-    
-    print("\nTo use vLLM, start the server first:")
-    print("vllm serve <model-name>")
-    print("Example: vllm serve microsoft/DialoGPT-medium")
-    print("Or with tools: vllm serve mistralai/Mistral-7B-Instruct-v0.3 --enable-auto-tool-choice --tool-call-parser mistral")
