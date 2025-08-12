@@ -647,18 +647,20 @@ class AgentChain:
         return AgentChain(self.agents + [other])
     
     def __call__(self, input: Union[str, List[Dict]], **kwargs) -> Dict:
-        """Execute the agent chain sequentially."""
+        """Execute the agent chain sequentially, passing full conversation history."""
         current_input = input
         results = []
+        accumulated_conversation = []
         
         for i, agent in enumerate(self.agents):
-            # For first agent, use original input
             if i == 0:
+                # For first agent, use original input
                 result = agent(current_input, **kwargs)
             else:
-                # For subsequent agents, use previous agent's output as input
+                # For subsequent agents, pass the accumulated conversation history
+                # This gives them full context of the entire chain so far
                 current_input = result.get('content', '')
-                result = agent(current_input, **kwargs)
+                result = agent(current_input, history=accumulated_conversation, **kwargs)
             
             # Convert _AgentCall to dict result for chaining
             if isinstance(result, _AgentCall):
@@ -672,11 +674,18 @@ class AgentChain:
                 not isinstance(result, (str, dict, _AgentCall)) and
                 not hasattr(result, 'get')):  # Also allow dict-like objects
                 raise ValueError("Cannot chain streaming agents. Set stream=False.")
+            
+            # Accumulate conversation history for next agent
+            # Get the full conversation from this agent's execution
+            agent_conversation = agent.get_conversation()
+            if agent_conversation:
+                accumulated_conversation = agent_conversation
         
         # Return final result with chain metadata
         final_result = results[-1].copy()
         final_result['chain_results'] = results
         final_result['chain_length'] = len(self.agents)
+        final_result['full_conversation'] = accumulated_conversation
         
         return final_result
     
@@ -744,6 +753,7 @@ if __name__ == '__main__':
     agent = Agent(llm=llm, tools=[get_weather, calculate])
     result = agent("What's 2+3 and weather in Paris?",enable_rich_debug=True)
     print(f"Result: {result['content'][:100]}...\n")
+
 
 
     # 2. History management
