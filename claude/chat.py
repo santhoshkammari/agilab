@@ -205,6 +205,7 @@ Answer the user's request using the relevant tool(s), if they are available. Che
 SystemInformation:
 - Current working directory : {cwd}
 
+/no_think
 """
 
 def get_random_status_message():
@@ -479,7 +480,8 @@ class ChatApp(App):
                        #  value = ("Complete the task by creating 5 todods , first web serach for virat , next rohith, next get virat test scores, next get rohith test scores, finally show"
                        #           "in markdown table both guys stats, prefer using markdown analyzer")
                        #  value = 'read app.py'
-                        value= 'using websearch tool, search about todays ai news'
+                       #  value= 'using websearch tool, search about todays ai news'
+                        value = "get virats test score exact from wiki"
                         )
     
     def _create_footer(self):
@@ -1288,21 +1290,21 @@ class ChatApp(App):
         tools = [*list(self.tools.values())]
 
         if self.provider_name == 'gemini':
-            from flowgen.llm.gemini import Gemini
+            from flowgen import Gemini
             self.llm = Gemini(tools=tools)
         elif self.provider_name == 'ollama':
-            from flowgen.llm.llm import Ollama
+            from flowgen import Ollama
             self.llm = Ollama(tools=tools,host="192.168.170.76",model='qwen3:0.6b-fp16')
         elif self.provider_name == 'openrouter':
-            from flowgen.llm import OpenRouter
+            from flowgen import OpenRouter
             self.llm = OpenRouter(tools=tools)
         elif self.provider_name == 'vllm':
-            from flowgen.llm.llm import vLLM
+            from flowgen import vLLM
             self.llm = vLLM(
-                host="192.168.170.76",
+                base_url="http://192.168.170.76:8077/v1",
                 tools=tools,
-                port="8077",
-                model="/home/ng6309/datascience/santhosh/models/Qwen3-14B",
+                # model="/home/ng6309/datascience/santhosh/models/Qwen3-14B",
+                model = "/home/ng6309/datascience/santhosh/models/Qwen__Qwen3-4B-Thinking-2507",
                 timeout=600
             )
         else:

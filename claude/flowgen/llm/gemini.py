@@ -1,290 +1,224 @@
 from __future__ import annotations
 import json
-import asyncio
-from openai import OpenAI, AsyncOpenAI
-from .llm import BaseLLM
+import uuid
+import inspect
+from datetime import datetime
+from typing import Any, Optional, Callable, List, get_type_hints
+from concurrent.futures import ThreadPoolExecutor
+
+from google import genai
+from google.genai import types
+from pydantic import BaseModel
+
+from .basellm import BaseLLM, convert_func_to_oai_tool
 
 
 class Gemini(BaseLLM):
-    # Rate limits for Gemini models (as of 2025)
-    RATE_LIMITS = {
-        "gemini-2.5-pro": {
-            "requests_per_minute": 5,  # Free tier
-            "requests_per_day": 25,    # Free tier
-            "context_window": 1_000_000  # 1M tokens
-        },
-        "gemini-2.5-flash": {
-            "requests_per_minute": 1000,
-            "tokens_per_minute": 4_000_000,
-            "requests_per_day": 15_000
-        }
-    }
+    """Google Gemini implementation using google.genai client."""
     
-    def __init__(self, model="gemini-2.5-flash", tools=None, format=None, timeout=None, api_key="AIzaSyBb8wTvVw9e25aX8XK-eBuu1JzDEPCdqUE"):
-        super().__init__(model=model, tools=tools, format=format, timeout=timeout)
-        self._client = OpenAI(
-            api_key=api_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-        )
+    def __init__(self, model="gemini-2.5-flash", api_key=None, **kwargs):
+        self._api_key = api_key
+        super().__init__(model=model, **kwargs)
+        self.llm = self._load_llm()
 
-    def chat(self, input, **kwargs) -> dict:
+    def _load_llm(self):
+        """Load the Gemini client."""
+        if self._api_key:
+            return genai.Client(api_key=self._api_key)
+        else:
+            return genai.Client()
+
+    def chat(self, input, **kwargs):
+        """Generate text using Gemini chat."""
         input = self._normalize_input(input)
-        model = self._check_model(kwargs, self._model)
+        
+        # Get parameters
+        format_schema = self._get_format(kwargs)
         tools = self._get_tools(kwargs)
-        schema = self._get_format(kwargs)
         timeout = self._get_timeout(kwargs)
         
+        # Convert tools if provided
         if tools:
             tools = self._convert_function_to_tools(tools)
-            # Clean up tools for Gemini compatibility
-            cleaned_tools = []
-            for tool in tools:
-                cleaned_tool = {
-                    'type': tool.get('type', 'function'),
-                    'function': {
-                        'name': tool['function']['name'],
-                        'description': tool['function']['description'],
-                        'parameters': {
-                            'type': 'object',
-                            'properties': {},
-                            'required': tool['function']['parameters'].get('required', [])
-                        }
-                    }
-                }
-                # Clean properties
-                for prop_name, prop_def in tool['function']['parameters'].get('properties', {}).items():
-                    cleaned_tool['function']['parameters']['properties'][prop_name] = {
-                        k: v for k, v in prop_def.items() 
-                        if v is not None and k in ['type', 'description', 'enum']
-                    }
-                cleaned_tools.append(cleaned_tool)
-            kwargs['tools'] = cleaned_tools
-            
-        # Remove tools from kwargs if None
-        if 'tools' in kwargs and not kwargs['tools']:
-            kwargs.pop('tools')
-            
-        # Handle structured output using JSON schema
-        if schema:
-            kwargs['response_format'] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "response",
-                    "schema": schema
-                }
-            }
-            # Remove format from kwargs
-            kwargs.pop('format', None)
-
-        response = self._client.chat.completions.create(
-            model=model,
-            messages=input,
-            timeout=timeout,
-            **kwargs
-        )
-
-        result = {"think": "", "content": "", "tool_calls": []}
         
-        # Handle streaming response
-        if hasattr(response, '__class__') and 'Stream' in str(response.__class__):
-            # This is a streaming response - collect all chunks
-            content_parts = []
-            tool_calls = []
-            
-            for chunk in response:
-                if hasattr(chunk, 'choices') and chunk.choices:
-                    choice = chunk.choices[0]
-                    
-                    # Handle content
-                    if hasattr(choice, 'delta') and choice.delta:
-                        if hasattr(choice.delta, 'content') and choice.delta.content:
-                            content_parts.append(choice.delta.content)
-                        
-                        # Handle tool calls
-                        if hasattr(choice.delta, 'tool_calls') and choice.delta.tool_calls:
-                            for tool_call in choice.delta.tool_calls:
-                                if hasattr(tool_call, 'function'):
-                                    tool_calls.append(tool_call)
-            
-            result['content'] = ''.join(content_parts)
-            
-            # Process tool calls - convert to standard format
-            if tool_calls:
-                result['tool_calls'] = []
-                for i, t in enumerate(tool_calls):
-                    if hasattr(t, 'function') and t.function:
-                        result['tool_calls'].append({
-                            'id': getattr(t, 'id', f'call_{i}'),
-                            'type': 'function',
-                            'function': {
-                                'name': t.function.name,
-                                'arguments': t.function.arguments or '{}'
-                            }
-                        })
-        else:
-            # This is a regular response
-            result['content'] = response.choices[0].message.content or ""
-            
-            if hasattr(response.choices[0].message, 'tool_calls') and response.choices[0].message.tool_calls:
-                result['tool_calls']  = self._convert_tool_calls_to_dict(response.choices[0].message.tool_calls)
-                # for t in response.choices[0].message.tool_calls:
-                #     result['tool_calls'].append({
-                #         'name': t.function.name,
-                #         'arguments': json.loads(t.function.arguments)
-                #     })
-        return result
-
-
-class GeminiAsync(BaseLLM):
-    # Rate limits for Gemini models (as of 2025)
-    RATE_LIMITS = {
-        "gemini-2.5-pro": {
-            "requests_per_minute": 5,  # Free tier
-            "requests_per_day": 25,    # Free tier
-            "context_window": 1_000_000  # 1M tokens
-        },
-        "gemini-2.5-flash": {
-            "requests_per_minute": 1000,
-            "tokens_per_minute": 4_000_000,
-            "requests_per_day": 15_000
-        }
-    }
-    
-    def __init__(self, model="gemini-2.5-flash", tools=None, format=None, timeout=None, api_key="AIzaSyBb8wTvVw9e25aX8XK-eBuu1JzDEPCdqUE"):
-        super().__init__(model=model, tools=tools, format=format, timeout=timeout)
-        self._client = AsyncOpenAI(
-            api_key=api_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-        )
-
-    async def chat(self, input, **kwargs) -> dict:
-        input = self._normalize_input(input)
-        model = self._check_model(kwargs, self._model)
-        tools = self._get_tools(kwargs)
-        schema = self._get_format(kwargs)
-        timeout = self._get_timeout(kwargs)
+        # Handle streaming
+        if kwargs.get("stream"):
+            return self._stream_chat(input, format_schema, tools, **kwargs)
         
+        # Build config
+        config_params = {}
+        
+        # Handle structured output
+        if format_schema:
+            config_params['response_mime_type'] = 'application/json'
+            config_params['response_schema'] = format_schema
+        
+        # Handle tools
         if tools:
-            tools = self._convert_function_to_tools(tools)
-            # Clean up tools for Gemini compatibility
-            cleaned_tools = []
-            for tool in tools:
-                cleaned_tool = {
-                    'type': tool.get('type', 'function'),
-                    'function': {
-                        'name': tool['function']['name'],
-                        'description': tool['function']['description'],
-                        'parameters': {
-                            'type': 'object',
-                            'properties': {},
-                            'required': tool['function']['parameters'].get('required', [])
-                        }
-                    }
-                }
-                # Clean properties
-                for prop_name, prop_def in tool['function']['parameters'].get('properties', {}).items():
-                    cleaned_tool['function']['parameters']['properties'][prop_name] = {
-                        k: v for k, v in prop_def.items() 
-                        if v is not None and k in ['type', 'description', 'enum']
-                    }
-                cleaned_tools.append(cleaned_tool)
-            kwargs['tools'] = cleaned_tools
-            
-        # Remove tools from kwargs if None
-        if 'tools' in kwargs and not kwargs['tools']:
-            kwargs.pop('tools')
-            
-        # Handle structured output using JSON schema
-        if schema:
-            kwargs['response_format'] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "response",
-                    "schema": schema
-                }
-            }
-            # Remove format from kwargs
-            kwargs.pop('format', None)
-
-        response = await self._client.chat.completions.create(
-            model=model,
-            messages=input,
-            timeout=timeout,
-            **kwargs
+            config_params['tools'] = [types.Tool(function_declarations=tools)]
+            config_params['automatic_function_calling'] = types.AutomaticFunctionCallingConfig(disable=True)
+        
+        config = types.GenerateContentConfig(**config_params) if config_params else None
+        
+        response = self.llm.models.generate_content(
+            model=self._model,
+            contents=input,
+            config=config
         )
-
+        
         result = {"think": "", "content": "", "tool_calls": []}
         
-        # Handle streaming response
-        if hasattr(response, '__class__') and 'Stream' in str(response.__class__):
-            # This is a streaming response - collect all chunks
-            content_parts = []
-            tool_calls = []
-            
-            async for chunk in response:
-                if hasattr(chunk, 'choices') and chunk.choices:
-                    choice = chunk.choices[0]
-                    
-                    # Handle content
-                    if hasattr(choice, 'delta') and choice.delta:
-                        if hasattr(choice.delta, 'content') and choice.delta.content:
-                            content_parts.append(choice.delta.content)
-                        
-                        # Handle tool calls
-                        if hasattr(choice.delta, 'tool_calls') and choice.delta.tool_calls:
-                            for tool_call in choice.delta.tool_calls:
-                                if hasattr(tool_call, 'function'):
-                                    tool_calls.append(tool_call)
-            
-            result['content'] = ''.join(content_parts)
-            
-            # Process tool calls - convert to standard format
-            if tool_calls:
-                result['tool_calls'] = []
-                for i, t in enumerate(tool_calls):
-                    if hasattr(t, 'function') and t.function:
+        # Check if there are function calls
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            if hasattr(candidate, 'content') and candidate.content.parts:
+                for part in candidate.content.parts:
+                    if hasattr(part, 'function_call') and part.function_call:
                         result['tool_calls'].append({
-                            'id': getattr(t, 'id', f'call_{i}'),
+                            'id': str(uuid.uuid4()),
                             'type': 'function',
                             'function': {
-                                'name': t.function.name,
-                                'arguments': t.function.arguments or '{}'
+                                'name': part.function_call.name,
+                                'arguments': json.dumps(part.function_call.args)
                             }
                         })
-        else:
-            # This is a regular response
-            result['content'] = response.choices[0].message.content or ""
-            
-            if hasattr(response.choices[0].message, 'tool_calls') and response.choices[0].message.tool_calls:
-                result['tool_calls']  = self._convert_tool_calls_to_dict(response.choices[0].message.tool_calls)
+        
+        result['content'] = response.text or ""
+        
         return result
 
-    async def batch_call(self, inputs, max_workers=4, **kwargs):
-        async def process_single(input_item):
-            return await self.chat(input=input_item, **kwargs)
+    def _stream_chat(self, messages, format_schema, tools, **kwargs):
+        """Generate streaming text using Gemini chat."""
+        config_params = {}
         
-        # Create tasks for all inputs
-        tasks = [process_single(input_item) for input_item in inputs]
+        if format_schema:
+            config_params['response_mime_type'] = 'application/json'
+            config_params['response_schema'] = format_schema
+            
+        if tools:
+            config_params['tools'] = [types.Tool(function_declarations=tools)]
+            config_params['automatic_function_calling'] = types.AutomaticFunctionCallingConfig(disable=True)
+            
+        config = types.GenerateContentConfig(**config_params) if config_params else None
         
-        # Use asyncio.gather to run all tasks concurrently
-        results = await asyncio.gather(*tasks)
-        return results
+        response_stream = self.llm.models.generate_content_stream(
+            model=self._model,
+            contents=messages,
+            config=config
+        )
+        
+        for chunk in response_stream:
+            chunk_result = {"think": "", "content": "", "tool_calls": []}
+            
+            if chunk.text:
+                chunk_result["content"] = chunk.text
+                print("---", end="", flush=True)  # Show streaming progress
+            
+            # Check for function calls in streaming
+            if hasattr(chunk, 'candidates') and chunk.candidates:
+                candidate = chunk.candidates[0]
+                if hasattr(candidate, 'content') and candidate.content.parts:
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'function_call') and part.function_call:
+                            chunk_result["tool_calls"].append({
+                                'id': str(uuid.uuid4()),
+                                'type': 'function',
+                                'function': {
+                                    'name': part.function_call.name,
+                                    'arguments': json.dumps(part.function_call.args)
+                                }
+                            })
+            
+            yield chunk_result
 
-    async def __call__(self, input, **kwargs) -> dict:
-        # Auto-batch only for list of strings or list of lists
-        if isinstance(input, list) and input:
-            # List of strings - batch processing
-            if isinstance(input[0], str):
-                max_workers = kwargs.pop('max_workers', len(input))
-                return await self.batch_call(input, max_workers=max_workers, **kwargs)
-            # List of lists - batch processing  
-            elif isinstance(input[0], list):
-                max_workers = kwargs.pop('max_workers', len(input))
-                return await self.batch_call(input, max_workers=max_workers, **kwargs)
-            # List of dicts - treat as single conversation, not batch
-            elif isinstance(input[0], dict):
-                return await self.chat(input=input, **kwargs)
+    def _convert_function_to_tools(self, func: Optional[List[Callable]]) -> List[types.FunctionDeclaration]:
+        """Convert functions to Gemini FunctionDeclaration format."""
+        if not func:
+            return []
+        
+        function_declarations = []
+        for f in func:
+            if isinstance(f, dict):
+                # If it's already a dict, convert it to FunctionDeclaration
+                if "function" in f:
+                    # OpenAI format
+                    func_info = f["function"]
+                    params = func_info.get("parameters", {})
+                    
+                    # Convert properties to Schema format
+                    properties = {}
+                    for prop_name, prop_info in params.get("properties", {}).items():
+                        prop_type = prop_info.get("type", "string").upper()
+                        properties[prop_name] = types.Schema(
+                            type=prop_type,
+                            description=prop_info.get("description", "")
+                        )
+                    
+                    function_declarations.append(types.FunctionDeclaration(
+                        name=func_info["name"],
+                        description=func_info.get("description", ""),
+                        parameters=types.Schema(
+                            type="OBJECT",
+                            properties=properties,
+                            required=params.get("required", [])
+                        )
+                    ))
+                else:
+                    # Direct function declaration format
+                    function_declarations.append(f)
             else:
-                raise ValueError(f"Unsupported input type in list: {type(input[0]).__name__}. Expected str, list, or dict.")
+                # It's a callable, convert it
+                oai_tool = convert_func_to_oai_tool(f)
+                func_info = oai_tool["function"]
+                params = func_info.get("parameters", {})
+                
+                # Convert properties to Schema format
+                properties = {}
+                for prop_name, prop_info in params.get("properties", {}).items():
+                    prop_type = prop_info.get("type", "string").upper()
+                    properties[prop_name] = types.Schema(
+                        type=prop_type,
+                        description=prop_info.get("description", "")
+                    )
+                
+                function_declarations.append(types.FunctionDeclaration(
+                    name=func_info["name"],
+                    description=func_info.get("description", ""),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties=properties,
+                        required=params.get("required", [])
+                    )
+                ))
         
-        return await self.chat(input=input, **kwargs)
+        return function_declarations
+
+    def _normalize_input(self, input):
+        """Convert string input to Gemini API format."""
+        if isinstance(input, str):
+            return [input]
+        elif isinstance(input, list):
+            if all(isinstance(msg, dict) for msg in input):
+                # Convert chat messages to simple content strings for Gemini
+                contents = []
+                for msg in input:
+                    # Handle different message formats
+                    content = msg.get("content", "")
+                    if not content:
+                        # Try other possible content keys
+                        content = str(msg)
+                    
+                    if msg.get("role") == "system":
+                        contents.append(f"System: {content}")
+                    elif msg.get("role") in ["user", "assistant"]:
+                        contents.append(content)
+                    elif "content" not in msg and isinstance(msg, dict):
+                        # If no role specified but it's a dict, convert to string
+                        contents.append(str(msg))
+                    else:
+                        contents.append(content)
+                return contents
+            else:
+                return input
+        else:
+            return [input]
