@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Optional
 
 
-def glob_files(pattern: str, path: Optional[str] = None) -> List[str]:
+def glob_find_files(pattern: str, path: Optional[str] = None) -> List[str]:
     """
     Find files matching a glob pattern, sorted by modification time.
     
@@ -21,17 +21,20 @@ def glob_files(pattern: str, path: Optional[str] = None) -> List[str]:
         OSError: If filesystem error occurs
     """
     if not pattern:
-        raise ValueError("Pattern cannot be empty")
+        # raise ValueError("Pattern cannot be empty")
+        return "I need a pattern to search for files. Please provide a glob pattern like '*.py' or '**/*.txt'."
     
     # Use current working directory if path not provided
     search_path = path if path is not None else os.getcwd()
     
     # Validate path exists and is a directory
     if not os.path.exists(search_path):
-        raise ValueError(f"Path does not exist: {search_path}")
+        # raise ValueError(f"Path does not exist: {search_path}")
+        return f"I couldn't find the directory at {search_path}. Please check if the path is correct and the directory exists."
     
     if not os.path.isdir(search_path):
-        raise ValueError(f"Path is not a directory: {search_path}")
+        # raise ValueError(f"Path is not a directory: {search_path}")
+        return f"The path {search_path} is not a directory. I need a directory path to search for files."
     
     try:
         # Change to the search directory for glob operation
@@ -65,9 +68,11 @@ def glob_files(pattern: str, path: Optional[str] = None) -> List[str]:
             os.chdir(original_cwd)
             
     except PermissionError as e:
-        raise PermissionError(f"Permission denied accessing directory: {search_path}")
+        # raise PermissionError(f"Permission denied accessing directory: {search_path}")
+        return f"I don't have permission to access the directory {search_path}. Please check the directory permissions."
     except OSError as e:
-        raise OSError(f"Filesystem error: {e}")
+        # raise OSError(f"Filesystem error: {e}")
+        return f"I encountered a filesystem error while searching: {e}. Please try again or check if the directory is accessible."
 
 
 def glob_files_advanced(pattern: str, path: Optional[str] = None, 
@@ -90,17 +95,20 @@ def glob_files_advanced(pattern: str, path: Optional[str] = None,
         OSError: If filesystem error occurs
     """
     if not pattern:
-        raise ValueError("Pattern cannot be empty")
+        # raise ValueError("Pattern cannot be empty")
+        return "I need a pattern to search for files. Please provide a glob pattern like '*.py' or '**/*.txt'."
     
     # Use current working directory if path not provided
     search_path = path if path is not None else os.getcwd()
     
     # Validate path exists and is a directory
     if not os.path.exists(search_path):
-        raise ValueError(f"Path does not exist: {search_path}")
+        # raise ValueError(f"Path does not exist: {search_path}")
+        return f"I couldn't find the directory at {search_path}. Please check if the path is correct and the directory exists."
     
     if not os.path.isdir(search_path):
-        raise ValueError(f"Path is not a directory: {search_path}")
+        # raise ValueError(f"Path is not a directory: {search_path}")
+        return f"The path {search_path} is not a directory. I need a directory path to search for files."
     
     try:
         # Change to the search directory for glob operation
@@ -142,6 +150,8 @@ def glob_files_advanced(pattern: str, path: Optional[str] = None,
             os.chdir(original_cwd)
             
     except PermissionError as e:
-        raise PermissionError(f"Permission denied accessing directory: {search_path}")
+        # raise PermissionError(f"Permission denied accessing directory: {search_path}")
+        return f"I don't have permission to access the directory {search_path}. Please check the directory permissions."
     except OSError as e:
-        raise OSError(f"Filesystem error: {e}")
+        # raise OSError(f"Filesystem error: {e}")
+        return f"I encountered a filesystem error while searching: {e}. Please try again or check if the directory is accessible."

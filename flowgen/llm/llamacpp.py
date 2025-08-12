@@ -14,29 +14,29 @@ from .basellm import BaseLLM, convert_func_to_oai_tool
 class LlamaCpp(BaseLLM):
     """Llama.cpp implementation using llama-cpp-python client."""
     
-    def __init__(self, model_path=None, n_ctx=2048, n_gpu_layers=-1, chat_format="chatml", **kwargs):
+    def __init__(self, model=None, n_ctx=2048, n_gpu_layers=-1, chat_format="chatml", **kwargs):
+        # Handle both model_path and model parameters for compatibility
         # Store llama-cpp specific parameters
-        self._model_path = model_path
         self._n_ctx = n_ctx
         self._n_gpu_layers = n_gpu_layers
         self._chat_format = chat_format
-        super().__init__(model=model_path, **kwargs)
+        super().__init__(model=model, **kwargs)
 
     def _load_llm(self):
         """Load the Llama.cpp model."""
-        if not self._model_path:
+        if not self._model:
             raise ValueError("model_path is required for LlamaCpp")
         
         try:
             return Llama(
-                model_path=self._model_path,
+                model_path=self._model,
                 n_ctx=self._n_ctx,
                 n_gpu_layers=self._n_gpu_layers,
                 chat_format=self._chat_format,
                 verbose=False
             )
         except Exception as e:
-            raise RuntimeError(f"Failed to load Llama.cpp model {self._model_path}: {e}")
+            raise RuntimeError(f"Failed to load Llama.cpp model {self._model}: {e}")
 
     def chat(self, input, **kwargs):
         """Generate text using Llama.cpp chat completion."""

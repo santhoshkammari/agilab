@@ -8,11 +8,9 @@ from flowgen.utils.custom_markdownify import custom_markdownify
 
 SYSTEM_PROMPT = """You are a content extraction assistant. You have access to the following tools for extracting and processing web content:
 
-- content_extractor_parse_urls: Parse URLs and extract their HTML content
-- content_extractor_html_to_markdown: Convert HTML content to markdown format
-- content_extractor_batch_process: Parse multiple URLs and convert them to markdown in batch
+- web_fetch: Fetches content from a specified URL and converts HTML to markdown format. Takes a URL as input, fetches the URL content, converts HTML to markdown, and saves it to a .claudecode directory. Use this tool when you need to retrieve and analyze web content.
 
-Use these tools to extract, parse, and convert web content as requested by the user."""
+Use this tool to extract, parse, and convert web content as requested by the user."""
 
 from trafilatura import fetch_url
 def extract_html_from_url(url: str):
@@ -27,34 +25,63 @@ def extract_markdown_from_html(html: str):
     return custom_markdownify(html) if html else ""
 
 
-def extract_markdown_from_url(url: str):
+def web_fetch(url: str):
     """Parse multiple list of URLs and convert them to markdown in batch
     Args:
         url: the html url string
     """
+    import re
+    import urllib.parse
+    from datetime import datetime
+    from pathlib import Path
+    
     htmls = extract_html_from_url(url)
-    # if isinstance(htmls,list):
-    #     results = {}
-    #     for x in htmls:
-    #         results[x["url"]] = extract_markdown_from_html(x["content"])
-    #     return json.dumps(results)
-
-    endpoint = url.split("/")
-    name = endpoint[-1].split(".")[0]
-    if not name:
-        try:
-            name = endpoint[-2].split(".")[0]
-        except:
-            name = endpoint
-
-    with open(f"{name}.md","w") as f:
+    
+    # Create .claudecode directory if it doesn't exist
+    Path(".claudecode").mkdir(exist_ok=True)
+    
+    # Generate a proper filename from URL
+    parsed_url = urllib.parse.urlparse(url)
+    
+    # Start with domain name
+    domain = parsed_url.netloc.replace('www.', '')
+    
+    # Get the path part and clean it
+    path = parsed_url.path.strip('/')
+    if path:
+        # Replace path separators and clean special chars
+        path_clean = re.sub(r'[^\w\-_.]', '_', path.replace('/', '_'))
+        # Remove multiple underscores
+        path_clean = re.sub(r'_+', '_', path_clean).strip('_')
+        base_name = f"{domain}_{path_clean}"
+    else:
+        base_name = domain
+    
+    # Remove common file extensions to avoid double extensions
+    base_name = re.sub(r'\.(html?|php|asp|jsp)$', '', base_name, flags=re.IGNORECASE)
+    
+    # Clean domain dots and ensure valid filename
+    base_name = base_name.replace('.', '_')
+    base_name = re.sub(r'[^\w\-_]', '_', base_name)
+    base_name = re.sub(r'_+', '_', base_name).strip('_')
+    
+    # Truncate if too long and add timestamp for uniqueness
+    if len(base_name) > 50:
+        base_name = base_name[:50]
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{base_name}_{timestamp}.md"
+    filepath = Path(".claudecode") / filename
+    
+    with open(filepath, "w", encoding="utf-8") as f:
         f.write(extract_markdown_from_html(htmls['content']))
-    return f"Markdown Saved at {name}.md"
+    
+    return f"Markdown saved at {filepath}"
 
 tool_functions = {
     # "extract_html_from_url": extract_html_from_url,
     # "extract_markdown_from_html": extract_markdown_from_html,
-    "extract_markdown_from_url": extract_markdown_from_url,
+    "web_fetch": web_fetch,
 }
 
 
@@ -130,7 +157,7 @@ def run_example():
 
 def run_sample():
     urls = ["https://example.com"]
-    res = extract_markdown_from_url(urls)
+    res = web_fetch(urls)
     print(res)
 
 

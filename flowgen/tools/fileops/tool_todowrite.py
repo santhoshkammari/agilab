@@ -29,11 +29,13 @@ def todo_write(todos:List[Todo]):
         try:
             todos = json.loads(todos)
         except:
-            raise TypeError("todos must be a list")
-    
+            # raise TypeError("todos must be a list")
+            return "I need the todos parameter to be a list of todo objects, but I received a different data type."
+
     if len(todos) == 0:
-        raise ValueError("todos list must contain at least 1 todo object")
-    
+        # raise ValueError("todos list must contain at least 1 todo object")
+        return "I need at least one todo item in the list to create a task list."
+
     # Validate each todo object
     valid_statuses = {'pending', 'in_progress', 'completed'}
     valid_priorities = {'high', 'medium', 'low'}
@@ -42,45 +44,53 @@ def todo_write(todos:List[Todo]):
     
     for i, todo in enumerate(todos):
         if not isinstance(todo, dict):
-            raise ValueError(f"Todo at index {i} must be a dictionary")
-        
+            # raise ValueError(f"Todo at index {i} must be a dictionary")
+            return f"I found an invalid todo item at position {i}. Each todo needs to be a dictionary with the required fields."
+
         # Check required fields
         required_fields = ['content', 'status', 'priority', 'id']
         for field in required_fields:
             if field not in todo:
-                raise ValueError(f"Todo at index {i} missing required field: {field}")
-        
+                # raise ValueError(f"Todo at index {i} missing required field: {field}")
+                return f"The todo item at position {i} is missing the required '{field}' field. Each todo needs content, status, priority, and id."
+
         # Validate content
         content = todo['content']
         if not isinstance(content, str) or len(content.strip()) == 0:
-            raise ValueError(f"Todo at index {i}: content must be a non-empty string")
-        
+            # raise ValueError(f"Todo at index {i}: content must be a non-empty string")
+            return f"The todo item at position {i} needs meaningful content. Please provide a non-empty description for the task."
+
         # Validate status
         status = todo['status']
         if status not in valid_statuses:
-            raise ValueError(f"Todo at index {i}: status must be one of {valid_statuses}")
-        
+#             raise ValueError(f"Todo at index {i}: status must be one of {valid_statuses}")
+            return f"The todo item at position {i} has an invalid status. Please use one of: {', '.join(valid_statuses)}."
+
         if status == 'in_progress':
             in_progress_count += 1
         
         # Validate priority
         priority = todo['priority']
         if priority not in valid_priorities:
-            raise ValueError(f"Todo at index {i}: priority must be one of {valid_priorities}")
-        
+#             raise ValueError(f"Todo at index {i}: priority must be one of {valid_priorities}")
+            return f"The todo item at position {i} has an invalid priority. Please use one of: {', '.join(valid_priorities)}."
+
         # Validate id
         todo_id = todo['id']
         if not isinstance(todo_id, str) or len(todo_id.strip()) == 0:
-            raise ValueError(f"Todo at index {i}: id must be a non-empty string")
-        
+#             raise ValueError(f"Todo at index {i}: id must be a non-empty string")
+            return f"The todo item at position {i} needs a unique identifier. Please provide a non-empty id string."
+
         if todo_id in todo_ids:
-            raise ValueError(f"Todo at index {i}: duplicate id '{todo_id}'")
+#             raise ValueError(f"Todo at index {i}: duplicate id '{todo_id}'")
+            return f"I found a duplicate id '{todo_id}' at position {i}. Each todo item needs a unique identifier."
         todo_ids.add(todo_id)
     
     # Validate only one in_progress task
     if in_progress_count > 1:
-        raise ValueError(f"Only one task can be 'in_progress' at a time, found {in_progress_count}")
-    
+#         raise ValueError(f"Only one task can be 'in_progress' at a time, found {in_progress_count}")
+        return f"I can only track one task as 'in_progress' at a time, but I found {in_progress_count} tasks marked as in progress. Please update the statuses so only one task is actively being worked on."
+
     # Count tasks by status and priority
     status_counts = {'pending': 0, 'in_progress': 0, 'completed': 0}
     priority_counts = {'high': 0, 'medium': 0, 'low': 0}

@@ -44,22 +44,28 @@ def grep_search(
         subprocess.CalledProcessError: If ripgrep command fails
     """
     if not pattern:
-        raise ValueError("pattern parameter is required and cannot be empty")
+        # raise ValueError("pattern parameter is required and cannot be empty")
+        return "I need a search pattern to look for. Please provide a pattern to search for in the files."
     
     # Validate path if provided
     if path and not os.path.exists(path):
-        raise FileNotFoundError(f"Path not found: {path}")
+        # raise FileNotFoundError(f"Path not found: {path}")
+        return f"I couldn't find the path {path}. Please check if the path exists and is accessible."
     
     # Validate context options only work with content mode
     if output_mode != "content":
         if n is not None and n:
-            raise ValueError("-n (line numbers) requires output_mode: 'content'")
+            # raise ValueError("-n (line numbers) requires output_mode: 'content'")
+            return "Line numbers (-n) can only be shown when output_mode is set to 'content'. Please change the output_mode or remove the line number option."
         if A is not None:
-            raise ValueError("-A (after context) requires output_mode: 'content'")
+            # raise ValueError("-A (after context) requires output_mode: 'content'")
+            return "After context (-A) can only be shown when output_mode is set to 'content'. Please change the output_mode or remove the after context option."
         if B is not None:
-            raise ValueError("-B (before context) requires output_mode: 'content'")
+            # raise ValueError("-B (before context) requires output_mode: 'content'")
+            return "Before context (-B) can only be shown when output_mode is set to 'content'. Please change the output_mode or remove the before context option."
         if C is not None:
-            raise ValueError("-C (context) requires output_mode: 'content'")
+            # raise ValueError("-C (context) requires output_mode: 'content'")
+            return "Context lines (-C) can only be shown when output_mode is set to 'content'. Please change the output_mode or remove the context option."
     
     # Build ripgrep command
     cmd = ["rg"]
@@ -121,12 +127,13 @@ def grep_search(
             error_msg = f"Command failed with exit code {result.returncode}"
             if result.stderr:
                 error_msg += f": {result.stderr.strip()}"
-            raise subprocess.CalledProcessError(
-                result.returncode, 
-                cmd, 
-                output=result.stdout, 
-                stderr=result.stderr
-            )
+            # raise subprocess.CalledProcessError(
+            #     result.returncode, 
+            #     cmd, 
+            #     output=result.stdout, 
+            #     stderr=result.stderr
+            # )
+            return f"The search command encountered an error (exit code {result.returncode}): {result.stderr.strip() if result.stderr else 'Unknown error occurred while searching'}."
         
         output = result.stdout.strip()
         
@@ -140,10 +147,12 @@ def grep_search(
         return output
         
     except FileNotFoundError:
-        raise FileNotFoundError("ripgrep (rg) command not found. Please install ripgrep.")
+        # raise FileNotFoundError("ripgrep (rg) command not found. Please install ripgrep.")
+        return "I couldn't find the ripgrep (rg) command on your system. Please install ripgrep to use the search functionality."
     except subprocess.CalledProcessError as e:
         error_msg = f"ripgrep command failed: {e.stderr}" if e.stderr else f"ripgrep command failed with exit code {e.returncode}"
-        raise subprocess.CalledProcessError(e.returncode, e.cmd, e.output, e.stderr) from e
+        # raise subprocess.CalledProcessError(e.returncode, e.cmd, e.output, e.stderr) from e
+        return f"The ripgrep search command failed: {e.stderr if e.stderr else f'exit code {e.returncode}'}. Please check your search parameters and try again."
 
 
 # Alias for backwards compatibility and convenience

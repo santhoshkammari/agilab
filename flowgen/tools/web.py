@@ -205,7 +205,7 @@ class WebSearchTool:
             logger.debug(f"Found {len(search_results)} results")
 
             json_start = time.time()
-            json_results = json.dumps(search_results,ensure_ascii=False)
+            json_results = json.dumps(search_results, ensure_ascii=False)
             logger.debug(f"JSON serialization took: {time.time() - json_start:.3f}s")
 
             logger.debug(f"TOTAL web search took: {time.time() - search_start:.3f}s")
@@ -244,49 +244,51 @@ class WebSearchTool:
                     })
         return results
 
+
 class DDGSearchTool:
-    def __init__(self,browser=None):
+    def __init__(self, browser=None):
         self.ddgs = DDGS()
         self.browser = browser
-    
+
     def web_search(self, query: str, max_results: int = 10) -> str:
         """Search using DuckDuckGo and return results as JSON string"""
         try:
             logger.debug(f"Starting DDG search for query: '{query}' (max_results: {max_results})")
-            
+
             search_results = []
             results = self.ddgs.text(query, max_results=max_results)
-            
+
             for result in results:
                 search_results.append({
                     "url": result.get("href", ""),
                     "title": result.get("title", ""),
                     "description": result.get("body", "")
                 })
-            
+
             logger.debug(f"Found {len(search_results)} DDG results")
             return json.dumps(search_results, ensure_ascii=False, indent=2)
-            
+
         except Exception as e:
             logger.error(f"DDG search error: {str(e)}")
             return json.dumps([])
 
+
 class GuiSearchTool:
-    def __init__(self,browser=None):
+    def __init__(self, browser=None):
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.5
         self.browser = None
-    
+
     async def web_search(self, query: str, max_results: int = 10) -> str:
         """Search using GUI automation with Chrome and return HTML content"""
         try:
             logger.debug(f"Starting GUI search for query: '{query}'")
-            
+
             # Open browser with search URL directly
             webbrowser.open("", new=1)
             time.sleep(0.5)  # Longer wait for Firefox
 
-            pyautogui.hotkey('ctrl','l')
+            pyautogui.hotkey('ctrl', 'l')
             time.sleep(0.1)
 
             pyautogui.typewrite(query)
@@ -294,65 +296,64 @@ class GuiSearchTool:
             pyautogui.press('enter')
             time.sleep(1)  # Longer wait for Firefox
 
-            
             # Get page source (Ctrl+U for Firefox)
             pyautogui.hotkey('ctrl', 'u')
             time.sleep(0.1)
-            
+
             # Select all content (Ctrl+A)
             pyautogui.hotkey('ctrl', 'a')
             time.sleep(0.1)
-            
+
             # Copy content (Ctrl+C)
             pyautogui.hotkey('ctrl', 'c')
             time.sleep(0.1)
-            
+
             # Get clipboard content
             html_content = pyperclip.paste()
-            
+
             # Close the view-source tab (Ctrl+W)
             pyautogui.hotkey('ctrl', 'w')
             time.sleep(0.1)
-            
+
             # Close the search results tab (Ctrl+W)
             pyautogui.hotkey('ctrl', 'w')
             time.sleep(0.1)
-            
+
             # Process HTML to extract search results
             search_results = self._extract_google_results(html_content, max_results)
-            
+
             logger.debug(f"Found {len(search_results)} GUI search results")
             return json.dumps(search_results, ensure_ascii=False, indent=2)
-            
+
         except Exception as e:
             logger.error(f"GUI search error: {str(e)}")
             return json.dumps([])
-    
+
     def _extract_google_results(self, html_content: str, max_results: int = 10) -> List[Dict[str, str]]:
         """Extract search results from Google HTML content"""
-        with open('html.txt','w') as f:
+        with open('html.txt', 'w') as f:
             f.write(html_content)
         try:
             soup = BeautifulSoup(html_content, 'html.parser')
             results = []
-            
+
             # Try multiple selectors as Google changes its structure frequently
             selectors_to_try = [
-                'div.g',                    # Classic Google results
-                'div.tF2Cxc',              # New Google results container
+                'div.g',  # Classic Google results
+                'div.tF2Cxc',  # New Google results container
                 'div[jscontroller="SC7lYd"]',  # Results with JS controller
-                'div.MjjYud',              # Another common container
-                'div[data-hveid]',         # Results with hveid attribute
-                'div.Wt5Tfe'               # Alternative container
+                'div.MjjYud',  # Another common container
+                'div[data-hveid]',  # Results with hveid attribute
+                'div.Wt5Tfe'  # Alternative container
             ]
-            
+
             result_elements = []
             for selector in selectors_to_try:
                 result_elements = soup.select(selector)
                 if result_elements:
                     logger.debug(f"Found {len(result_elements)} results using selector: {selector}")
                     break
-            
+
             # If no structured results found, try to find any links that look like search results
             if not result_elements:
                 logger.debug("No structured results found, trying alternative extraction")
@@ -361,12 +362,12 @@ class GuiSearchTool:
                 for link in all_links:
                     href = link.get('href', '')
                     # Skip internal Google links and ads
-                    if (href.startswith('http') and 
-                        'google.com' not in href and 
+                    if (href.startswith('http') and
+                        'google.com' not in href and
                         'googleadservices.com' not in href and
                         'youtube.com' not in href and
                         link.get_text(strip=True)):
-                        
+
                         title = link.get_text(strip=True)
                         if len(title) > 10:  # Reasonable title length
                             results.append({
@@ -382,7 +383,7 @@ class GuiSearchTool:
                     title = ""
                     url = ""
                     description = ""
-                    
+
                     # Try different ways to find title and URL
                     # Method 1: Look for h3 with parent link
                     title_element = result_element.find('h3')
@@ -391,7 +392,7 @@ class GuiSearchTool:
                         link_element = title_element.find_parent('a')
                         if link_element:
                             url = link_element.get('href', '')
-                    
+
                     # Method 2: Look for any link in the result
                     if not url:
                         link_element = result_element.find('a', href=True)
@@ -399,13 +400,13 @@ class GuiSearchTool:
                             url = link_element.get('href', '')
                             if not title:
                                 title = link_element.get_text(strip=True)
-                    
+
                     # Method 3: Look for cite elements or URL displays
                     if not url:
                         cite_element = result_element.find('cite')
                         if cite_element:
                             url = cite_element.get_text(strip=True)
-                    
+
                     # Extract description from various possible containers
                     desc_selectors = [
                         'span[data-ved]',
@@ -415,7 +416,7 @@ class GuiSearchTool:
                         'span.aCOpRe',
                         'span.st'
                     ]
-                    
+
                     for desc_selector in desc_selectors:
                         desc_element = result_element.select_one(desc_selector)
                         if desc_element:
@@ -423,7 +424,7 @@ class GuiSearchTool:
                             if len(desc_text) > 20:
                                 description = desc_text
                                 break
-                    
+
                     # If no description found, get any text that looks like a description
                     if not description:
                         text_elements = result_element.find_all(text=True)
@@ -432,7 +433,7 @@ class GuiSearchTool:
                             if len(text) > 30 and len(text) < 200:
                                 description = text
                                 break
-                    
+
                     # Clean up URL (remove Google redirect prefixes)
                     if url.startswith('/url?'):
                         # Extract actual URL from Google redirect
@@ -443,23 +444,25 @@ class GuiSearchTool:
                                 url = parse_qs(parsed.query)['url'][0]
                         except:
                             pass
-                    
+
                     if title and url:
                         results.append({
                             "url": url,
                             "title": title,
                             "description": description
                         })
-            
+
             logger.debug(f"Successfully extracted {len(results)} search results")
             return results[:max_results]
-            
+
         except Exception as e:
             logger.error(f"Error extracting Google results: {str(e)}")
             return []
 
+
 # Global browser instance for reuse
 _browser_instance = None
+
 
 async def _get_browser():
     """Get or create browser instance"""
@@ -469,34 +472,42 @@ async def _get_browser():
         await _browser_instance.initialize()
     return _browser_instance
 
+
 def search_web(query: str, max_results: int = 5) -> str:
     """Async wrapper for playwright web search - synchronous interface"""
+
     async def _search():
         browser = await _get_browser()
         search_tool = WebSearchTool(browser)
         return await search_tool.web_search(query, 'bing', max_results)
-    
+
     return asyncio.run(_search())
+
 
 def search_web_ddg(query: str, max_results: int = 5) -> str:
     """Synchronous DDG search wrapper"""
     search_tool = DDGSearchTool()
     return search_tool.web_search(query, max_results)
 
+
 def search_web_gui(query: str, max_results: int = 5) -> str:
     """Synchronous GUI search wrapper"""
     search_tool = GuiSearchTool()
+
     async def _run():
-        return await search_tool.web_search(query,max_results)
+        return await search_tool.web_search(query, max_results)
+
     return asyncio.run(_run())
 
-async def async_web_search(query:str,max_results:int=5):
+
+async def async_web_search(query: str, max_results: int = 5):
     browser = await _get_browser()
     search_tool = WebSearchTool(browser)
     return await search_tool.web_search(query, 'bing', max_results)
 
+
 tool_functions = {
-    "search_web": async_web_search,
+    "async_web_search": async_web_search,
     # "search_web_ddg": search_web_ddg,
     # "search_web_gui": search_web_gui,
 }
@@ -505,7 +516,9 @@ if __name__ == '__main__':
     # Test the wrapper functions
     async def run_asyn_example():
         for i in range(10):
-            print('='*50)
+            print('=' * 50)
             result = await async_web_search('who is modi?')
             print(result[0])
+
+
     asyncio.run(run_asyn_example())

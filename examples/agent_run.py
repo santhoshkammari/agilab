@@ -1,4 +1,4 @@
-from flowgen import Gemini,Agent
+from flowgen import Gemini,Agent,L
 from flowgen.llm.basellm import get_weather
 def search_web(query):
     return f"Web search results for: {query}"

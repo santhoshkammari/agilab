@@ -5,7 +5,7 @@ import time
 from typing import Optional, Dict, Any
 
 
-def execute_bash_command(command: str, description: Optional[str] = None, timeout: Optional[int] = None) -> Dict[str, Any]:
+def bash_execute(command: str, description: Optional[str] = None, timeout: Optional[int] = None) -> Dict[str, Any]:
     """
     Execute a bash command in a persistent shell session with security measures and timeout controls.
     
@@ -28,19 +28,44 @@ def execute_bash_command(command: str, description: Optional[str] = None, timeou
         TimeoutError: If command exceeds timeout limit
     """
     if not command or not command.strip():
-        raise ValueError("Command cannot be empty")
+        # raise ValueError("Command cannot be empty")
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': "I need a command to execute. Please provide a bash command to run.",
+            'exit_code': -1,
+            'execution_time': 0,
+            'truncated': False
+        }
     
     # Set default timeout and validate
     if timeout is None:
         timeout = 120000  # 2 minutes default
     
     if timeout < 1 or timeout > 600000:
-        raise ValueError("Timeout must be between 1ms and 600000ms (10 minutes)")
+        # raise ValueError("Timeout must be between 1ms and 600000ms (10 minutes)")
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': "The timeout value needs to be between 1ms and 600000ms (10 minutes). Please adjust the timeout parameter.",
+            'exit_code': -1,
+            'execution_time': 0,
+            'truncated': False
+        }
     
     timeout_seconds = timeout / 1000.0
     
     # Validate command for common issues
-    _validate_command(command)
+    validation_error = _validate_command(command)
+    if validation_error:
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': validation_error,
+            'exit_code': -1,
+            'execution_time': 0,
+            'truncated': False
+        }
     
     # Track execution time
     start_time = time.time()
@@ -63,14 +88,22 @@ def execute_bash_command(command: str, description: Optional[str] = None, timeou
         process.kill()
         process.wait()
         execution_time = time.time() - start_time
-        raise TimeoutError(f"Command timed out after {timeout}ms: {command}")
+        # raise TimeoutError(f"Command timed out after {timeout}ms: {command}")
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': f"The command took too long to execute and was stopped after {timeout}ms. The command was: {command}",
+            'exit_code': -1,
+            'execution_time': execution_time,
+            'truncated': False
+        }
     
     except Exception as e:
         execution_time = time.time() - start_time
         return {
             'success': False,
             'stdout': '',
-            'stderr': f"Command execution failed: {str(e)}",
+            'stderr': f"I encountered an error while trying to execute the command: {str(e)}",
             'exit_code': -1,
             'execution_time': execution_time,
             'truncated': False
@@ -102,15 +135,15 @@ def execute_bash_command(command: str, description: Optional[str] = None, timeou
     }
 
 
-def _validate_command(command: str) -> None:
+def _validate_command(command: str) -> Optional[str]:
     """
     Validate command for common security and syntax issues.
     
     Args:
         command (str): Command to validate
         
-    Raises:
-        ValueError: If command has validation issues
+    Returns:
+        Optional[str]: Error message if validation fails, None if valid
     """
     # Check for prohibited commands that should use specialized tools
     prohibited_patterns = [
@@ -125,11 +158,13 @@ def _validate_command(command: str) -> None:
     command_lower = command.lower().strip()
     for pattern, message in prohibited_patterns:
         if command_lower.startswith(pattern):
-            raise ValueError(f"Prohibited command: {message}")
+            # raise ValueError(f"Prohibited command: {message}")
+            return f"I can't execute this command because there's a specialized tool for this task: {message}"
     
     # Check for interactive flags that won't work
     if ' -i ' in command or command.endswith(' -i'):
-        raise ValueError("Interactive commands with -i flag are not supported")
+        # raise ValueError("Interactive commands with -i flag are not supported")
+        return "I can't run interactive commands that require user input (commands with the -i flag). Please use a non-interactive version of the command."
     
     # Warning for paths that might need quoting (basic check)
     if ' /' in command and '"' not in command and "'" not in command:
@@ -137,7 +172,10 @@ def _validate_command(command: str) -> None:
         parts = command.split()
         for part in parts:
             if '/' in part and ' ' in part:
-                raise ValueError(f"Path with spaces should be quoted: {part}")
+                # raise ValueError(f"Path with spaces should be quoted: {part}")
+                return f"I noticed a path with spaces that should be quoted for the command to work properly: {part}. Please wrap it in double quotes."
+    
+    return None
 
 
 def format_command_output(result: Dict[str, Any], command: str, description: Optional[str] = None) -> str:
@@ -196,5 +234,5 @@ def bash_tool_wrapper(command: str, description: Optional[str] = None, timeout: 
         ValueError: If command validation fails
         TimeoutError: If command times out
     """
-    result = execute_bash_command(command, description, timeout)
+    result = bash_execute(command, description, timeout)
     return format_command_output(result, command, description)

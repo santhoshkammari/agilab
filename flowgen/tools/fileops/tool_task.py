@@ -1,4 +1,4 @@
-def task(description, prompt, subagent_type):
+def task_agent(description, prompt, subagent_type):
     """
     Launch specialized agents to handle complex, multi-step tasks autonomously.
     
@@ -16,25 +16,31 @@ def task(description, prompt, subagent_type):
     """
     # Validate parameter types
     if not isinstance(description, str):
-        raise TypeError("description must be a string")
+        # raise TypeError("description must be a string")
+        return "I need the description to be provided as a string."
     if not isinstance(prompt, str):
-        raise TypeError("prompt must be a string")
+        # raise TypeError("prompt must be a string")
+        return "I need the prompt to be provided as a string."
     if not isinstance(subagent_type, str):
-        raise TypeError("subagent_type must be a string")
+        # raise TypeError("subagent_type must be a string")
+        return "I need the subagent_type to be provided as a string."
     
     # Validate description length (3-5 words)
     words = description.strip().split()
     if len(words) < 3 or len(words) > 5:
-        raise ValueError("description must be 3-5 words only")
+        # raise ValueError("description must be 3-5 words only")
+        return "I need the description to be between 3-5 words only. Please provide a brief summary of the task."
     
     # Validate subagent_type
     valid_subagent_types = ["general-purpose"]
     if subagent_type not in valid_subagent_types:
-        raise ValueError(f"subagent_type must be one of: {valid_subagent_types}")
+        # raise ValueError(f"subagent_type must be one of: {valid_subagent_types}")
+        return f"I can only work with these subagent types: {valid_subagent_types}. Please choose one of these options."
     
     # Validate prompt is not empty
     if not prompt.strip():
-        raise ValueError("prompt cannot be empty")
+        # raise ValueError("prompt cannot be empty")
+        return "I need detailed instructions in the prompt to execute the task. The prompt cannot be empty."
     
     # Simulate agent execution
     # In a real implementation, this would launch an actual agent
