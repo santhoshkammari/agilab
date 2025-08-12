@@ -55,10 +55,8 @@ class Gemini(BaseLLM):
         
         # Handle tools
         if tools:
-            function_declarations = []
-            for tool in tools:
-                function_declarations.append(tool)
-            config_params['tools'] = [types.Tool(function_declarations=function_declarations)]
+            config_params['tools'] = [types.Tool(function_declarations=tools)]
+            config_params['automatic_function_calling'] = types.AutomaticFunctionCallingConfig(disable=True)
         
         config = types.GenerateContentConfig(**config_params) if config_params else None
         
@@ -98,10 +96,8 @@ class Gemini(BaseLLM):
             config_params['response_schema'] = format_schema
             
         if tools:
-            function_declarations = []
-            for tool in tools:
-                function_declarations.append(tool)
-            config_params['tools'] = [types.Tool(function_declarations=function_declarations)]
+            config_params['tools'] = [types.Tool(function_declarations=tools)]
+            config_params['automatic_function_calling'] = types.AutomaticFunctionCallingConfig(disable=True)
             
         config = types.GenerateContentConfig(**config_params) if config_params else None
         
@@ -135,11 +131,67 @@ class Gemini(BaseLLM):
             
             yield chunk_result
 
-    def _convert_function_to_tools(self, func: Optional[List[Callable]]) -> List[dict]:
-        """Convert functions to Gemini tool format."""
+    def _convert_function_to_tools(self, func: Optional[List[Callable]]) -> List[types.FunctionDeclaration]:
+        """Convert functions to Gemini FunctionDeclaration format."""
         if not func:
             return []
-        return [convert_func_to_oai_tool(f) if not isinstance(f, dict) else f for f in func]
+        
+        function_declarations = []
+        for f in func:
+            if isinstance(f, dict):
+                # If it's already a dict, convert it to FunctionDeclaration
+                if "function" in f:
+                    # OpenAI format
+                    func_info = f["function"]
+                    params = func_info.get("parameters", {})
+                    
+                    # Convert properties to Schema format
+                    properties = {}
+                    for prop_name, prop_info in params.get("properties", {}).items():
+                        prop_type = prop_info.get("type", "string").upper()
+                        properties[prop_name] = types.Schema(
+                            type=prop_type,
+                            description=prop_info.get("description", "")
+                        )
+                    
+                    function_declarations.append(types.FunctionDeclaration(
+                        name=func_info["name"],
+                        description=func_info.get("description", ""),
+                        parameters=types.Schema(
+                            type="OBJECT",
+                            properties=properties,
+                            required=params.get("required", [])
+                        )
+                    ))
+                else:
+                    # Direct function declaration format
+                    function_declarations.append(f)
+            else:
+                # It's a callable, convert it
+                oai_tool = convert_func_to_oai_tool(f)
+                func_info = oai_tool["function"]
+                params = func_info.get("parameters", {})
+                
+                # Convert properties to Schema format
+                properties = {}
+                for prop_name, prop_info in params.get("properties", {}).items():
+                    prop_type = prop_info.get("type", "string").upper()
+                    properties[prop_name] = types.Schema(
+                        type=prop_type,
+                        description=prop_info.get("description", "")
+                    )
+                
+                function_declarations.append(types.FunctionDeclaration(
+                    name=func_info["name"],
+                    description=func_info.get("description", ""),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties=properties,
+                        required=params.get("required", [])
+                    )
+                ))
+        
+        return function_declarations
 
     def _normalize_input(self, input):
         """Convert string input to Gemini API format."""
@@ -150,10 +202,21 @@ class Gemini(BaseLLM):
                 # Convert chat messages to simple content strings for Gemini
                 contents = []
                 for msg in input:
+                    # Handle different message formats
+                    content = msg.get("content", "")
+                    if not content:
+                        # Try other possible content keys
+                        content = str(msg)
+                    
                     if msg.get("role") == "system":
-                        contents.append(f"System: {msg['content']}")
+                        contents.append(f"System: {content}")
                     elif msg.get("role") in ["user", "assistant"]:
-                        contents.append(msg["content"])
+                        contents.append(content)
+                    elif "content" not in msg and isinstance(msg, dict):
+                        # If no role specified but it's a dict, convert to string
+                        contents.append(str(msg))
+                    else:
+                        contents.append(content)
                 return contents
             else:
                 return input
