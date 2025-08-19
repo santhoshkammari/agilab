@@ -1,4 +1,43 @@
 #!/usr/bin/env python3
+"""
+HuggingFace Dataset Viewer
+
+A command-line tool for viewing and inspecting HuggingFace datasets with flexible
+display options and sample selection capabilities.
+
+Features:
+- Load datasets from local files or HuggingFace Hub
+- Support for multiple file formats (JSON, JSONL, CSV, Parquet, TSV, TXT)
+- Two display modes: normal (detailed panels) and table (compact grid)
+- Flexible sample selection by index or feature value matching
+- Rich console output with syntax highlighting
+
+Usage Examples:
+    # View first sample of a dataset
+    python hf_dataset_viewer.py dataset_name
+
+    # View multiple samples in table format
+    python hf_dataset_viewer.py dataset_name --samples 5 --table
+
+    # View specific sample by index (0-based)
+    python hf_dataset_viewer.py dataset_name --index 10
+
+    # View sample where feature 'label' equals 'positive'
+    python hf_dataset_viewer.py dataset_name --index positive --index-feature label
+
+    # View all samples
+    python hf_dataset_viewer.py dataset_name --samples -1
+
+Arguments:
+    name                    Dataset path/name (local file/directory or HuggingFace dataset)
+    --samples, -s          Number of samples to show (default: 1, -1 for all)
+    --view, -v             Display format: 'normal' or 'table' (default: normal)
+    --table, -t            Shortcut for table view
+    --index, -i            Row index or feature value for specific sample selection
+    --index-feature, -f    Feature column name to search for index value
+
+Author: Generated with Claude Code
+"""
 
 import argparse
 import sys
@@ -15,6 +54,8 @@ def main():
     parser.add_argument("--samples", "-s", type=int, default=1, help="Number of samples to show (default: 1, -1 for full dataset)")
     parser.add_argument("--view", "-v", choices=["normal", "table"], default="normal", help="Display format: normal (default) or table")
     parser.add_argument("--table", "-t", action="store_const", const="table", dest="view", help="Display in table format (same as --view table)")
+    parser.add_argument("--index", "-i", help="Index (row number) or feature value to show specific sample")
+    parser.add_argument("--index-feature", "-f", help="Feature column name to search for the index value")
     
     args = parser.parse_args()
     
@@ -81,11 +122,41 @@ def main():
         console.print(f"[green]Dataset loaded successfully![/green]")
         console.print(f"[yellow]Split: {split_name}, Total samples: {len(data)}[/yellow]")
         
-        # Show first N samples
-        if args.samples == -1:
-            num_samples = len(data)
+        # Handle index-based selection
+        selected_samples = []
+        if args.index is not None:
+            if args.index_feature:
+                # Search by feature value
+                for i, sample in enumerate(data):
+                    if args.index_feature in sample and str(sample[args.index_feature]) == str(args.index):
+                        selected_samples.append((i, sample))
+                
+                if not selected_samples:
+                    console.print(f"[red]Error: No samples found with {args.index_feature}={args.index}[/red]")
+                    sys.exit(1)
+            else:
+                # Use as row index
+                try:
+                    index = int(args.index)
+                    if index < 0:
+                        index = len(data) + index  # Support negative indexing
+                    if 0 <= index < len(data):
+                        selected_samples.append((index, data[index]))
+                    else:
+                        console.print(f"[red]Error: Index {args.index} out of range (0-{len(data)-1})[/red]")
+                        sys.exit(1)
+                except ValueError:
+                    console.print(f"[red]Error: Invalid index '{args.index}'. Must be a number when --index-feature is not specified.[/red]")
+                    sys.exit(1)
         else:
-            num_samples = min(args.samples, len(data))
+            # Show first N samples (original behavior)
+            if args.samples == -1:
+                num_samples = len(data)
+            else:
+                num_samples = min(args.samples, len(data))
+            
+            for i in range(num_samples):
+                selected_samples.append((i, data[i]))
         
         if args.view == "table":
             # Table format: all samples in one table
@@ -94,33 +165,29 @@ def main():
             # Add sample index column
             table.add_column("Sample", style="yellow", justify="center")
             
-            # Get all unique field names from the samples
+            # Get all unique field names from the selected samples
             all_fields = set()
-            samples_data = []
-            for i in range(num_samples):
-                sample = data[i]
-                samples_data.append(sample)
+            for idx, sample in selected_samples:
                 all_fields.update(sample.keys())
             
             # Add columns for each field
             for field in sorted(all_fields):
                 table.add_column(field, style="white")
             
-            # Add rows for each sample
-            for i, sample in enumerate(samples_data):
-                row_data = [str(i + 1)]
+            # Add rows for each selected sample
+            for idx, sample in selected_samples:
+                row_data = [str(idx + 1)]  # Use original dataset index + 1
                 for field in sorted(all_fields):
                     value = sample.get(field, "")
                     value_str = str(value)
                     row_data.append(value_str)
                 table.add_row(*row_data)
             
-            console.print(Panel(table, title=f"Dataset Samples (1-{num_samples})", border_style="green"))
+            title = f"Dataset Samples ({len(selected_samples)} selected)"
+            console.print(Panel(table, title=title, border_style="green"))
         else:
             # Normal format: each sample in its own panel
-            for i in range(num_samples):
-                sample = data[i]
-                
+            for idx, sample in selected_samples:
                 # Create a panel for each sample
                 table = Table(show_header=True, header_style="bold magenta")
                 table.add_column("Field", style="cyan")
@@ -135,7 +202,7 @@ def main():
                     
                     table.add_row(key, value_str)
                 
-                console.print(Panel(table, title=f"Sample {i + 1}", border_style="green"))
+                console.print(Panel(table, title=f"Sample {idx + 1}", border_style="green"))
                 console.print()
     
     except Exception as e:
