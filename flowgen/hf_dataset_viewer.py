@@ -12,8 +12,9 @@ from rich.panel import Panel
 def main():
     parser = argparse.ArgumentParser(description="View HuggingFace dataset files")
     parser.add_argument("name", nargs="?", help="Dataset path/name")
-    parser.add_argument("--samples", "-s", type=int, default=1, help="Number of samples to show (default: 2)")
+    parser.add_argument("--samples", "-s", type=int, default=1, help="Number of samples to show (default: 1, -1 for full dataset)")
     parser.add_argument("--view", "-v", choices=["normal", "table"], default="normal", help="Display format: normal (default) or table")
+    parser.add_argument("--table", "-t", action="store_const", const="table", dest="view", help="Display in table format (same as --view table)")
     
     args = parser.parse_args()
     
@@ -81,7 +82,10 @@ def main():
         console.print(f"[yellow]Split: {split_name}, Total samples: {len(data)}[/yellow]")
         
         # Show first N samples
-        num_samples = min(args.samples, len(data))
+        if args.samples == -1:
+            num_samples = len(data)
+        else:
+            num_samples = min(args.samples, len(data))
         
         if args.view == "table":
             # Table format: all samples in one table
