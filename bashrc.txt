@@ -1,0 +1,362 @@
+# ~/.bashrc: executed by bash(1) for non-login shells.
+# see /usr/share/doc/bash/examples/startup-files (in the package bash-doc)
+# for examples
+
+# If not running interactively, don't do anything
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+
+# don't put duplicate lines or lines starting with space in the history.
+# See bash(1) for more options
+HISTCONTROL=ignoreboth
+
+# append to the history file, don't overwrite it
+shopt -s histappend
+
+# for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
+HISTSIZE=1000
+HISTFILESIZE=2000
+
+# check the window size after each command and, if necessary,
+# update the values of LINES and COLUMNS.
+shopt -s checkwinsize
+
+# If set, the pattern "**" used in a pathname expansion context will
+# match all files and zero or more directories and subdirectories.
+#shopt -s globstar
+
+# make less more friendly for non-text input files, see lesspipe(1)
+[ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"
+
+# set variable identifying the chroot you work in (used in the prompt below)
+if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then
+    debian_chroot=$(cat /etc/debian_chroot)
+fi
+
+# set a fancy prompt (non-color, unless we know we "want" color)
+case "$TERM" in
+    xterm-color|*-256color) color_prompt=yes;;
+esac
+
+# uncomment for a colored prompt, if the terminal has the capability; turned
+# off by default to not distract the user: the focus in a terminal window
+# should be on the output of commands, not on the prompt
+#force_color_prompt=yes
+
+if [ -n "$force_color_prompt" ]; then
+    if [ -x /usr/bin/tput ] && tput setaf 1 >&/dev/null; then
+	# We have color support; assume it's compliant with Ecma-48
+	# (ISO/IEC-6429). (Lack of such support is extremely rare, and such
+	# a case would tend to support setf rather than setaf.)
+	color_prompt=yes
+    else
+	color_prompt=
+    fi
+fi
+
+if [ "$color_prompt" = yes ]; then
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+else
+    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+fi
+unset color_prompt force_color_prompt
+
+# If this is an xterm set the title to user@host:dir
+case "$TERM" in
+xterm*|rxvt*)
+    PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1"
+    ;;
+*)
+    ;;
+esac
+
+# enable color support of ls and also add handy aliases
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+    alias ls='ls --color=auto'
+    #alias dir='dir --color=auto'
+    #alias vdir='vdir --color=auto'
+
+    alias grep='grep --color=auto'
+    alias fgrep='fgrep --color=auto'
+    alias egrep='egrep --color=auto'
+fi
+
+# colored GCC warnings and errors
+#export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'
+
+# some more ls aliases
+alias cca="claude --dangerously-skip-permissions"
+ai() { cca -p "$*"; }
+gai() { gemini -y -p "$*"; }
+qai() { qwen -y -p "$*"; }
+gmail() { python3 -c "from gmaillite import gmail; gmail(\"$*\")"; }
+export -f gmail
+alias psx="ps aux | grep python"
+alias open='xdg-open'
+alias cp='xclip -selection clipboard'
+alias tcc='cd /home/ntlpt59/MAIN/Personal/Fluens/fluen/core && source /home/ntlpt59/main/bin/activate'
+alias v4="cd /home/ntlpt59/master/products/dss/src/multihop/v4 && source /home/ntlpt59/main/bin/activate"
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+alias main='source ~/main/bin/activate'
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+alias gpu1='sshpass -p Newgen@321# ssh ng6280@192.168.162.40'
+alias fcd='~/vpn_connect.sh'
+alias rmcache="sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'"
+alias gpu2='sshpass -p gpu@121 ssh gpuadmin@192.168.162.49'
+alias dsn='sshpass -p Labgpu@123 ssh ng6309@192.168.170.76'
+alias dsm='sshpass -p Datascience123 ssh data_science@192.168.170.76'
+alias rpd='ssh root@69.30.85.42 -p 22190 -i ~/.ssh/id_ed25519'
+alias ngc='sshpass -p Labgpu@123 ssh ng6309@192.168.170.76'
+alias dup='docker run -d -p 3000:3000 -e MILVUS_URL=milvus-standalone:19530 --network milvus --name attu zilliz/attu:latest'
+alias azure='sshpass -p NumberTheory@54321 ssh azureuser@10.2.2.22'
+alias az='sshpass -p NumberTheory@54321 ssh azureuser@4.213.120.199'
+alias azure14='sshpass -p NumberTheory@54321 ssh azureuser@10.2.3.14'
+alias serve='nohup /home/ntlpt59/main/bin/python -c "from ailitellm import ollama_serve; ollama_serve()" > nohup_serve.log &'
+alias chatserve='nohup /home/ntlpt59/main/bin/python -c "from ailitellm import start_chat_server; start_chat_server()" > nohup_chat_serve.log &'
+alias aider-hf='aider --model openai/Qwen/Qwen2.5-Coder-32B-Instruct --openai-api-key huggingchat --openai-api-base http://localhost:11437/v1'
+alias aiderq="aider --model hf.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M --openai-api-key ollama --openai-api-base http://192.168.170.76:11434/v1"
+alias aiderqc="aider --model openai/qwen2.5:7b-instruct --openai-api-key ollama --openai-api-base http://192.168.170.76:11434/v1 --copy-paste"
+alias aider-deepseek14b="aider --model openai/hf.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF:Q5_K_M --openai-api-key ollama --openai-api-base http://192.168.170.76:11434/v1"
+alias aider-deepseek32b="aider --model openai/hf.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-abliterated-GGUF:Q5_K_M --openai-api-key ollama --openai-api-base http://192.168.170.76:11434/v1"
+alias aider7b="aider --model openai/qwen2.5-coder:7b-instruct --openai-api-key ollama --openai-api-base http://192.168.170.76:11434/v1"
+alias aider7bb="aider --model openai/qwen2.5-coder:7b-instruct --openai-api-key ollama --openai-api-base http://192.168.170.76:11434/v1 --browser"
+alias aider14b="aider --model openai/qwen2.5-coder:14b-instruct-q4_K_M --openai-api-key ollama --openai-api-base http://192.168.170.76:11434/v1"
+alias aider14bb="aider --model openai/qwen2.5-coder:14b-instruct-q4_K_M --openai-api-key ollama --openai-api-base http://192.168.170.76:11434/v1 --browser"
+alias aider-deepcoder="aider --model openai/hf.co/bartowski/agentica-org_DeepCoder-14B-Preview-GGUF:Q4_K_M --openai-api-key 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 --openai-api-base http://192.168.170.76:11434/v1  --no-attribute-author --no-auto-commits"
+alias aider-qwen="aider --model openai/qwen2.5:7b-instruct --openai-api-key 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 --openai-api-base http://192.168.170.76:11434/v1  --no-attribute-author --no-auto-commits"
+alias aider-deepcoder-cp="aider --model openai/hf.co/bartowski/agentica-org_DeepCoder-14B-Preview-GGUF:Q4_K_M --openai-api-key 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 --openai-api-base http://192.168.170.76:11434/v1  --no-attribute-author --no-auto-commits --copy-paste"
+alias qwen-coder="aider --model openai/hf.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M --openai-api-key ollama --openai-api-base http://192.168.170.76:11434/v1"
+alias aider-qwen3="aider --model openai/qwen3:8b --openai-api-key ollama --openai-api-base http://192.168.170.76:11434/v1"
+
+alias aider-gemini="aider --model gemini/gemini-2.5-pro-exp-03-25"
+
+alias fnt='~/scripts/fnt.sh'
+alias b19='~/scripts/b19.sh'
+alias fcd='forticlient vpn disconnect'
+
+# Add this to your ~/.bashrc file
+function dscp() {
+    if [ $# -ne 2 ]; then
+        echo "Usage: dscp source_path destination_path"
+        return 1
+    fi
+
+    sshpass -p "Datascience123" scp -r "$1" data_science@192.168.170.76:"$2"
+}
+
+function ddscp() {
+    if [ $# -ne 2 ]; then
+        echo "Usage: dscp source_path destination_path"
+        return 1
+    fi
+
+    sshpass -p "Datascience123" scp -r data_science@192.168.170.76:"$1" "$2"
+}
+
+
+function ascp() {
+    if [ $# -ne 2 ]; then
+        echo "Usage: dscp source_path destination_path"
+        return 1
+    fi
+
+    sshpass -p "NumberTheory@54321" scp -r "$1" azureuser@4.213.120.199:"$2"
+}
+
+function asscp() {
+    if [ $# -ne 2 ]; then
+        echo "Usage: dscp source_path destination_path"
+        return 1
+    fi
+
+    sshpass -p "NumberTheory@54321" scp -r azureuser@4.213.120.199:"$1" "$2"
+
+}
+
+
+function nscp() {
+    if [ $# -ne 2 ]; then
+        echo "Usage: dscp source_path destination_path"
+        return 1
+    fi
+
+    sshpass -p "Labgpu@123" scp -r "$1" ng6309@192.168.170.76:"$2"
+}
+
+
+function nnscp() {
+    if [ $# -ne 2 ]; then
+        echo "Usage: dscp source_path destination_path"
+        return 1
+    fi
+
+    sshpass -p "Labgpu@123" scp -r ng6309@192.168.170.76:"$1" "$2"
+}
+
+
+killport() {
+    lsof -ti:$1 | xargs kill
+}
+
+killport9() {
+    lsof -ti:$1 | xargs kill -9
+}
+# Git aliases
+alias ga='git add .'
+alias gaa='git add -A'
+alias gb='git branch'
+alias gc='git commit -m'
+alias gp='git push'
+alias gpl='git pull'
+alias gs='git status'
+alias gco='git checkout'
+alias gcb='git checkout -b'
+alias gl='git log --oneline'
+alias gd='git diff'
+alias gst='git stash'
+alias gstp='git stash pop'
+alias grm='git remote -v'
+alias gac='git add . && git commit -m'
+alias gacp='f() { git add . && git commit -m "$@" && git push; }; f'
+
+# Add an "alert" alias for long running commands.  Use like so:
+#   sleep 10; alert
+alias alert='notify-send --urgency=low -i "$([ $? = 0 ] && echo terminal || echo error)" "$(history|tail -n1|sed -e '\''s/^\s*[0-9]\+\s*//;s/[;&|]\s*alert$//'\'')"'
+
+# Alias definitions.
+# You may want to put all your additions into a separate file like
+# ~/.bash_aliases, instead of adding them here directly.
+# See /usr/share/doc/bash-doc/examples in the bash-doc package.
+
+if [ -f ~/.bash_aliases ]; then
+    . ~/.bash_aliases
+fi
+
+# enable programmable completion features (you don't need to enable
+# this, if it's already enabled in /etc/bash.bashrc and /etc/profile
+# sources /etc/bash.bashrc).
+if ! shopt -oq posix; then
+  if [ -f /usr/share/bash-completion/bash_completion ]; then
+    . /usr/share/bash-completion/bash_completion
+  elif [ -f /etc/bash_completion ]; then
+    . /etc/bash_completion
+  fi
+fi
+export PATH="$PATH:~/flutter/bin"
+export PATH="$HOME/.local/bin:$PATH"
+xkbset bell && xkbset exp =bell
+export GOOGLE_API_KEY="AIzaSyBb8wTvVw9e25aX8XK-eBuu1JzDEPCdqUE"
+
+# Manager report generator - analyzes git history and creates detailed task reports
+# Usage examples:
+#   mreport        # 3-day manager report (default)
+#   mreport 5      # 5-day manager report  
+#   qreport        # Today's standup (commits after 9 AM)
+#   yreport        # Yesterday's full day work report
+#   wreport        # Weekly report (7 days)
+mreport() {
+    local days=${1:-3}
+    local branch=$(git branch --show-current)
+    local report_file="report_$(date +%Y%m%d_%H%M%S).md"
+    
+    ai "Analyze the git commits and diffs from the last $days days in branch '$branch' and create a comprehensive manager report. 
+
+REQUIREMENTS:
+1. Use 'git log --since=\"$days days ago\" --oneline --stat' to get recent commits with file changes
+2. Use 'git diff HEAD~$days..HEAD --stat' to get overall changes summary  
+3. Use 'git log --since=\"$days days ago\" --pretty=format:'%h|%ad|%s|%an' --date=format:'%Y-%m-%d %H:%M'' to get detailed commit info
+
+REPORT STRUCTURE:
+- **Header**: Branch name, date range, total commits
+- **Executive Summary**: 2-3 sentences on key achievements
+- **Detailed Task Breakdown**: For each commit include:
+  * Commit hash and timestamp
+  * Purpose/objective in business terms
+  * Technical implementation details
+  * Files modified with line counts
+  * Time estimation based on complexity
+  * Impact and outcome
+- **Metrics Section**: 
+  * Total files changed
+  * Lines added/removed
+  * Estimated total development time
+  * Key technical achievements
+- **Business Impact**: Focus on value delivered to stakeholders
+
+FORMAT: Professional markdown suitable for management presentation
+TONE: Technical but accessible to non-technical managers
+FOCUS: Emphasize problem-solving, efficiency gains, and business value
+
+Save this as $report_file and provide the filename at the end."
+}
+
+# Today's commits (after 9am) for standup
+qreport() {
+    local branch=$(git branch --show-current)
+    local today_9am=$(date '+%Y-%m-%d 09:00:00')
+    local report_file="standup_$(date +%Y%m%d_%H%M%S).md"
+    
+    ai "Generate a concise standup report for today's commits in branch '$branch' after 9:00 AM.
+
+REQUIREMENTS:
+1. Use 'git log --since=\"$today_9am\" --oneline --stat' to get today's commits after 9am
+2. Use 'git log --since=\"$today_9am\" --pretty=format:'%h|%ad|%s|%an' --date=format:'%H:%M'' for detailed info
+
+REPORT STRUCTURE:
+- **Today's Progress** (after 9 AM):
+  * Commits made with timestamps
+  * Key changes and files modified
+  * Current task status
+- **Next Steps**: What's planned next
+- **Blockers**: Any issues or dependencies
+
+FORMAT: Bullet points, keep under 200 words
+TONE: Casual but informative for team standup
+Save this as $report_file and provide the filename at the end."
+}
+
+# Yesterday's full day work report
+yreport() {
+    local branch=$(git branch --show-current)
+    local yesterday_start=$(date -d 'yesterday 00:00:00' '+%Y-%m-%d %H:%M:%S')
+    local yesterday_end=$(date -d 'yesterday 23:59:59' '+%Y-%m-%d %H:%M:%S')
+    local report_file="yesterday_$(date -d yesterday +%Y%m%d)_report.md"
+    
+    ai "Generate a comprehensive report for yesterday's full day work in branch '$branch'.
+
+REQUIREMENTS:
+1. Use 'git log --since=\"$yesterday_start\" --until=\"$yesterday_end\" --oneline --stat' for yesterday's commits
+2. Use 'git log --since=\"$yesterday_start\" --until=\"$yesterday_end\" --pretty=format:'%h|%ad|%s|%an' --date=format:'%H:%M'' for detailed timing
+
+REPORT STRUCTURE:
+- **Date**: $(date -d yesterday '+%B %d, %Y')
+- **Work Summary**: Overview of yesterday's accomplishments
+- **Detailed Timeline**: Each commit with:
+  * Time of commit
+  * Task description and purpose
+  * Files modified and scope of changes
+  * Estimated effort and complexity
+- **Daily Metrics**:
+  * Total commits made
+  * Files touched
+  * Lines of code added/removed
+  * Productive hours estimate
+- **Key Achievements**: Major milestones or completions
+- **Challenges Faced**: Any issues encountered and how resolved
+
+FORMAT: Professional daily work log
+TONE: Detailed and reflective for personal/manager review
+Save this as $report_file and provide the filename at the end."
+}
+
+# Weekly detailed report
+wreport() {
+    mreport 7
+}
