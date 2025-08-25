@@ -226,38 +226,41 @@ def create_scout_textbox_ui(
         box-shadow: 0 0 0 3px rgba(87, 186, 255, 0.1);
     }
     """
-    
-    with gr.Column(elem_classes=["scout-textbox-wrapper"],):
-        # Main textbox
-        textbox = gr.Textbox(
-            placeholder=placeholder,
-            lines=1,
-            max_lines=3,
-            container=False,
-            show_label=False,
-            elem_classes=["scout-main-input"],
-            interactive=True,
-        )
-        
-        # Button row
-        with gr.Row(elem_classes=["scout-button-row"]):
-            context_button = gr.Button(
-                "@ Add context",
-                variant="secondary",
-                size="sm",
-                elem_classes=["scout-context-btn"],
-                scale=0,
+    with gr.Row():
+        gr.Markdown()
+        with gr.Column(elem_classes=["scout-textbox-wrapper"],scale=3):
+            # Main textbox
+            textbox = gr.Textbox(
+                placeholder=placeholder,
+                lines=1,
+                max_lines=3,
+                container=False,
+                show_label=False,
+                elem_classes=["scout-main-input"],
+                interactive=True,
             )
-            gr.Markdown()
-            gr.Markdown()
 
-            send_button = gr.Button(
-                "↑",
-                variant="primary",
-                size="sm",
-                elem_classes=["scout-send-btn"],
-                scale=0,
-                min_width=40,
-            )
-    
+            # Button row
+            with gr.Row(elem_classes=["scout-button-row"]):
+                context_button = gr.Button(
+                    "@ Add context",
+                    variant="secondary",
+                    size="sm",
+                    elem_classes=["scout-context-btn"],
+                    scale=0,
+                )
+                gr.Markdown()
+                gr.Markdown()
+
+                send_button = gr.Button(
+                    "↑",
+                    variant="primary",
+                    size="sm",
+                    elem_classes=["scout-send-btn"],
+                    scale=0,
+                    min_width=40,
+                )
+
+        gr.Markdown()
+
     return textbox, context_button, send_button, scout_css

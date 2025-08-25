@@ -237,14 +237,19 @@ def create_demo():
 
 
 
+        # Create placeholder markdown (visible initially)
+        placeholder_md = gr.Markdown("", visible=True, height=280)
+        
         # Create custom chatbot
         chatbot = gr.Chatbot(
-            height=400,
+            height=550,
             show_copy_button=True,
             placeholder="START HERE",
             type="messages",
             render_markdown=True,
             show_label=False,
+            show_share_button=False,
+            visible=False,
         )
         
         # Create Scout-style textbox
@@ -252,11 +257,22 @@ def create_demo():
             placeholder="Create a website based on my vibes"
         )
         
-        # Apply Scout CSS
+        # Apply Scout CSS and hide footer
         demo.load(lambda: None, js=f"""
             function() {{
                 const style = document.createElement('style');
-                style.textContent = `{scout_css}`;
+                style.textContent = `{scout_css}
+                
+                /* Hide Gradio footer */
+                .footer {{
+                    display: none !important;
+                }}
+                footer {{
+                    display: none !important;
+                }}
+                .gradio-container footer {{
+                    display: none !important;
+                }}`;
                 document.head.appendChild(style);
             }}
         """)
@@ -264,7 +280,11 @@ def create_demo():
         # Custom chat function wrapper
         def handle_chat(message, history, endpoint, model, key, temp, top_p, max_tokens):
             if not message.strip():
-                return history, ""
+                return history, "", gr.update(), gr.update()
+            
+            # Make chatbot visible and hide placeholder when first message is sent
+            chatbot_update = gr.update(visible=True)
+            placeholder_update = gr.update(visible=False)
             
             # Call the chat function with streaming
             response_gen = chat_function(
@@ -273,7 +293,7 @@ def create_demo():
             
             # Stream the response
             for response_messages in response_gen:
-                yield response_messages, ""
+                yield response_messages, "", chatbot_update, placeholder_update
         
         # Connect send button and textbox submit
         send_button.click(
@@ -288,7 +308,7 @@ def create_demo():
                 top_p_slider,
                 max_tokens_slider
             ],
-            outputs=[chatbot, scout_textbox],
+            outputs=[chatbot, scout_textbox, chatbot, placeholder_md],
         )
         
         scout_textbox.submit(
@@ -303,7 +323,7 @@ def create_demo():
                 top_p_slider,
                 max_tokens_slider
             ],
-            outputs=[chatbot, scout_textbox],
+            outputs=[chatbot, scout_textbox, chatbot, placeholder_md],
         )
         
         # Connect the refresh button to update models
