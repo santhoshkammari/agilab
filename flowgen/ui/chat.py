@@ -13,6 +13,7 @@ import requests
 import gradio as gr
 from openai import OpenAI
 from css import theme
+from scout_component import create_scout_textbox_ui
 
 
 def fetch_models(endpoint):
@@ -196,14 +197,14 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
         ]
 
 
-textbox = gr.Textbox(placeholder="Type your message here...", container=False, scale=7)
+# Custom Scout textbox will be created in the demo function
 
 
 
 def create_demo():
     """Create and configure the Gradio interface."""
 
-    with gr.Blocks(title="LLM Chat Interface",theme=theme) as demo:
+    with gr.Blocks(title="LLM Chat Interface", theme=theme) as demo:
         gr.Markdown("# LLM Chat Interface")
         gr.Markdown("Connect to any OpenAI-compatible LLM endpoint")
 
@@ -239,26 +240,73 @@ def create_demo():
 
 
 
-        # Create chat interface with custom settings
-        chat_interface = gr.ChatInterface(  # noqa: F841
-            fn=chat_function,
+        # Create custom chatbot
+        chatbot = gr.Chatbot(
+            height=400,
+            show_copy_button=True,
+            placeholder="START HERE",
             type="messages",
-            additional_inputs=[
+            render_markdown=True,
+            show_label=False
+        )
+        
+        # Create Scout-style textbox
+        scout_textbox, context_button, send_button, scout_css = create_scout_textbox_ui(
+            placeholder="Type your message here..."
+        )
+        
+        # Apply Scout CSS
+        demo.load(lambda: None, js=f"""
+            function() {{
+                const style = document.createElement('style');
+                style.textContent = `{scout_css}`;
+                document.head.appendChild(style);
+            }}
+        """)
+        
+        # Custom chat function wrapper
+        def handle_chat(message, history, endpoint, model, key, temp, top_p, max_tokens):
+            if not message.strip():
+                return history, ""
+            
+            # Call the chat function with streaming
+            response_gen = chat_function(
+                message, history, endpoint, model, key, temp, top_p, max_tokens
+            )
+            
+            # Stream the response
+            for response_messages in response_gen:
+                yield response_messages, ""
+        
+        # Connect send button and textbox submit
+        send_button.click(
+            fn=handle_chat,
+            inputs=[
+                scout_textbox, 
+                chatbot,
                 endpoint_input,
                 model_input,
                 key_input,
                 temp_slider,
                 top_p_slider,
-                max_tokens_slider,
+                max_tokens_slider
             ],
-            chatbot=gr.Chatbot(
-                height=300,
-                show_copy_button=True,
-                placeholder="Start chatting with the AI assistant...",
-                type="messages",
-                render_markdown=True,
-            ),
-            textbox=textbox
+            outputs=[chatbot, scout_textbox],
+        )
+        
+        scout_textbox.submit(
+            fn=handle_chat,
+            inputs=[
+                scout_textbox, 
+                chatbot,
+                endpoint_input,
+                model_input,
+                key_input,
+                temp_slider,
+                top_p_slider,
+                max_tokens_slider
+            ],
+            outputs=[chatbot, scout_textbox],
         )
         
         # Connect the refresh button to update models
@@ -268,7 +316,16 @@ def create_demo():
             outputs=[model_input]
         )
 
-        grw
+        # Connect context button (placeholder functionality)
+        def handle_context():
+            gr.Info("Context feature coming soon!")
+            return
+        
+        context_button.click(
+            fn=handle_context,
+            inputs=[],
+            outputs=[]
+        )
 
     return demo
 
