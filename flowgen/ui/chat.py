@@ -12,6 +12,7 @@ import requests
 
 import gradio as gr
 from openai import OpenAI
+from css import theme
 
 
 def fetch_models(endpoint):
@@ -195,14 +196,18 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
         ]
 
 
+textbox = gr.Textbox(placeholder="Type your message here...", container=False, scale=7)
+
+
+
 def create_demo():
     """Create and configure the Gradio interface."""
 
-    with gr.Blocks(title="LLM Chat Interface") as demo:
+    with gr.Blocks(title="LLM Chat Interface",theme=theme) as demo:
         gr.Markdown("# LLM Chat Interface")
         gr.Markdown("Connect to any OpenAI-compatible LLM endpoint")
 
-        with gr.Sidebar():
+        with gr.Sidebar(visible=True):
             endpoint_input = gr.Textbox(
                 label="API Endpoint",
                 value="0.0.0.0:8000",
@@ -232,6 +237,8 @@ def create_demo():
             top_p_slider = gr.Slider(minimum=0.0, maximum=1.0, value=0.9, step=0.05, label="Top P")
             max_tokens_slider = gr.Slider(minimum=16, maximum=8192, value=2048, step=16, label="Max Tokens")
 
+
+
         # Create chat interface with custom settings
         chat_interface = gr.ChatInterface(  # noqa: F841
             fn=chat_function,
@@ -245,13 +252,13 @@ def create_demo():
                 max_tokens_slider,
             ],
             chatbot=gr.Chatbot(
-                height=500,
+                height=300,
                 show_copy_button=True,
                 placeholder="Start chatting with the AI assistant...",
                 type="messages",
                 render_markdown=True,
             ),
-            textbox=gr.Textbox(placeholder="Type your message here...", container=False, scale=7),
+            textbox=textbox
         )
         
         # Connect the refresh button to update models
@@ -260,6 +267,8 @@ def create_demo():
             inputs=[endpoint_input],
             outputs=[model_input]
         )
+
+        grw
 
     return demo
 
