@@ -244,7 +244,7 @@ def create_demo():
             placeholder="START HERE",
             type="messages",
             render_markdown=True,
-            show_label=False
+            show_label=False,
         )
         
         # Create Scout-style textbox
