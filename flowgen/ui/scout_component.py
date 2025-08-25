@@ -185,7 +185,7 @@ def create_scout_textbox_ui(
         font-size: 14px;
         font-weight: 500;
         padding: 6px 12px !important;
-        border-radius: 6px !important;
+        border-radius: 10px !important;
         transition: all 0.2s ease;
         height: auto !important;
         min-height: 32px !important;
@@ -198,7 +198,7 @@ def create_scout_textbox_ui(
     
     .scout-send-btn {
         background: #57BAFF !important;
-        border: 1px solid #57BAFF !important;
+        border: 1px solid #57BAFF !importanttart chatting with the AI assistant...;
         color: white !important;
         font-size: 16px;
         font-weight: 600;
@@ -227,7 +227,7 @@ def create_scout_textbox_ui(
     }
     """
     
-    with gr.Column(elem_classes=["scout-textbox-wrapper"]):
+    with gr.Column(elem_classes=["scout-textbox-wrapper"],):
         # Main textbox
         textbox = gr.Textbox(
             placeholder=placeholder,
@@ -246,12 +246,14 @@ def create_scout_textbox_ui(
                 variant="secondary",
                 size="sm",
                 elem_classes=["scout-context-btn"],
-                scale=1,
+                scale=0,
             )
-            
+            gr.Markdown()
+            gr.Markdown()
+
             send_button = gr.Button(
                 "↑",
-                variant="primary", 
+                variant="primary",
                 size="sm",
                 elem_classes=["scout-send-btn"],
                 scale=0,

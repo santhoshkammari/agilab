@@ -205,10 +205,7 @@ def create_demo():
     """Create and configure the Gradio interface."""
 
     with gr.Blocks(title="LLM Chat Interface", theme=theme) as demo:
-        gr.Markdown("# LLM Chat Interface")
-        gr.Markdown("Connect to any OpenAI-compatible LLM endpoint")
-
-        with gr.Sidebar(visible=True):
+        with gr.Sidebar(open=False):
             endpoint_input = gr.Textbox(
                 label="API Endpoint",
                 value="0.0.0.0:8000",
@@ -252,7 +249,7 @@ def create_demo():
         
         # Create Scout-style textbox
         scout_textbox, context_button, send_button, scout_css = create_scout_textbox_ui(
-            placeholder="Type your message here..."
+            placeholder="Create a website based on my vibes"
         )
         
         # Apply Scout CSS
