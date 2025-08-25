@@ -251,3 +251,7 @@ def add_two_numbers(a: int, b: int) -> int:
         int: The sum of the two numbers
     """
     return int(a) + int(b)
+
+
+if __name__ == '__main__':
+    print(convert_func_to_oai_tool(add_two_numbers))

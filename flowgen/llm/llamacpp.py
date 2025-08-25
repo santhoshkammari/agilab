@@ -2,21 +2,17 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime
-from typing import Any, Optional, Callable, List, get_type_hints
-from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Optional, Callable, List
 
 from llama_cpp import Llama
-from pydantic import BaseModel
 
-from .basellm import BaseLLM, convert_func_to_oai_tool
+from .basellm import BaseLLM
 
 
 class LlamaCpp(BaseLLM):
-    """Llama.cpp implementation using llama-cpp-python client."""
+    """Minimal Llama.cpp wrapper that passes everything directly to llama-cpp-python."""
     
-    def __init__(self, model=None, n_ctx=2048, n_gpu_layers=-1, chat_format="chatml", **kwargs):
-        # Handle both model_path and model parameters for compatibility
-        # Store llama-cpp specific parameters
+    def __init__(self, model=None, n_ctx=2048, n_gpu_layers=-1, chat_format=None, **kwargs):
         self._n_ctx = n_ctx
         self._n_gpu_layers = n_gpu_layers
         self._chat_format = chat_format
@@ -39,64 +35,60 @@ class LlamaCpp(BaseLLM):
             raise RuntimeError(f"Failed to load Llama.cpp model {self._model}: {e}")
 
     def chat(self, input, **kwargs):
-        """Generate text using Llama.cpp chat completion."""
-        input = self._normalize_input(input)
+        """Generate text using Llama.cpp - minimal wrapper."""
+        # Normalize input to messages format
+        if isinstance(input, str):
+            messages = [{"role": "user", "content": input}]
+        elif isinstance(input, list) and all(isinstance(msg, dict) for msg in input):
+            messages = input
+        else:
+            messages = [{"role": "user", "content": str(input)}]
         
-        # Get parameters
-        format_schema = self._get_format(kwargs)
-        tools = self._get_tools(kwargs)
-        timeout = self._get_timeout(kwargs)
+        # Prepare parameters for llama-cpp-python create_chat_completion
+        completion_params = {
+            "messages": messages,
+            "max_tokens": kwargs.get("max_tokens", 2048),
+            "temperature": kwargs.get("temperature", 0.75),
+            "top_p": kwargs.get("top_p", 0.95),
+            "stop": kwargs.get("stop", None),
+            "stream": kwargs.get("stream", None)
+        }
         
-        # Convert tools if provided
-        if tools:
-            tools = self._convert_function_to_tools(tools)
+        # Handle tools - convert functions to tool format if needed
+        if "tools" in kwargs:
+            tools = kwargs["tools"]
+            if tools and isinstance(tools[0], (type(lambda: None), type)):
+                # Convert function objects to tool schema
+                from ._utils import convert_function_to_tool
+                completion_params["tools"] = [convert_function_to_tool(func) for func in tools]
+            else:
+                completion_params["tools"] = tools
+        
+        # Pass through other llama-cpp-python specific parameters
+        for param in ["tool_choice", "response_format", "functions", "function_call"]:
+            if param in kwargs:
+                completion_params[param] = kwargs[param]
+        
+        # Call llama-cpp-python directly
+
+        from rich import  print
+        print(completion_params)
+
+        response = self.llm.create_chat_completion(**completion_params)
         
         # Handle streaming
         if kwargs.get("stream"):
-            return self._stream_chat(input, format_schema, tools, **kwargs)
+            return self._handle_stream_response(response)
         
-        # Build completion parameters
-        completion_params = {
-            "messages": input,
-            "max_tokens": kwargs.get("max_tokens", 512),
-            "temperature": kwargs.get("temperature", 0.7),
-            "top_p": kwargs.get("top_p", 0.9),
-            "stop": kwargs.get("stop", None),
-        }
-        
-        # Handle structured output
-        if format_schema:
-            if hasattr(format_schema, 'model_json_schema'):
-                # Pydantic model - use JSON schema mode
-                completion_params["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": format_schema.__name__,
-                        "schema": format_schema.model_json_schema()
-                    }
-                }
-            elif isinstance(format_schema, str) and format_schema.lower() == "json":
-                # Simple JSON mode
-                completion_params["response_format"] = {"type": "json_object"}
-        
-        # Handle tools/function calling
-        if tools:
-            completion_params["tools"] = tools
-            completion_params["tool_choice"] = kwargs.get("tool_choice", "auto")
-        
-        response = self.llm.create_chat_completion(**completion_params)
-        
+        # Convert to flowgen format
         result = {"think": "", "content": "", "tool_calls": []}
         
-        # Extract content
         if response["choices"] and response["choices"][0]["message"]:
             message = response["choices"][0]["message"]
-            content = message.get("content", "") or ""
             
-            # Extract thinking content from <think> tags
-            think, content = self._extract_thinking(content)
-            result['think'] = think
-            result['content'] = content
+            # Get content
+            content = message.get("content") or ""
+            result["content"] = content
             
             # Handle tool calls
             if message.get("tool_calls"):
@@ -112,42 +104,9 @@ class LlamaCpp(BaseLLM):
         
         return result
 
-    def _stream_chat(self, messages, format_schema, tools, **kwargs):
-        """Generate streaming text using Llama.cpp chat completion."""
-        completion_params = {
-            "messages": messages,
-            "max_tokens": kwargs.get("max_tokens", 512),
-            "temperature": kwargs.get("temperature", 0.7),
-            "top_p": kwargs.get("top_p", 0.9),
-            "stop": kwargs.get("stop", None),
-            "stream": True,
-        }
-        
-        # Handle structured output
-        if format_schema:
-            if hasattr(format_schema, 'model_json_schema'):
-                completion_params["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": format_schema.__name__,
-                        "schema": format_schema.model_json_schema()
-                    }
-                }
-            elif isinstance(format_schema, str) and format_schema.lower() == "json":
-                completion_params["response_format"] = {"type": "json_object"}
-        
-        # Handle tools
-        if tools:
-            completion_params["tools"] = tools
-            completion_params["tool_choice"] = kwargs.get("tool_choice", "auto")
-        
-        response_stream = self.llm.create_chat_completion(**completion_params)
-        
-        # Return a generator that yields individual chunks
+    def _handle_stream_response(self, response_stream):
+        """Handle streaming response."""
         def stream_generator():
-            content_parts = []
-            tool_calls = []
-            
             for chunk in response_stream:
                 chunk_result = {"think": "", "content": "", "tool_calls": []}
                 
@@ -156,45 +115,24 @@ class LlamaCpp(BaseLLM):
                     
                     # Handle content
                     if delta.get("content"):
-                        content = delta["content"]
-                        content_parts.append(content)
-                        chunk_result["content"] = content
+                        chunk_result["content"] = delta["content"]
                     
                     # Handle tool calls
                     if delta.get("tool_calls"):
                         for tool_call in delta["tool_calls"]:
-                            tool_call_data = {
+                            chunk_result["tool_calls"].append({
                                 'id': tool_call.get("id", str(uuid.uuid4())),
                                 'type': 'function',
                                 'function': {
                                     'name': tool_call.get("function", {}).get("name", ""),
                                     'arguments': tool_call.get("function", {}).get("arguments", "")
                                 }
-                            }
-                            chunk_result["tool_calls"].append(tool_call_data)
-                            tool_calls.append(tool_call_data)
+                            })
                 
                 yield chunk_result
-            
-            # Final processing for thinking extraction
-            if content_parts:
-                full_content = ''.join(content_parts)
-                think, _ = self._extract_thinking(full_content)
-                if think:
-                    yield {"think": think, "content": "", "tool_calls": []}
         
         return stream_generator()
 
-    def _normalize_input(self, input):
-        """Convert string input to message format for Llama.cpp."""
-        if isinstance(input, str):
-            return [{"role": "user", "content": input}]
-        elif isinstance(input, list):
-            if all(isinstance(msg, dict) for msg in input):
-                # Already in message format
-                return input
-            else:
-                # List of strings, convert to user messages
-                return [{"role": "user", "content": str(item)} for item in input]
-        else:
-            return [{"role": "user", "content": str(input)}]
+    def _stream_chat(self, messages, format_schema, tools, **kwargs):
+        """Required by BaseLLM but not used - everything goes through chat()."""
+        return self.chat(messages, stream=True, **kwargs)

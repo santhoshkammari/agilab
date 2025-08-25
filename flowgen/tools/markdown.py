@@ -3,7 +3,7 @@ import textwrap
 from pathlib import Path
 from tabulate import tabulate
 
-from ..utils.mrkdwn_analysis import MarkdownAnalyzer
+from mrkdwn_analysis import MarkdownAnalyzer
 
 
 def _validate_markdown_file(file_path: str) -> tuple[bool, str]:
@@ -71,8 +71,10 @@ SYSTEM_PROMPT = """You are a markdown analysis assistant. You have access to the
 - markdown_analyzer_get_code_blocks: Extract all code blocks from markdown content with line numbers
 - markdown_analyzer_get_tables_metadata: Get metadata of all tables (headers, line numbers) in tabulated format
 - markdown_analyzer_get_table_by_line: Extract and beautifully format a specific table at given line number
+- markdown_analyzer_get_header_by_line: Extract a specific header at given line number
+- markdown_analyzer_get_intro: Extract introduction/abstract/summary intelligently based on document type (arxiv papers, wikis, blogs, etc.)
 - markdown_analyzer_get_lists: Extract all lists from markdown content with line numbers
-- markdown_analyzer_get_overview: Get complete eagle eye view of document structure and content stats
+- markdown_analyzer_get_overview: Get complete eagle eye view of document structure and content stats including introduction
 
 Each tool takes a file path as parameter and returns data with line numbers for easy navigation. Use these tools to analyze markdown files and provide insights about their structure and content."""
 
@@ -230,6 +232,184 @@ def markdown_analyzer_get_table_by_line(file_path: str, line_number: int):
         return "Failed to analyze file"
 
 
+def markdown_analyzer_get_header_by_line(file_path: str, line_number: int):
+    """Extract content under a specific header at the given line number"""
+    is_valid, error_msg = _validate_markdown_file(file_path)
+    if not is_valid:
+        return error_msg
+    
+    try:
+        analyzer = _get_markdown_analyzer(file_path)
+        headers = analyzer.identify_headers()
+        header_list = headers.get('Header', [])
+        
+        # Find the target header
+        target_header = None
+        for header in header_list:
+            if header.get('line') == line_number:
+                target_header = header
+                break
+        
+        if not target_header:
+            return f"No header at line {line_number}"
+        
+        # Get the content lines
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content_lines = f.readlines()
+        
+        target_level = target_header.get('level', 1)
+        start_line = target_header.get('line', 1)
+        
+        # Find the end line (next header of same or higher level)
+        end_line = len(content_lines)
+        for header in header_list:
+            header_line = header.get('line', 1)
+            header_level = header.get('level', 1)
+            if header_line > start_line and header_level <= target_level:
+                end_line = header_line - 1
+                break
+        
+        # Extract content between start_line+1 and end_line (skip the header itself)
+        section_content = []
+        for i in range(start_line, min(end_line, len(content_lines))):
+            section_content.append(content_lines[i].rstrip('\n'))
+        
+        section_text = '\n'.join(section_content).strip()
+        
+        return {
+            "header": {
+                "line": start_line,
+                "level": target_level,
+                "text": target_header.get('text', '')
+            },
+            "content": section_text,
+            "content_lines": f"{start_line + 1}-{min(end_line, len(content_lines))}",
+            "word_count": len(section_text.split()) if section_text else 0
+        }
+        
+    except Exception:
+        return "Failed to analyze file"
+
+
+def markdown_analyzer_get_intro(file_path: str):
+    """Extract introduction/abstract/summary from markdown content - handles various document types"""
+    is_valid, error_msg = _validate_markdown_file(file_path)
+    if not is_valid:
+        return error_msg
+    
+    try:
+        content = Path(file_path).read_text(encoding='utf-8')
+        analyzer = _get_markdown_analyzer(file_path)
+        headers = analyzer.identify_headers()
+        header_list = headers.get('Header', [])
+        
+        # Define intro patterns for different document types
+        intro_patterns = [
+            # Academic papers
+            'abstract', 'summary', 'executive summary',
+            # Wiki/documentation
+            'introduction', 'intro', 'overview', 'about',
+            # Blogs/articles  
+            'preface', 'foreword', 'background', 'context',
+            # Technical docs
+            'getting started', 'what is', 'description'
+        ]
+        
+        # Strategy 1: Look for explicit intro headers
+        intro_header = None
+        for header in header_list:
+            header_text = header.get('text', '').lower().strip()
+            if any(pattern in header_text for pattern in intro_patterns):
+                intro_header = header
+                break
+        
+        if intro_header:
+            # Extract content under the intro header
+            content_lines = content.split('\n')
+            target_level = intro_header.get('level', 1)
+            start_line = intro_header.get('line', 1)
+            
+            # Find end line (next header of same or higher level)
+            end_line = len(content_lines)
+            for header in header_list:
+                header_line = header.get('line', 1)
+                header_level = header.get('level', 1)
+                if header_line > start_line and header_level <= target_level:
+                    end_line = header_line - 1
+                    break
+            
+            # Extract section content
+            section_content = []
+            for i in range(start_line, min(end_line, len(content_lines))):
+                section_content.append(content_lines[i])
+            
+            section_text = '\n'.join(section_content).strip()
+            
+            return {
+                "type": "explicit_header",
+                "header": {
+                    "line": start_line,
+                    "level": target_level,
+                    "text": intro_header.get('text', '')
+                },
+                "content": section_text,
+                "content_lines": f"{start_line + 1}-{min(end_line, len(content_lines))}",
+                "word_count": len(section_text.split()) if section_text else 0
+            }
+        
+        # Strategy 2: Extract first substantial content after title
+        # Look for first few paragraphs after the main title
+        if not header_list:
+            return "No structure found for intro extraction"
+            
+        first_header = header_list[0]
+        title_line = first_header.get('line', 1)
+        
+        # Get paragraphs after title
+        paragraphs = []
+        for token in analyzer.tokens:
+            if token.type == 'paragraph' and token.line > title_line:
+                paragraphs.append({
+                    "line": token.line, 
+                    "content": token.content.strip()
+                })
+        
+        if not paragraphs:
+            return "No introductory content found"
+            
+        # Take first 2-3 paragraphs as introduction (max 300 words)
+        intro_paragraphs = []
+        word_count = 0
+        for para in paragraphs:
+            para_words = len(para['content'].split())
+            if word_count + para_words > 300:
+                break
+            intro_paragraphs.append(para)
+            word_count += para_words
+            if len(intro_paragraphs) >= 3:  # Max 3 paragraphs
+                break
+        
+        intro_content = '\n\n'.join(p['content'] for p in intro_paragraphs)
+        start_line = intro_paragraphs[0]['line'] if intro_paragraphs else title_line + 1
+        end_line = intro_paragraphs[-1]['line'] if intro_paragraphs else start_line
+        
+        return {
+            "type": "inferred_paragraphs",
+            "header": {
+                "line": title_line,
+                "level": first_header.get('level', 1),
+                "text": first_header.get('text', 'Document Title')
+            },
+            "content": intro_content,
+            "content_lines": f"{start_line}-{end_line}",
+            "word_count": word_count,
+            "paragraphs_count": len(intro_paragraphs)
+        }
+        
+    except Exception:
+        return "Failed to analyze file"
+
+
 def markdown_analyzer_get_lists(file_path: str):
     """Extract all lists from markdown content with line numbers"""
     is_valid, error_msg = _validate_markdown_file(file_path)
@@ -267,6 +447,9 @@ def markdown_analyzer_get_overview(file_path: str):
         code_blocks = analyzer.identify_code_blocks()
         tables = analyzer.identify_tables()
         lists = analyzer.identify_lists()
+        
+        # Get introduction/abstract
+        intro_result = markdown_analyzer_get_intro(file_path)
 
         # Filter HTTP links
         http_links = [x for x in links.get('Text link', []) if x.get('url', '').lower().startswith('http')]
@@ -299,9 +482,18 @@ def markdown_analyzer_get_overview(file_path: str):
             line = table.get('line', 'N/A')
             table_summary.append(f"Table at line {line}")
 
+        # Process introduction data
+        intro_info = {
+            "found": isinstance(intro_result, dict),
+            "type": intro_result.get('type', 'none') if isinstance(intro_result, dict) else 'none',
+            "word_count": intro_result.get('word_count', 0) if isinstance(intro_result, dict) else 0,
+            "content": intro_result.get('content', '') if isinstance(intro_result, dict) else 'No introduction found'
+        }
+
         # Create complete overview
         overview_data = {
             "document_title": header_list[0].get('text', 'Untitled') if header_list else 'Untitled',
+            "introduction": intro_info,
             "complete_structure": structure,
             "all_headers": [h.get('text', '') for h in header_list],
             "code_blocks_detail": code_block_summary,
@@ -319,7 +511,8 @@ def markdown_analyzer_get_overview(file_path: str):
                 "has_code": len(code_blocks.get('Code block', [])) > 0,
                 "has_tables": len(tables.get('Table', [])) > 0,
                 "has_lists": len(lists.get('Ordered list', [])) + len(lists.get('Unordered list', [])) > 0,
-                "has_links": len(http_links) > 0
+                "has_links": len(http_links) > 0,
+                "has_intro": intro_info['found']
             }
         }
 
@@ -332,6 +525,13 @@ def markdown_analyzer_get_overview(file_path: str):
             'tables_detail'] else "None"
 
         markdown_overview = f"""# Document Overview: {overview_data['document_title']}
+
+## Introduction/Abstract
+- **Found**: {'Yes' if overview_data['introduction']['found'] else 'No'}
+- **Type**: {overview_data['introduction']['type'].replace('_', ' ').title()}
+- **Word Count**: {overview_data['introduction']['word_count']}
+
+{overview_data['introduction']['content']}
 
 ## Document Structure
 {ds}
@@ -352,6 +552,7 @@ def markdown_analyzer_get_overview(file_path: str):
 {table_detail}
 
 ## Content Types Present
+- **Has Introduction**: {'Yes' if overview_data['content_types_present']['has_intro'] else 'No'}
 - **Has Code**: {'Yes' if overview_data['content_types_present']['has_code'] else 'No'}
 - **Has Tables**: {'Yes' if overview_data['content_types_present']['has_tables'] else 'No'}
 - **Has Lists**: {'Yes' if overview_data['content_types_present']['has_lists'] else 'No'}
@@ -373,6 +574,8 @@ tool_functions = {
     "markdown_analyzer_get_code_blocks": markdown_analyzer_get_code_blocks,
     "markdown_analyzer_get_tables_metadata": markdown_analyzer_get_tables_metadata,
     "markdown_analyzer_get_table_by_line": markdown_analyzer_get_table_by_line,
+    "markdown_analyzer_get_header_by_line": markdown_analyzer_get_header_by_line,
+    "markdown_analyzer_get_intro": markdown_analyzer_get_intro,
     "markdown_analyzer_get_lists": markdown_analyzer_get_lists,
     "markdown_analyzer_get_overview": markdown_analyzer_get_overview,
 }

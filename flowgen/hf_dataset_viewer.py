@@ -3,13 +3,14 @@
 HuggingFace Dataset Viewer
 
 A command-line tool for viewing and inspecting HuggingFace datasets with flexible
-display options and sample selection capabilities.
+display options, sample selection, and field truncation capabilities.
 
 Features:
 - Load datasets from local files or HuggingFace Hub
 - Support for multiple file formats (JSON, JSONL, CSV, Parquet, TSV, TXT)
 - Two display modes: normal (detailed panels) and table (compact grid)
 - Flexible sample selection by index or feature value matching
+- Field truncation with slice expressions for better readability
 - Rich console output with syntax highlighting
 
 Usage Examples:
@@ -28,6 +29,12 @@ Usage Examples:
     # View all samples
     python hf_dataset_viewer.py dataset_name --samples -1
 
+    # Truncate fields using slice expressions
+    python hf_dataset_viewer.py dataset_name --exp "text[:100],query[2:50]"
+    
+    # Show only specific columns
+    python hf_dataset_viewer.py dataset_name -c "query,sample"
+
 Arguments:
     name                    Dataset path/name (local file/directory or HuggingFace dataset)
     --samples, -s          Number of samples to show (default: 1, -1 for all)
@@ -35,18 +42,62 @@ Arguments:
     --table, -t            Shortcut for table view
     --index, -i            Row index or feature value for specific sample selection
     --index-feature, -f    Feature column name to search for index value
+    --exp, -e              Field expressions with slicing syntax (e.g., 'res[:100],query[2:5]')
+    --columns, -c          Select specific columns to display (e.g., 'query,sample')
 
 Author: Generated with Claude Code
 """
 
 import argparse
 import sys
+import re
 from pathlib import Path
 from datasets import load_dataset, load_from_disk
 from rich.console import Console
 from rich.table import Table
 from rich.json import JSON
 from rich.panel import Panel
+
+def parse_field_expressions(exp_str):
+    """Parse field expressions like 'res[:100],query[2:5]' into a dict of field -> slice info"""
+    if not exp_str:
+        return {}
+    
+    field_slices = {}
+    expressions = exp_str.split(',')
+    
+    for expr in expressions:
+        expr = expr.strip()
+        # Match pattern: field[start:end] or field[:end] or field[start:]
+        match = re.match(r'^([^[]+)\[([^:]*):?([^]]*)\]$', expr)
+        if match:
+            field_name = match.group(1).strip()
+            start_str = match.group(2).strip()
+            end_str = match.group(3).strip()
+            
+            start = int(start_str) if start_str else None
+            end = int(end_str) if end_str else None
+            
+            field_slices[field_name] = (start, end)
+    
+    return field_slices
+
+def truncate_field_value(value, slice_info):
+    """Truncate field value based on slice info (start, end)"""
+    if slice_info is None:
+        return value
+    
+    start, end = slice_info
+    value_str = str(value)
+    
+    if start is None and end is None:
+        return value_str
+    elif start is None:
+        return value_str[:end]
+    elif end is None:
+        return value_str[start:]
+    else:
+        return value_str[start:end]
 
 def main():
     parser = argparse.ArgumentParser(description="View HuggingFace dataset files")
@@ -56,8 +107,18 @@ def main():
     parser.add_argument("--table", "-t", action="store_const", const="table", dest="view", help="Display in table format (same as --view table)")
     parser.add_argument("--index", "-i", help="Index (row number) or feature value to show specific sample")
     parser.add_argument("--index-feature", "-f", help="Feature column name to search for the index value")
+    parser.add_argument("--exp", "-e", help="Field expressions with slicing syntax (e.g., 'res[:100],query[2:5]')")
+    parser.add_argument("--columns", "-c", help="Select specific columns to display (e.g., 'query,sample')")
     
     args = parser.parse_args()
+    
+    # Parse field expressions for truncation
+    field_slices = parse_field_expressions(args.exp)
+    
+    # Parse selected columns
+    selected_columns = None
+    if args.columns:
+        selected_columns = [col.strip() for col in args.columns.split(',')]
     
     # Use first positional argument as dataset name/path
     dataset_path = args.name
@@ -170,16 +231,26 @@ def main():
             for idx, sample in selected_samples:
                 all_fields.update(sample.keys())
             
+            # Filter columns if specified
+            if selected_columns:
+                all_fields = [col for col in selected_columns if col in all_fields]
+            else:
+                all_fields = sorted(all_fields)
+            
             # Add columns for each field
-            for field in sorted(all_fields):
+            for field in all_fields:
                 table.add_column(field, style="white")
             
             # Add rows for each selected sample
             for idx, sample in selected_samples:
                 row_data = [str(idx + 1)]  # Use original dataset index + 1
-                for field in sorted(all_fields):
+                for field in all_fields:
                     value = sample.get(field, "")
-                    value_str = str(value)
+                    # Apply truncation if specified
+                    if field in field_slices:
+                        value_str = truncate_field_value(value, field_slices[field])
+                    else:
+                        value_str = str(value)
                     row_data.append(value_str)
                 table.add_row(*row_data)
             
@@ -193,12 +264,21 @@ def main():
                 table.add_column("Field", style="cyan")
                 table.add_column("Value", style="white")
                 
-                for key, value in sample.items():
-                    # Convert value to string, handling various data types
-                    if isinstance(value, (dict, list)):
-                        value_str = JSON.from_data(value)
+                # Filter fields if columns are specified
+                fields_to_show = sample.items()
+                if selected_columns:
+                    fields_to_show = [(k, v) for k, v in sample.items() if k in selected_columns]
+                
+                for key, value in fields_to_show:
+                    # Apply truncation if specified
+                    if key in field_slices:
+                        value_str = truncate_field_value(value, field_slices[key])
                     else:
-                        value_str = str(value)
+                        # Convert value to string, handling various data types
+                        if isinstance(value, (dict, list)):
+                            value_str = JSON.from_data(value)
+                        else:
+                            value_str = str(value)
                     
                     table.add_row(key, value_str)
                 
