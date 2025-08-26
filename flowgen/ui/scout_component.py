@@ -258,7 +258,6 @@ def create_scout_textbox_ui(
                     size="sm",
                     elem_classes=["scout-send-btn"],
                     scale=0,
-                    min_width=40,
                 )
 
         gr.Markdown()
