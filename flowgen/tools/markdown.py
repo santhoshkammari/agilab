@@ -3,7 +3,7 @@ import textwrap
 from pathlib import Path
 from tabulate import tabulate
 
-from mrkdwn_analysis import MarkdownAnalyzer
+from ..utils.mrkdwn_analysis import MarkdownAnalyzer
 
 
 def _validate_markdown_file(file_path: str) -> tuple[bool, str]:

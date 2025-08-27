@@ -2,6 +2,7 @@ import json
 from dataclasses import asdict
 from typing import List
 
+import requests
 from pydantic import BaseModel
 from liteauto.parselite import parse
 from flowgen.utils.custom_markdownify import custom_markdownify
@@ -14,7 +15,7 @@ Use this tool to extract, parse, and convert web content as requested by the use
 
 from trafilatura import fetch_url
 def extract_html_from_url(url: str):
-    content = fetch_url(url)
+    content = get_url_content(url)
     # if isinstance(result, list):
     #     res = [{"url": x.url, "content": x.content} for x in result]
     #     return res
@@ -24,6 +25,52 @@ def extract_html_from_url(url: str):
 def extract_markdown_from_html(html: str):
     return custom_markdownify(html) if html else ""
 
+
+def get_url_content(url: str) -> str | None:
+    """
+    Fetches the content of a given URL and returns it as text.
+
+    Args:
+        url (str): The URL to fetch.
+
+    Returns:
+        str: The content of the URL as text.
+    """
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()  # Raise error for bad status codes
+        return response.text
+    except requests.exceptions.RequestException as e:
+        return None
+
+
+from typing import List, Dict
+import requests
+
+def web_search(query: str) -> List[Dict]:
+    """
+    Search the web using the local search API.
+
+    Args:
+        query (str): Search query.
+
+    Returns:
+        List[Dict]: A list of search results, each containing
+                    'url', 'title', and 'description'.
+    """
+    try:
+        res = requests.post(
+            url="http://0.0.0.0:8000/search",
+            params={"query": query},
+            timeout=10
+        )
+        res.raise_for_status()
+        results = res.json()
+
+        return results.get('results',[])
+    except (requests.RequestException, ValueError) as e:
+        print(f"Error during search: {e}")
+        return []
 
 def web_fetch(url: str):
     """Parse multiple list of URLs and convert them to markdown in batch

@@ -3,10 +3,7 @@ import textwrap
 from pathlib import Path
 from tabulate import tabulate
 
-from mrkdwn_analysis import MarkdownAnalyzer
-
-
-
+from flowgen.utils.mrkdwn_analysis import MarkdownAnalyzer
 
 def format_beautiful_table(table_data, max_width=40, tablefmt='grid'):
     """
