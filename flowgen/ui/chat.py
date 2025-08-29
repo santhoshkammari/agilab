@@ -244,7 +244,7 @@ def create_demo():
         # Create custom chatbot
         chatbot = gr.Chatbot(
             height=650,
-            show_copy_button=True,
+            show_copy_button=False,
             placeholder="START HERE",
             type="messages",
             render_markdown=True,
@@ -295,6 +295,56 @@ def create_demo():
                 .scout-send-btn {{
                     background: #57BAFF !important;
                     border-color: #57BAFF !important;
+                }}
+                
+                /* AGGRESSIVE: Remove ALL grey/colored backgrounds from chatbot */
+                .gradio-chatbot *,
+                div[data-testid="chatbot"] *,
+                .chatbot *,
+                [class*="chatbot"] *,
+                [class*="message"] *,
+                [class*="bubble"] * {{
+                    background: transparent !important;
+                    background-color: transparent !important;
+                }}
+                
+                /* Specifically target common Gradio chatbot classes */
+                .gradio-chatbot .prose,
+                .gradio-chatbot .message-wrap,
+                .gradio-chatbot .message-row,
+                .gradio-chatbot .message,
+                .gradio-chatbot .bot,
+                .gradio-chatbot .assistant,
+                div[data-testid="chatbot"] .prose,
+                div[data-testid="chatbot"] .message-wrap,
+                div[data-testid="chatbot"] .message-row, 
+                div[data-testid="chatbot"] .message,
+                div[data-testid="chatbot"] .bot,
+                div[data-testid="chatbot"] .assistant {{
+                    background: transparent !important;
+                    background-color: transparent !important;
+                }}
+                
+                /* Target any element with grey-ish background colors */
+                *[style*="background-color: rgb(243, 244, 246)"],
+                *[style*="background-color: #f3f4f6"],
+                *[style*="background-color: rgb(249, 250, 251)"],
+                *[style*="background-color: #f9fafb"],
+                *[style*="background: rgb(243, 244, 246)"],
+                *[style*="background: #f3f4f6"] {{
+                    background: transparent !important;
+                    background-color: transparent !important;
+                
+                /* Keep thinking messages with light grey background */
+                .gradio-chatbot .message[data-title="💭 Thinking"],
+                div[data-testid="chatbot"] .message[data-title="💭 Thinking"],
+                .gradio-chatbot .message-wrap[data-title="💭 Thinking"],
+                div[data-testid="chatbot"] .message-wrap[data-title="💭 Thinking"] {{
+                    background: #F8F9FA !important;
+                    background-color: #F8F9FA !important;
+                    border-radius: 8px !important;
+                    padding: 12px !important;
+                    margin: 4px 0 !important;
                 }}`;
                 document.head.appendChild(style);
             }}

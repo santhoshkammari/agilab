@@ -261,7 +261,7 @@ def create_scout_textbox_ui(
         outline: none !important;
     }
     
-    /* Remove borders from chatbot output */
+    /* Remove borders from chatbot output and make assistant messages transparent */
     .gradio-chatbot,
     .gradio-chatbot > div,
     .gradio-chatbot .message,
@@ -276,6 +276,23 @@ def create_scout_textbox_ui(
         background: transparent !important;
         box-shadow: none !important;
         outline: none !important;
+    }
+    
+    /* Make assistant messages transparent */
+    .gradio-chatbot .message.bot,
+    .gradio-chatbot .message-wrap.bot,
+    div[data-testid="chatbot"] .message.bot,
+    div[data-testid="chatbot"] .message-wrap.bot,
+    .gradio-chatbot .message[data-role="assistant"],
+    div[data-testid="chatbot"] .message[data-role="assistant"],
+    .gradio-chatbot .bot,
+    div[data-testid="chatbot"] .bot,
+    .gradio-chatbot .message-row.bot,
+    .gradio-chatbot .message-bubble.bot,
+    div[data-testid="chatbot"] .message-row.bot,
+    div[data-testid="chatbot"] .message-bubble.bot {
+        background: transparent !important;
+        background-color: transparent !important;
     }
     
     /* Remove borders from all containers and blocks */

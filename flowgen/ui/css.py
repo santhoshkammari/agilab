@@ -58,11 +58,11 @@ class ScoutNewTheme(Base):
             button_secondary_background_fill_dark="#EAF6FF",
             button_secondary_text_color="#57BAFF",
             
-            # Neutral/background elements
+            # Neutral/background elements - all transparent/white
             block_background_fill="#FFFFFF",
             block_background_fill_dark="#FFFFFF",
-            panel_background_fill="#F2F4F6",
-            panel_background_fill_dark="#F2F4F6",
+            panel_background_fill="#FFFFFF",
+            panel_background_fill_dark="#FFFFFF",
             
             # Input elements
             input_background_fill="#FFFFFF",
