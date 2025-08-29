@@ -305,6 +305,9 @@ def create_demo():
             if not message.strip():
                 return history, "", gr.update(), gr.update()
             
+            # Add user message to history
+            new_history = history + [{"role": "user", "content": message}]
+            
             # Make chatbot visible and hide placeholder when first message is sent
             chatbot_update = gr.update(visible=True)
             placeholder_update = gr.update(visible=False)
@@ -314,9 +317,11 @@ def create_demo():
                 message, history, endpoint, model, key, temp, top_p, max_tokens
             )
             
-            # Stream the response
+            # Stream the response and build complete conversation history
             for response_messages in response_gen:
-                yield response_messages, "", chatbot_update, placeholder_update
+                # Build complete history: previous conversation + user message + current responses
+                complete_history = new_history + response_messages
+                yield complete_history, "", chatbot_update, placeholder_update
         
         # Connect send button and textbox submit
         send_button.click(
