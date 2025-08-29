@@ -311,4 +311,4 @@ async def search_endpoint(query: str, max_results: int = 5):
         return {"error": str(e)}
 
 if __name__ == '__main__':
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8999)

@@ -145,16 +145,8 @@ class BaseLLM(ABC):
         format_schema = kwargs.get('format', None) or self._format
         if not format_schema:
             return None
-            
-        # Check if it's a Pydantic BaseModel class
-        if inspect.isclass(format_schema) and issubclass(format_schema, BaseModel):
-            return format_schema.model_json_schema()
-        # Check if it's a Pydantic BaseModel instance
-        elif hasattr(format_schema, 'model_json_schema'):
-            return format_schema.model_json_schema()
-        else:
-            # Assume it's already a JSON schema dict
-            return format_schema
+
+        return format_schema
 
     def _get_timeout(self, kwargs):
         """Get timeout from kwargs or use default timeout."""

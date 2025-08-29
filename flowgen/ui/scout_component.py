@@ -148,17 +148,28 @@ def create_scout_textbox_ui(
     # CSS for Scout styling
     scout_css = """
     .scout-textbox-wrapper {
-        border: 1px solid #F2F4F6;
-        border-radius: 12px;
-        padding: 12px;
-        background: #FFFFFF;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        margin: 0;
+        border: 1px solid rgba(0, 0, 0, 0.06) !important;
+        border-radius: 18px !important;
+        padding: 14px 18px !important;
+        background: rgba(255, 255, 255, 0.95) !important;
+        backdrop-filter: blur(20px) !important;
+        box-shadow: 
+            0 1px 3px rgba(0, 0, 0, 0.05),
+            0 4px 12px rgba(0, 0, 0, 0.02),
+            inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+        margin: 0 !important;
+        overflow: hidden !important;
     }
     
-    .scout-textbox-wrapper .scout-main-input textarea {
+    .scout-textbox-wrapper > * {
+        border-radius: inherit !important;
+    }
+    
+    .scout-textbox-wrapper .scout-main-input textarea,
+    .scout-textbox-wrapper .scout-main-input input {
         border: none !important;
         background: transparent !important;
+        background-color: transparent !important;
         box-shadow: none !important;
         padding: 0 !important;
         margin: 0 !important;
@@ -169,7 +180,12 @@ def create_scout_textbox_ui(
     }
     
     .scout-textbox-wrapper .scout-main-input {
-        margin-bottom: 8px !important;
+        background: transparent !important;
+        background-color: transparent !important;
+    }
+    
+    .scout-textbox-wrapper .scout-main-input {
+        margin-bottom: 6px !important;
     }
     
     .scout-button-row {
@@ -179,51 +195,96 @@ def create_scout_textbox_ui(
     }
     
     .scout-context-btn {
-        background: #EAF6FF !important;
-        border: 1px solid #EAF6FF !important;
-        color: #57BAFF !important;
+        background: rgba(0, 122, 255, 0.08) !important;
+        border: 1px solid rgba(0, 122, 255, 0.12) !important;
+        color: #007AFF !important;
         font-size: 14px;
         font-weight: 500;
-        padding: 6px 12px !important;
-        border-radius: 10px !important;
-        transition: all 0.2s ease;
+        padding: 8px 14px !important;
+        border-radius: 12px !important;
+        transition: all 0.15s ease;
         height: auto !important;
         min-height: 32px !important;
+        box-shadow: 0 1px 3px rgba(0, 122, 255, 0.08) !important;
     }
     
     .scout-context-btn:hover {
-        background: #D5EFFF !important;
-        border-color: #D5EFFF !important;
+        background: rgba(0, 122, 255, 0.12) !important;
+        border-color: rgba(0, 122, 255, 0.18) !important;
+        transform: translateY(-0.5px);
     }
     
     .scout-send-btn {
-        background: #57BAFF !important;
-        border: 1px solid #57BAFF !importanttart chatting with the AI assistant...;
+        background: #007AFF !important;
+        border: none !important;
         color: white !important;
-        font-size: 16px;
+        font-size: 18px;
         font-weight: 600;
-        padding: 8px !important;
+        padding: 0 !important;
         border-radius: 50% !important;
-        width: 40px !important;
-        height: 40px !important;
-        min-width: 40px !important;
-        min-height: 40px !important;
+        width: 36px !important;
+        height: 36px !important;
+        min-width: 36px !important;
+        min-height: 36px !important;
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: all 0.2s ease;
+        transition: all 0.15s ease;
+        box-shadow: 
+            0 1px 3px rgba(0, 122, 255, 0.3),
+            0 2px 6px rgba(0, 122, 255, 0.15) !important;
     }
     
     .scout-send-btn:hover {
-        background: #4AABF0 !important;
-        border-color: #4AABF0 !important;
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(87, 186, 255, 0.3);
+        background: #0056CC !important;
+        transform: scale(1.05);
+        box-shadow: 
+            0 2px 6px rgba(0, 122, 255, 0.4),
+            0 4px 12px rgba(0, 122, 255, 0.2) !important;
     }
     
     .scout-textbox-wrapper:focus-within {
-        border-color: #57BAFF;
-        box-shadow: 0 0 0 3px rgba(87, 186, 255, 0.1);
+        border: none;
+        box-shadow: none;
+    }
+    
+    /* Remove borders from all textbox and input elements */
+    .gradio-textbox,
+    .gradio-textbox textarea,
+    .gradio-textbox input,
+    div[data-testid="textbox"],
+    div[data-testid="textbox"] textarea,
+    div[data-testid="textbox"] input {
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+    
+    /* Remove borders from chatbot output */
+    .gradio-chatbot,
+    .gradio-chatbot > div,
+    .gradio-chatbot .message,
+    .gradio-chatbot .message-wrap,
+    .gradio-chatbot .chatbot,
+    .gradio-chatbot .panel,
+    div[data-testid="chatbot"],
+    div[data-testid="chatbot"] > div,
+    div[data-testid="chatbot"] .message,
+    div[data-testid="chatbot"] .message-wrap {
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+    
+    /* Remove borders from all containers and blocks */
+    .gradio-container,
+    .gradio-block,
+    .block,
+    .container {
+        border: none !important;
+        box-shadow: none !important;
     }
     """
     with gr.Row():
@@ -233,7 +294,7 @@ def create_scout_textbox_ui(
             textbox = gr.Textbox(
                 placeholder=placeholder,
                 lines=1,
-                max_lines=3,
+                max_lines=2,
                 container=False,
                 show_label=False,
                 elem_classes=["scout-main-input"],

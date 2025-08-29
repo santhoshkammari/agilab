@@ -60,7 +60,7 @@ def web_search(query: str) -> List[Dict]:
     """
     try:
         res = requests.post(
-            url="http://0.0.0.0:8000/search",
+            url="http://0.0.0.0:8999/search",
             params={"query": query},
             timeout=10
         )
