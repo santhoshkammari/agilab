@@ -10,10 +10,6 @@ from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 import urllib.parse
-from duckduckgo_search import DDGS
-import pyautogui
-import webbrowser
-import pyperclip
 from fastapi import FastAPI
 import uvicorn
 
