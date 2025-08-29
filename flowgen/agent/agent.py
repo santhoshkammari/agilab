@@ -10,67 +10,13 @@ from rich.text import Text
 from rich.markdown import Markdown
 
 
-class _AgentCall:
-    """Sync wrapper that allows lazy execution of agent calls."""
-    
-    def __init__(self, agent, input, **kwargs):
-        self.agent = agent
-        self.input = input
-        self.kwargs = kwargs
-        self._result = None
-        self._executed = False
-    
-    def __getattr__(self, name):
-        """Auto-execute on attribute access - used when: agent('hello').content"""
-        if not self._executed:
-            self._execute_sync()
-        return getattr(self._result, name)
-    
-    def __getitem__(self, key):
-        """Auto-execute on item access - used when: agent('hello')['content']"""
-        if not self._executed:
-            self._execute_sync()
-        return self._result[key]
-    
-    def __iter__(self):
-        """Auto-execute on iteration - used when: for x in agent('hello')"""
-        if not self._executed:
-            self._execute_sync()
-        return iter(self._result)
-    
-    def __str__(self):
-        """Auto-execute on string conversion - used when: str(agent('hello'))"""
-        if not self._executed:
-            self._execute_sync()
-        return str(self._result)
-    
-    def __repr__(self):
-        """Auto-execute on repr - used when: repr(agent('hello'))"""
-        if not self._executed:
-            self._execute_sync()
-        return repr(self._result)
-    
-    def get(self, key, default=None):
-        """Dict-like access - used when: agent('hello').get('content')"""
-        if not self._executed:
-            self._execute_sync()
-        return self._result.get(key, default) if hasattr(self._result, 'get') else getattr(self._result, key, default)
-    
-    def _execute_sync(self):
-        """Execute the agent call synchronously."""
-        if self._executed:
-            return self._result
-        
-        self._result = self.agent._run_sync(self.input, **self.kwargs)
-        self._executed = True
-        return self._result
 
 
 class Agent:
     """Agentic wrapper that adds autonomous tool-calling behavior to any LLM.
     
     Provides transparent, streaming tool execution loops that work with any BaseLLM.
-    Can be used as a drop-in replacement for direct LLM calls.
+    Executes immediately when called, returning results directly.
     """
     
     def __init__(self, llm: BaseLLM, tools: Optional[List[Callable]] = None, 
@@ -106,8 +52,8 @@ class Agent:
     
 
     def __call__(self, input: Union[str, List[Dict]], **kwargs):
-        """Sync call that returns either result or _AgentCall wrapper."""
-        return _AgentCall(self, input, **kwargs)
+        """Execute agent call and return result directly."""
+        return self._run_sync(input, **kwargs)
     
 
     
@@ -662,16 +608,13 @@ class AgentChain:
                 current_input = result.get('content', '')
                 result = agent(current_input, history=accumulated_conversation, **kwargs)
             
-            # Convert _AgentCall to dict result for chaining
-            if isinstance(result, _AgentCall):
-                result = result._execute_sync()
+            # Result is already executed, no need to convert
             
             results.append(result)
             
             # If streaming was requested, we can't chain properly
-            # But _AgentCall objects are fine - they're lazy execution wrappers
             if (hasattr(result, '__iter__') and 
-                not isinstance(result, (str, dict, _AgentCall)) and
+                not isinstance(result, (str, dict)) and
                 not hasattr(result, 'get')):  # Also allow dict-like objects
                 raise ValueError("Cannot chain streaming agents. Set stream=False.")
             
