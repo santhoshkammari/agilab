@@ -4,7 +4,7 @@ from .basellm import BaseLLM
 
 
 class vLLM(BaseLLM):
-    def __init__(self, model=None, api_key="EMPTY", base_url="http://localhost:8000/v1", **kwargs):
+    def __init__(self,  base_url="http://localhost:8000/v1",model="", api_key="EMPTY", **kwargs):
         self._base_url = base_url
         super().__init__(model=model, api_key=api_key, **kwargs)
 
@@ -37,15 +37,13 @@ class vLLM(BaseLLM):
         # Handle structured output
         extra_body = {}
         if format_schema:
-            if hasattr(format_schema, 'model_json_schema'):
-                # Pydantic model
-                extra_body['response_format'] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": format_schema.__name__,
-                        "schema": format_schema.model_json_schema()
-                    }
+            extra_body['response_format'] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": format_schema.__name__,
+                    "schema": format_schema.model_json_schema()
                 }
+            }
 
         response = self.llm.chat.completions.create(
             messages=input,
