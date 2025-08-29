@@ -272,6 +272,28 @@ def create_demo():
                 }}
                 .gradio-container footer {{
                     display: none !important;
+                }}
+                
+                /* Additional border removal - more aggressive targeting */
+                * {{
+                    border: none !important;
+                    box-shadow: none !important;
+                }}
+                
+                /* Restore only necessary button styles */
+                .scout-context-btn,
+                .scout-send-btn {{
+                    border: 1px solid transparent !important;
+                }}
+                
+                .scout-context-btn {{
+                    background: #EAF6FF !important;
+                    border-color: #EAF6FF !important;
+                }}
+                
+                .scout-send-btn {{
+                    background: #57BAFF !important;
+                    border-color: #57BAFF !important;
                 }}`;
                 document.head.appendChild(style);
             }}
