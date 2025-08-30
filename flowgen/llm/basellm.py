@@ -165,11 +165,19 @@ class BaseLLM(ABC):
         """Extract thinking content from <think> tags."""
         import re
         think = ''
-        if '<think>' in content and '</think>' in content:
-            think_match = re.search(r'<think>(.*?)</think>', content, re.DOTALL)
-            if think_match:
-                think = think_match.group(1).strip()
-                content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
+        if '<think>' in content:
+            if '</think>' in content:
+                # Complete thinking block
+                think_match = re.search(r'<think>(.*?)</think>', content, re.DOTALL)
+                if think_match:
+                    think = think_match.group(1).strip()
+                    content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
+            else:
+                # Incomplete thinking block - extract everything after <think>
+                think_match = re.search(r'<think>(.*)', content, re.DOTALL)
+                if think_match:
+                    think = think_match.group(1).strip()
+                    content = re.sub(r'<think>.*', '', content, flags=re.DOTALL)
         return think, content
 
 

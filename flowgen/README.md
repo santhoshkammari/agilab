@@ -1,83 +1,154 @@
-  Core Architecture & Philosophy
+# FlowGen
 
-  Universal Abstraction Layer: Your framework creates a unified interface that works across different LLM providers, training methods, and RL environments. The __call__ method pattern
-  makes everything behave like Python functions.
+A unified framework for LLM interactions, agent workflows, and RL training.
 
-  Auto-Detection Intelligence: Each component automatically detects usage patterns:
-  - llm(string) → single inference
-  - llm([strings]) → batch processing
-  - env(llm) → dataset evaluation
-  - agent >> chain → pipeline composition
+## Core Architecture & Philosophy
 
-  Framework Components Deep Dive
+**Universal Abstraction Layer**: Creates a unified interface that works across different LLM providers, training methods, and RL environments. The `__call__` method pattern makes everything behave like Python functions.
 
-  1. LLM Module (llm/llm.py)
+**Auto-Detection Intelligence**: Each component automatically detects usage patterns:
+- `llm(string)` → single inference
+- `llm([strings])` → batch processing  
+- `env(llm)` → dataset evaluation
+- `agent >> chain` → pipeline composition
 
-  Abstraction Power:
-  - BaseLLM provides unified interface for vLLM, Ollama, OpenAI, etc.
-  - Tool conversion system transforms Python functions to OpenAI tool schemas
-  - Streaming/non-streaming handled transparently
-  - Runtime parameter overrides (llm(text, tools=[...], format=schema))
+## Quick Start
 
-  Production Readiness:
-  - Proper error handling and timeout management
-  - Batch processing with ThreadPoolExecutor
-  - Tool calling standardization across providers
-  - Thinking extraction for reasoning models
+```python
+from flowgen.llm import LLM
+from flowgen.agent import Agent
 
-  2. Agent Module (agent/agent.py)
+# Initialize LLM (works with any provider)
+llm = LLM(base_url="http://localhost:8000")  # Local API server
+# llm = LLM(provider="openai", api_key="...")  # OpenAI
+# llm = LLM(provider="ollama", model="llama3")  # Ollama
 
-  Agentic Intelligence:
-  - Wraps any LLM with autonomous tool-calling loops
-  - Rich debugging with formatted output panels
-  - History management and conversation continuity
-  - Agent chaining with >> operator
-  - Export/import for conversation persistence
+# Basic usage
+result = llm("What is 2+2?")
+print(result["content"])  # "4"
+print(result["think"])    # Internal reasoning (if available)
 
-  Flexibility:
-  - Works with any BaseLLM implementation
-  - Streaming and non-streaming execution
-  - Async/sync compatibility
-  - Pluggable tool system
+# Agent with tools
+agent = Agent(llm, tools=[get_weather, calculate])
+response = agent("What's the weather in NYC and what's 15*23?")
+```
 
-  3. RL Environment (rl/rl.py)
+## Framework Components
 
-  Universal RL Interface:
-  - Works with any reward function signature
-  - Multi-turn tool-enabled environments
-  - Automatic trainer integration via env >> trainer
-  - HuggingFace dataset compatibility
+### 1. LLM Module (`llm/`)
 
-  Training Integration:
-  - GRPO, PPO, DPO trainer compatibility
-  - Reward function composition with weights
-  - Preference dataset generation capabilities
+**Abstraction Power**:
+- `BaseLLM` provides unified interface for vLLM, Ollama, OpenAI, etc.
+- Tool conversion system transforms Python functions to OpenAI tool schemas
+- Streaming/non-streaming handled transparently
+- Runtime parameter overrides: `llm(text, tools=[...], format=schema)`
 
-  Key Innovations
+**Production Readiness**:
+- Proper error handling and timeout management
+- Batch processing with ThreadPoolExecutor
+- Tool calling standardization across providers
+- **Thinking extraction** for reasoning models with `<think>` tags
+- Handles incomplete thinking blocks and token limits
 
-  1. Pythonic Simplicity: Everything feels like native Python - no complex configuration files or verbose APIs
-  2. Composability: Components chain naturally:
-  result = (env >> trainer).train()
-  agent1 >> agent2 >> agent3  # Pipeline
-  3. Auto-Detection: Framework infers intent from usage patterns, reducing cognitive load
-  4. Loose Coupling: Each component works independently but integrates seamlessly
-  5. Production Scale: Thread pools, error handling, timeouts, proper streaming
+### 2. Agent Module (`agent/`)
 
-  Extensibility for Other Use Cases
+**Agentic Intelligence**:
+- Wraps any LLM with autonomous tool-calling loops
+- Rich debugging with formatted output panels
+- History management and conversation continuity
+- Agent chaining with `>>` operator
+- Export/import for conversation persistence
 
-  This architecture pattern can be extended to:
+**Flexibility**:
+- Works with any BaseLLM implementation
+- Streaming and non-streaming execution
+- Async/sync compatibility
+- Pluggable tool system
 
-  Data Processing:
-  processor = DataProcessor(transforms=[clean, tokenize])
-  result = processor(dataset)  # Auto-batch
+### 3. API Server (`api/`)
 
-  Model Evaluation:
-  evaluator = Evaluator(metrics=[accuracy, f1])
-  scores = evaluator(model, test_data)
+**Local LLM Server**:
+- FastAPI-based server for llama.cpp models
+- Supports both streaming and non-streaming responses
+- Tool calling and JSON schema validation
+- Compatible with OpenAI ChatCompletion format
 
-  Workflow Orchestration:
-  pipeline = step1 >> step2 >> step3
-  result = pipeline(input_data)
+**Usage**:
+```python
+# Start server
+python -m flowgen.api.api
 
-  The framework demonstrates how to build production-ready systems that are both powerful and intuitive - a rare combination in ML infrastructure.
+# Use with LLM client
+llm = LLM(base_url="http://localhost:8000")
+```
+
+### 4. RL Environment (`rl/`)
+
+**Universal RL Interface**:
+- Works with any reward function signature
+- Multi-turn tool-enabled environments
+- Automatic trainer integration via `env >> trainer`
+- HuggingFace dataset compatibility
+
+**Training Integration**:
+- GRPO, PPO, DPO trainer compatibility
+- Reward function composition with weights
+- Preference dataset generation capabilities
+
+## Key Innovations
+
+1. **Pythonic Simplicity**: Everything feels like native Python - no complex configuration files or verbose APIs
+2. **Composability**: Components chain naturally:
+   ```python
+   result = (env >> trainer).train()
+   agent1 >> agent2 >> agent3  # Pipeline
+   ```
+3. **Auto-Detection**: Framework infers intent from usage patterns, reducing cognitive load
+4. **Loose Coupling**: Each component works independently but integrates seamlessly
+5. **Production Scale**: Thread pools, error handling, timeouts, proper streaming
+
+## Recent Fixes
+
+- **Thinking Extraction**: Fixed handling of incomplete `<think>` blocks from reasoning models
+- **Token Limits**: Increased default max_tokens from 100 to 1000 for better response quality
+- **Content Separation**: Properly separates thinking content from actual responses
+
+## Testing
+
+Run the test suites to verify functionality:
+
+```bash
+# Basic LLM functionality
+python test_llm_basic.py
+
+# Agent with tools
+python test_agent_basic.py
+
+# Streaming capabilities
+python test_llm_streaming.py
+```
+
+## Extensibility
+
+This architecture pattern can be extended to:
+
+**Data Processing**:
+```python
+processor = DataProcessor(transforms=[clean, tokenize])
+result = processor(dataset)  # Auto-batch
+```
+
+**Model Evaluation**:
+```python
+evaluator = Evaluator(metrics=[accuracy, f1])
+scores = evaluator(model, test_data)
+```
+
+**Workflow Orchestration**:
+```python
+pipeline = step1 >> step2 >> step3
+result = pipeline(input_data)
+```
+
+The framework demonstrates how to build production-ready systems that are both powerful and intuitive - a rare combination in ML infrastructure.
 

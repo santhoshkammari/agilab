@@ -40,7 +40,7 @@ class LLM(BaseLLM):
             "messages": input,
             "tools": tools,
             "options": {
-                "max_tokens": kwargs.get("max_tokens", 100),
+                "max_tokens": kwargs.get("max_tokens", 1000),
                 "temperature": kwargs.get("temperature", 0.8),
                 "top_p": kwargs.get("top_p", 0.95),
                 "stream": False
@@ -84,7 +84,7 @@ class LLM(BaseLLM):
             "messages": messages,
             "tools": tools,
             "options": {
-                "max_tokens": kwargs.get("max_tokens", 100),
+                "max_tokens": kwargs.get("max_tokens", 1000),
                 "temperature": kwargs.get("temperature", 0.8),
                 "top_p": kwargs.get("top_p", 0.95),
                 "stream": True
