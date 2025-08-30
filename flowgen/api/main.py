@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from llama_cpp import Llama
+from llama_cpp import Llama, LlamaGrammar
 from transformers import AutoTokenizer
 import json
 from typing import Optional
@@ -15,6 +15,7 @@ class ChatRequest(BaseModel):
     messages: list
     tools: Optional[list] = None
     options: Optional[dict] = None
+    response_format: Optional[dict] = None
 
 class CompletionOptions(BaseModel):
     suffix: Optional[str] = None
@@ -110,6 +111,15 @@ async def chat(request: ChatRequest):
             # Override with user-provided options
             if request.options:
                 completion_options.update(request.options)
+            
+            # Handle response_format for JSON schema
+            if request.response_format and request.response_format.get("type") == "json_object":
+                schema = request.response_format.get("schema")
+                if schema:
+                    # Schema is already from Pydantic model_json_schema(), convert to string
+                    schema_str = json.dumps(schema) if isinstance(schema, dict) else schema
+                    grammar = LlamaGrammar.from_json_schema(schema_str)
+                    completion_options["grammar"] = grammar
             
             response = model.create_completion(**completion_options)
             

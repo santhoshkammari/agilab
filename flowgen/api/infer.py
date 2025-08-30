@@ -1,6 +1,7 @@
 import requests
 from transformers import AutoTokenizer
 import json
+from pydantic import BaseModel
 
 def get_weather(location: str) -> str:
     """Gets the weather for a given location.
@@ -162,6 +163,14 @@ def test_case_chat():
             "max_tokens": 150,
             "temperature": 0.8,
             "top_p": 0.9
+        },
+        "response_format": {
+            "type": "json_object",
+            "schema": {
+                "type": "object",
+                "properties": {"response": {"type": "string"}},
+                "required": ["response"]
+            }
         }
     }
     
@@ -188,6 +197,126 @@ def test_case_unload():
     print(f"Unload response: {response.json()}")
     return response.status_code == 200
 
+class ColorResponse(BaseModel):
+    color: str
+    reason: str
+
+def test_case_json_format():
+    """Test the /chat endpoint with JSON format response using Pydantic schema"""
+    url = "http://localhost:8001/chat"
+    
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant. Always respond in the specified JSON format."},
+        {"role": "user", "content": "What's your favorite color and why?"}
+    ]
+    
+    # Use Pydantic model_json_schema()
+    response_schema = ColorResponse.model_json_schema()
+    
+    payload = {
+        "messages": messages,
+        "options": {
+            "max_tokens": 100,
+            "temperature": 0.7
+        },
+        "response_format": {
+            "type": "json_object",
+            "schema": response_schema
+        }
+    }
+    
+    print("Testing JSON format response:")
+    with requests.post(url, json=payload, stream=True) as r:
+        response_text = ""
+        for line in r.iter_lines():
+            if line:
+                try:
+                    line_str = line.decode("utf-8")
+                    if line_str.startswith("data:"):
+                        data = line_str[len("data:"):].strip()
+                        if data == "[DONE]":
+                            break
+                        token_obj = json.loads(data)
+                        content = token_obj["content"]
+                        response_text += content
+                        print(content, end="", flush=True)
+                except Exception as e:
+                    pass
+        print()
+        
+        # Try to parse the final response as JSON
+        try:
+            parsed_json = json.loads(response_text.strip())
+            print(f"Successfully parsed JSON: {parsed_json}")
+        except:
+            print(f"Warning: Response was not valid JSON: {response_text}")
+
+def test_case_tool_calling():
+    """Test the /chat endpoint with tool calling"""
+    url = "http://localhost:8001/chat"
+    
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant. Use the available tools when appropriate."},
+        {"role": "user", "content": "What's 25 + 17? Also what's the weather in Tokyo?"}
+    ]
+    
+    tools_schema = [
+        {
+            "type": "function",
+            "function": {
+                "name": "calculate_sum",
+                "description": "Calculates the sum of two integers.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "a": {"type": "integer", "description": "The first integer."},
+                        "b": {"type": "integer", "description": "The second integer."}
+                    },
+                    "required": ["a", "b"]
+                }
+            }
+        },
+        {
+            "type": "function", 
+            "function": {
+                "name": "get_weather",
+                "description": "Gets the weather for a given location.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string", "description": "The location to get the weather for."}
+                    },
+                    "required": ["location"]
+                }
+            }
+        }
+    ]
+    
+    payload = {
+        "messages": messages,
+        "tools": tools_schema,
+        "options": {
+            "max_tokens": 200,
+            "temperature": 0.3
+        }
+    }
+    
+    print("Testing tool calling:")
+    with requests.post(url, json=payload, stream=True) as r:
+        for line in r.iter_lines():
+            if line:
+                try:
+                    line_str = line.decode("utf-8")
+                    if line_str.startswith("data:"):
+                        data = line_str[len("data:"):].strip()
+                        if data == "[DONE]":
+                            break
+                        token_obj = json.loads(data)
+                        print(token_obj["content"], end="", flush=True)
+                except Exception as e:
+                    pass
+        print()
+
 if __name__ == "__main__":
     print("Testing API endpoints...")
     
@@ -195,10 +324,18 @@ if __name__ == "__main__":
     print("1. Testing /load endpoint")
     test_case_load()
     
-    # Test chat
+    # Test regular chat
     print("2. Testing /chat endpoint")
     test_case_chat()
     
+    # Test JSON format
+    print("3. Testing JSON format response")
+    test_case_json_format()
+    
+    # Test tool calling
+    print("4. Testing tool calling")
+    test_case_tool_calling()
+    
     # Test unload
-    print("3. Testing /unload endpoint") 
+    print("5. Testing /unload endpoint") 
     test_case_unload()
