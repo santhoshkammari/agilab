@@ -1,6 +1,31 @@
 import requests
 from transformers import AutoTokenizer
 
+def get_weather(location: str) -> str:
+    """Gets the weather for a given location.
+    
+    Args:
+        location: The location to get the weather for.
+        
+    Returns:
+        str: A description of the weather.
+    """
+    # In a real implementation, you would call a weather API here.
+    # For this example, we'll just return a placeholder.
+    return f"The weather in {location} is sunny."
+
+def calculate_sum(a: int, b: int) -> int:
+    """Calculates the sum of two integers.
+    
+    Args:
+        a: The first integer.
+        b: The second integer.
+        
+    Returns:
+        int: The sum of a and b.
+    """
+    return a + b
+
 model_id = "LiquidAI/LFM2-350M"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 
@@ -13,6 +38,7 @@ messages = [
 # 2. Convert messages → prompt (ChatML style)
 prompt = tokenizer.apply_chat_template(
     messages,
+    tools=[calculate_sum,get_weather],
     tokenize=False,            # gives text, not tensors
     add_generation_prompt=True
 )
