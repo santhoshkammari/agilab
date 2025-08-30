@@ -4,29 +4,66 @@ from pydantic import BaseModel
 from llama_cpp import Llama, LlamaGrammar
 from transformers import AutoTokenizer
 import json
-from typing import Optional
+import re
+from typing import Optional, List, Dict, Any, Union
 
 app = FastAPI()
 
 llm = None
 tokenizer = None
 
-class ChatRequest(BaseModel):
-    messages: list
-    tools: Optional[list] = None
-    options: Optional[dict] = None
-    response_format: Optional[dict] = None
+class LoadOptions(BaseModel):
+    n_gpu_layers: int = 0
+    split_mode: int = 1
+    main_gpu: int = 0
+    tensor_split: Optional[List[float]] = None
+    vocab_only: bool = False
+    use_mmap: bool = True
+    use_mlock: bool = False
+    kv_overrides: Optional[Dict[str, Union[bool, int, float, str]]] = None
+    seed: int = 4294967295
+    n_ctx: int = 2048
+    n_batch: int = 256
+    n_ubatch: int = 512
+    n_threads: Optional[int] = None
+    n_threads_batch: Optional[int] = None
+    rope_scaling_type: int = -1
+    pooling_type: int = -1
+    rope_freq_base: float = 0.0
+    rope_freq_scale: float = 0.0
+    yarn_ext_factor: float = -1.0
+    yarn_attn_factor: float = 1.0
+    yarn_beta_fast: float = 32.0
+    yarn_beta_slow: float = 1.0
+    yarn_orig_ctx: int = 0
+    logits_all: bool = False
+    embedding: bool = False
+    offload_kqv: bool = True
+    flash_attn: bool = False
+    op_offload: Optional[bool] = None
+    swa_full: Optional[bool] = None
+    no_perf: bool = False
+    last_n_tokens_size: int = 64
+    lora_base: Optional[str] = None
+    lora_scale: float = 1.0
+    lora_path: Optional[str] = None
+    numa: Union[bool, int] = False
+    chat_format: Optional[str] = None
+    verbose: bool = False
+    type_k: Optional[int] = None
+    type_v: Optional[int] = None
+    spm_infill: bool = False
 
-class CompletionOptions(BaseModel):
+class ChatOptions(BaseModel):
     suffix: Optional[str] = None
-    max_tokens: Optional[int] = 16
+    max_tokens: int = 100
     temperature: float = 0.8
     top_p: float = 0.95
     min_p: float = 0.05
     typical_p: float = 1.0
     logprobs: Optional[int] = None
     echo: bool = False
-    stop: Optional[list] = []
+    stop: Union[str, List[str]] = []
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
     repeat_penalty: float = 1.0
@@ -38,11 +75,30 @@ class CompletionOptions(BaseModel):
     mirostat_tau: float = 5.0
     mirostat_eta: float = 0.1
     model: Optional[str] = None
-    logit_bias: Optional[dict] = None
+    logit_bias: Optional[Dict[int, float]] = None
+
+class ChatRequest(BaseModel):
+    messages: list
+    tools: Optional[list] = None
+    options: Optional[ChatOptions] = None
+    response_format: Optional[dict] = None
 
 class LoadRequest(BaseModel):
     model_path: str
     tokenizer_name: str
+    options: Optional[LoadOptions] = None
+
+class ToolCall(BaseModel):
+    name: str
+    arguments: Dict[str, Any]
+
+class Choice(BaseModel):
+    message: Dict[str, Any]
+    finish_reason: str = "stop"
+
+class ChatCompletion(BaseModel):
+    choices: List[Choice]
+    tool_calls: List[ToolCall] = []
 
 def get_llama():
     global llm
@@ -56,17 +112,73 @@ def get_tokenizer():
         raise Exception("Tokenizer not loaded. Call /load first.")
     return tokenizer
 
+def parse_tool_calls(response_text: str) -> List[ToolCall]:
+    """Parse tool calls from model response"""
+    tool_calls = []
+    
+    # Format 1: [function_name(arg=value), function_name(arg=value)]
+    list_pattern = r'\[([^\]]+)\]'
+    list_match = re.search(list_pattern, response_text)
+    
+    if list_match:
+        calls_str = list_match.group(1)
+        func_pattern = r'(\w+)\(([^)]+)\)'
+        func_matches = re.findall(func_pattern, calls_str)
+        
+        for func_name, args_str in func_matches:
+            try:
+                arguments = {}
+                arg_pairs = [arg.strip() for arg in args_str.split(',')]
+                
+                for pair in arg_pairs:
+                    if '=' in pair:
+                        key, value = pair.split('=', 1)
+                        key = key.strip()
+                        value = value.strip().strip('"\'')
+                        
+                        try:
+                            value = int(value)
+                        except ValueError:
+                            try:
+                                value = float(value)
+                            except ValueError:
+                                pass
+                        
+                        arguments[key] = value
+                
+                tool_calls.append(ToolCall(name=func_name, arguments=arguments))
+                
+            except Exception:
+                pass
+    
+    # Format 2: <tool_call>{"name": "function_name", "arguments": {...}}</tool_call>
+    tool_call_pattern = r'<tool_call>(.*?)</tool_call>'
+    matches = re.findall(tool_call_pattern, response_text, re.DOTALL)
+    
+    for match in matches:
+        try:
+            tool_call_data = json.loads(match.strip())
+            tool_calls.append(ToolCall(
+                name=tool_call_data["name"],
+                arguments=tool_call_data["arguments"]
+            ))
+        except Exception:
+            pass
+    
+    return tool_calls
+
 @app.post("/load")
 async def load_model(request: LoadRequest):
     global llm, tokenizer
     try:
         tokenizer = AutoTokenizer.from_pretrained(request.tokenizer_name)
-        llm = Llama(
-            model_path=request.model_path,
-            n_ctx=1024,
-            n_batch=128,
-            verbose=False
-        )
+        
+        # Use LoadOptions with defaults
+        load_options = request.options or LoadOptions()
+        load_options_dict = load_options.model_dump(exclude_none=True)
+        load_options_dict["model_path"] = request.model_path
+        
+        llm = Llama(**load_options_dict)
         return {"status": "success", "message": "Model and tokenizer loaded successfully"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -83,55 +195,75 @@ async def chat(request: ChatRequest):
     model = get_llama()
     tok = get_tokenizer()
     
-    def generate():
-        try:
-            # Apply chat template with dynamic tools
-            prompt = tok.apply_chat_template(
-                request.messages,
-                tools=request.tools,
-                tokenize=False,
-                add_generation_prompt=True
+    try:
+        prompt = tok.apply_chat_template(
+            request.messages,
+            tools=request.tools,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+        
+        model.reset()
+        
+        # Use ChatOptions with defaults
+        chat_options = request.options or ChatOptions()
+        completion_options = chat_options.model_dump(exclude_none=True)
+        completion_options["prompt"] = prompt
+        
+        # Handle JSON schema
+        if request.response_format and request.response_format.get("type") == "json_object":
+            schema = request.response_format.get("schema")
+            if schema:
+                schema_str = json.dumps(schema) if isinstance(schema, dict) else schema
+                grammar = LlamaGrammar.from_json_schema(schema_str)
+                completion_options["grammar"] = grammar
+        
+        # Check if streaming
+        if completion_options.get("stream", False):
+            def generate():
+                full_content = ""
+                try:
+                    response = model.create_completion(**completion_options)
+                    for chunk in response:
+                        if chunk["choices"][0]["text"]:
+                            content = chunk["choices"][0]["text"]
+                            full_content += content
+                            yield f"data: {json.dumps({'content': content})}\n\n"
+                    
+                    # Send final completion
+                    tool_calls = parse_tool_calls(full_content)
+                    final_completion = ChatCompletion(
+                        choices=[Choice(
+                            message={"role": "assistant", "content": full_content},
+                            finish_reason="stop"
+                        )],
+                        tool_calls=tool_calls
+                    )
+                    yield f"data: {json.dumps({'completion': final_completion.model_dump()})}\n\n"
+                    yield "data: [DONE]\n\n"
+                except Exception as e:
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            
+            return StreamingResponse(generate(), media_type="text/plain")
+        
+        else:
+            # Non-streaming
+            response = model.create_completion(**completion_options)
+            content = response["choices"][0]["text"]
+            tool_calls = parse_tool_calls(content)
+            
+            chat_completion = ChatCompletion(
+                choices=[Choice(
+                    message={"role": "assistant", "content": content},
+                    finish_reason=response["choices"][0]["finish_reason"]
+                )],
+                tool_calls=tool_calls
             )
             
-            # Reset model state before each completion
-            model.reset()
+            return chat_completion.model_dump()
             
-            # Use options if provided, otherwise use defaults
-            completion_options = {
-                "prompt": prompt,
-                "stream": True
-            }
-            
-            # Apply default options
-            default_options = CompletionOptions()
-            for field, value in default_options.dict().items():
-                if field != "stream":  # stream is already set
-                    completion_options[field] = value
-            
-            # Override with user-provided options
-            if request.options:
-                completion_options.update(request.options)
-            
-            # Handle response_format for JSON schema
-            if request.response_format and request.response_format.get("type") == "json_object":
-                schema = request.response_format.get("schema")
-                if schema:
-                    # Schema is already from Pydantic model_json_schema(), convert to string
-                    schema_str = json.dumps(schema) if isinstance(schema, dict) else schema
-                    grammar = LlamaGrammar.from_json_schema(schema_str)
-                    completion_options["grammar"] = grammar
-            
-            response = model.create_completion(**completion_options)
-            
-            for chunk in response:
-                if chunk["choices"][0]["text"]:
-                    content = chunk["choices"][0]["text"]
-                    yield f"data: {json.dumps({'content': content})}\n\n"
-            yield "data: [DONE]\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
-    return StreamingResponse(generate(), media_type="text/plain")
+    except Exception as e:
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
