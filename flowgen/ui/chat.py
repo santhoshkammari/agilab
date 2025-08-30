@@ -105,17 +105,19 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
                 token = event.get('content', '')
                 current_content += token
                 
-                # Update or add main response with streaming content
-                main_msg_exists = any(msg.metadata is None or msg.metadata.get('title') is None for msg in result)
-                if main_msg_exists:
-                    # Update existing main message
-                    for i, msg in enumerate(result):
-                        if msg.metadata is None or msg.metadata.get('title') is None:
-                            result[i] = gr.ChatMessage(role="assistant", content=current_content)
-                            break
-                else:
-                    # Add new main message
-                    result.append(gr.ChatMessage(role="assistant", content=current_content))
+                # Only show meaningful content (not just whitespace or partial tags)
+                if current_content.strip() and not re.search(r'^\s*<(think|tool_call)', current_content):
+                    # Update or add main response with streaming content
+                    main_msg_exists = any(msg.metadata is None or msg.metadata.get('title') is None for msg in result)
+                    if main_msg_exists:
+                        # Update existing main message
+                        for i, msg in enumerate(result):
+                            if msg.metadata is None or msg.metadata.get('title') is None:
+                                result[i] = gr.ChatMessage(role="assistant", content=current_content.strip())
+                                break
+                    else:
+                        # Add new main message
+                        result.append(gr.ChatMessage(role="assistant", content=current_content.strip()))
             
             elif event_type == 'think_token':
                 think_token = event.get('content', '')
@@ -161,6 +163,9 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
                             metadata={"title": "💭 Thinking", "status": "done"}
                         )
                         break
+                
+                # Reset content buffer after thinking to avoid mixing
+                current_content = ""
             
             elif event_type == 'tool_start':
                 tool_name = event.get('tool_name', 'unknown')
@@ -193,9 +198,12 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
                             metadata={"title": "🔧 Tool Call", "status": "done"}
                         )
                         break
+                
+                # Reset content buffer after tool execution to avoid mixing
+                current_content = ""
             
             elif event_type == 'final':
-                # Final response - make sure we have the complete content
+                # Final response - ensure clean display
                 final_content = event.get('content', '')
                 if final_content.strip():
                     # Clean up any remaining tags
@@ -203,15 +211,14 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
                     final_content = re.sub(r'<tool_call>.*?</tool_call>', '', final_content, flags=re.DOTALL).strip()
                     
                     if final_content:
-                        # Update or add final main message
-                        main_msg_exists = any(msg.metadata is None or msg.metadata.get('title') is None for msg in result)
-                        if main_msg_exists:
-                            for i, msg in enumerate(result):
-                                if msg.metadata is None or msg.metadata.get('title') is None:
-                                    result[i] = gr.ChatMessage(role="assistant", content=final_content)
-                                    break
-                        else:
-                            result.append(gr.ChatMessage(role="assistant", content=final_content))
+                        # Remove any existing main message and add clean final message
+                        result = [msg for msg in result if msg.metadata is not None and msg.metadata.get('title') is not None]
+                        result.append(gr.ChatMessage(role="assistant", content=final_content))
+            
+            elif event_type == 'iteration_start':
+                # Reset content for new iteration
+                current_content = ""
+                current_thinking = ""
             
             # Yield current state
             if result:
