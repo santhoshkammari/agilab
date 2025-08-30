@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 from typing import Any, Optional, List, Dict, Union
-from openai import OpenAI
+from openai import OpenAI as openOAI
 
 from .basellm import BaseLLM
 
@@ -40,7 +40,7 @@ class OpenAI(BaseLLM):
         if self._project:
             client_kwargs["project"] = self._project
             
-        return OpenAI(**client_kwargs)
+        return openOAI(**client_kwargs)
 
     def chat(self, input, **kwargs):
         """Generate text using OpenAI-compatible chat API."""
