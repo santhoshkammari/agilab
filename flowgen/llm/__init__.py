@@ -24,6 +24,9 @@ def __getattr__(name):
     elif name == "OpenAI":
         from .openai_compatible import OpenAI
         return OpenAI
+    elif name == "LLM":
+        from .llm import LLM
+        return LLM
     else:
         raise AttributeError(f"module 'flowgen.llm' has no attribute '{name}'")
 
