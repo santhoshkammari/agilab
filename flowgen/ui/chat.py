@@ -10,9 +10,9 @@
 import argparse
 import re
 import requests
+import json
 
 import gradio as gr
-from openai import OpenAI
 from css import theme
 from scout_component import create_scout_textbox_ui
 
@@ -20,9 +20,7 @@ from scout_component import create_scout_textbox_ui
 def fetch_models(endpoint):
     """Fetch available models from the /models endpoint."""
     try:
-        base_url = f"http://{endpoint}/v1" if not endpoint.startswith("http") else endpoint
-        if not base_url.endswith("/v1"):
-            base_url += "/v1"
+        base_url = f"http://{endpoint}" if not endpoint.startswith("http") else endpoint
         
         response = requests.get(f"{base_url}/models", timeout=5)
         response.raise_for_status()
@@ -46,9 +44,9 @@ def update_models(endpoint):
 
 def chat_function(message, history, endpoint, model_name, key, temperature, top_p, max_tokens, think_start_token):
     """
-    Chat function that communicates with OpenAI-compatible endpoint.
+    Chat function that communicates with unified API endpoint.
     """
-    client = OpenAI(api_key=key, base_url=f"http://{endpoint}/v1" if not endpoint.startswith("http") else endpoint)
+    base_url = f"http://{endpoint}" if not endpoint.startswith("http") else endpoint
 
     messages = []
 
@@ -61,15 +59,24 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
 
     messages.append({"role": "user", "content": message})
 
+    payload = {
+        "messages": messages,
+        "options": {
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_tokens": int(max_tokens),
+            "stream": True
+        }
+    }
+
     try:
-        stream = client.chat.completions.create(
-            model=model_name,
-            messages=messages,
+        response = requests.post(
+            f"{base_url}/chat",
+            json=payload,
             stream=True,
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=int(max_tokens),
+            timeout=30
         )
+        response.raise_for_status()
 
         # Initialize buffers
         current_buffer = ""
@@ -85,10 +92,26 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
         seen_non_whitespace = False
 
         # Process the stream
-        for chunk in stream:
-            content = chunk.choices[0].delta.content
-            if content is not None:
-                current_buffer += content
+        for line in response.iter_lines():
+            if line:
+                line_str = line.decode('utf-8')
+                if line_str.startswith('data: '):
+                    data = line_str[6:]
+                    if data == '[DONE]':
+                        break
+                    try:
+                        chunk_data = json.loads(data)
+                        if 'content' in chunk_data:
+                            content = chunk_data['content']
+                            if content is not None:
+                                current_buffer += content
+                        elif 'completion' in chunk_data:
+                            # Handle final completion if needed
+                            continue
+                    except json.JSONDecodeError:
+                        continue
+                else:
+                    continue
 
                 # Process buffer for complete tags
                 processed = True
