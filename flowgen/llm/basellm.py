@@ -63,7 +63,7 @@ def convert_func_to_oai_tool(func: Any) -> dict:
 class BaseLLM(ABC):
     """Base class for all LLM implementations."""
 
-    def __init__(self, model=None, api_key=None, tools=None, format=None, timeout=None, **kwargs):
+    def __init__(self, model="", api_key=None, tools=None, format=None, timeout=None, **kwargs):
         self._model = model
         self._tools = tools
         self._format = format

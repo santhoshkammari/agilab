@@ -26,6 +26,9 @@ def __getattr__(name):
     elif name == "LFM":
         from .llm import LFM
         return LFM
+    elif name == "OpenAI":
+        from .llm.openai_compatible import OpenAI
+        return OpenAI
     else:
         raise AttributeError(f"module 'flowgen' has no attribute '{name}'")
 
@@ -39,6 +42,7 @@ __all__ = [
     'Gemini',
     'hfLLM',
     'LlamaCpp',
+    'OpenAI',
     'Agent',
     'AgentChain',
     'create_agent',

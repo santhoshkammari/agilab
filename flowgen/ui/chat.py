@@ -44,7 +44,7 @@ def update_models(endpoint):
         return gr.Dropdown(choices=["Qwen/Qwen3-8B"], value="Qwen/Qwen3-8B")
 
 
-def chat_function(message, history, endpoint, model_name, key, temperature, top_p, max_tokens):
+def chat_function(message, history, endpoint, model_name, key, temperature, top_p, max_tokens, think_start_token):
     """
     Chat function that communicates with OpenAI-compatible endpoint.
     """
@@ -73,6 +73,11 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
 
         # Initialize buffers
         current_buffer = ""
+        
+        ## Use think start token based on user setting from UI sidebar
+        if think_start_token:
+            current_buffer = "<think> "  # For models that need explicit thinking activation
+
         in_thinking = False
         thinking_content = ""
         final_content = ""
@@ -235,6 +240,13 @@ def create_demo():
             temp_slider = gr.Slider(minimum=0.0, maximum=2.0, value=0.7, step=0.1, label="Temperature")
             top_p_slider = gr.Slider(minimum=0.0, maximum=1.0, value=0.9, step=0.05, label="Top P")
             max_tokens_slider = gr.Slider(minimum=16, maximum=8192, value=2048, step=16, label="Max Tokens")
+            
+            gr.Markdown("### Thinking Options")
+            think_start_toggle = gr.Checkbox(
+                label="Think Start Token",
+                value=False,
+                info="Add '<think> ' token for models that need explicit thinking activation"
+            )
 
 
 
@@ -243,7 +255,7 @@ def create_demo():
         
         # Create custom chatbot
         chatbot = gr.Chatbot(
-            height=650,
+            height=640,
             show_copy_button=False,
             placeholder="START HERE",
             type="messages",
@@ -351,7 +363,7 @@ def create_demo():
         """)
         
         # Custom chat function wrapper
-        def handle_chat(message, history, endpoint, model, key, temp, top_p, max_tokens):
+        def handle_chat(message, history, endpoint, model, key, temp, top_p, max_tokens, think_start_token):
             if not message.strip():
                 return history, "", gr.update(), gr.update()
             
@@ -364,7 +376,7 @@ def create_demo():
             
             # Call the chat function with streaming
             response_gen = chat_function(
-                message, history, endpoint, model, key, temp, top_p, max_tokens
+                message, history, endpoint, model, key, temp, top_p, max_tokens, think_start_token
             )
             
             # Stream the response and build complete conversation history
@@ -384,7 +396,8 @@ def create_demo():
                 key_input,
                 temp_slider,
                 top_p_slider,
-                max_tokens_slider
+                max_tokens_slider,
+                think_start_toggle
             ],
             outputs=[chatbot, scout_textbox, chatbot, placeholder_md],
         )
@@ -399,7 +412,8 @@ def create_demo():
                 key_input,
                 temp_slider,
                 top_p_slider,
-                max_tokens_slider
+                max_tokens_slider,
+                think_start_toggle
             ],
             outputs=[chatbot, scout_textbox, chatbot, placeholder_md],
         )
