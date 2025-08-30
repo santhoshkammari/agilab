@@ -6,8 +6,8 @@ from openai import OpenAI
 from .basellm import BaseLLM
 
 
-class OpenAICompatible(BaseLLM):
-    """OpenAI-compatible LLM wrapper for any OpenAI API-compatible service."""
+class OpenAI(BaseLLM):
+    """OpenAI LLM wrapper for OpenAI API-compatible services."""
     
     def __init__(self, model="", api_key="EMPTY", base_url="http://0.0.0.0:8000/v1", 
                  organization=None, project=None, **kwargs):
