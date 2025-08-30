@@ -97,6 +97,7 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
         current_thinking = ""
         current_content = ""
         tool_calls_completed = []
+        tool_call_count = 0
         
         for event in agent_stream:
             event_type = event.get('type', 'unknown')
@@ -183,20 +184,62 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
                 tool_name = event.get('tool_name', 'unknown')
                 tool_args = event.get('tool_args', {})
                 tool_result = event.get('result', '')
+                tool_call_count += 1
                 
-                # Update the pending tool call with result
-                for i, msg in enumerate(result):
-                    if (msg.metadata and 
-                        msg.metadata.get('title') == f'🔧 {tool_name}' and 
-                        msg.metadata.get('status') == 'pending'):
+                # Store completed tool call
+                tool_calls_completed.append({
+                    'name': tool_name,
+                    'args': tool_args,
+                    'result': tool_result
+                })
+                
+                # Auto-collapse logic: Keep last 2 expanded, group older ones
+                if tool_call_count <= 2:
+                    # Show individual tool calls for first 2
+                    for i, msg in enumerate(result):
+                        if (msg.metadata and 
+                            msg.metadata.get('title') == f'🔧 {tool_name}' and 
+                            msg.metadata.get('status') == 'pending'):
+                            
+                            tool_content = f"**Function:** {tool_name}\n**Arguments:** {json.dumps(tool_args, indent=2)}\n**Result:** {tool_result}"
+                            result[i] = gr.ChatMessage(
+                                role="assistant", 
+                                content=tool_content, 
+                                metadata={"title": f"🔧 {tool_name}", "status": "done"}
+                            )
+                            break
+                else:
+                    # Group mode: Replace individual tool calls with summary
+                    
+                    # Remove all existing tool call messages
+                    result = [msg for msg in result if not (msg.metadata and msg.metadata.get('title', '').startswith('🔧'))]
+                    
+                    # Create grouped summary
+                    if len(tool_calls_completed) >= 3:
+                        # Show summary of all tools
+                        tool_summary = []
+                        for i, tool in enumerate(tool_calls_completed[:-1]):  # All except current
+                            tool_summary.append(f"• {tool['name']}: {str(tool['result'])[:50]}...")
                         
-                        tool_content = f"**Function:** {tool_name}\n**Arguments:** {json.dumps(tool_args, indent=2)}\n**Result:** {tool_result}"
-                        result[i] = gr.ChatMessage(
-                            role="assistant", 
-                            content=tool_content, 
-                            metadata={"title": f"🔧 {tool_name}", "status": "done"}
+                        summary_content = f"**Executed {len(tool_calls_completed)-1} tools:**\n" + "\n".join(tool_summary)
+                        result.append(
+                            gr.ChatMessage(
+                                role="assistant",
+                                content=summary_content,
+                                metadata={"title": f"🔧 {len(tool_calls_completed)-1} Tools", "status": "done"}
+                            )
                         )
-                        break
+                    
+                    # Show current tool call expanded
+                    current_tool = tool_calls_completed[-1]
+                    tool_content = f"**Function:** {current_tool['name']}\n**Arguments:** {json.dumps(current_tool['args'], indent=2)}\n**Result:** {current_tool['result']}"
+                    result.append(
+                        gr.ChatMessage(
+                            role="assistant",
+                            content=tool_content,
+                            metadata={"title": f"🔧 {current_tool['name']}", "status": "done"}
+                        )
+                    )
                 
                 # Reset content buffer after tool execution to avoid mixing
                 current_content = ""
