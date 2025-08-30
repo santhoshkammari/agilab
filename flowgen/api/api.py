@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from llama_cpp import Llama, LlamaGrammar
 from transformers import AutoTokenizer
 import json
@@ -44,11 +44,11 @@ class LoadOptions(BaseModel):
     swa_full: Optional[bool] = None
     no_perf: bool = False
     last_n_tokens_size: int = 64
-    lora_base: Optional[str] = None
+    lora_base: Optional[str] = Field(None, description="Base model for LoRA adapter (leave empty if not using LoRA)")
     lora_scale: float = 1.0
-    lora_path: Optional[str] = None
+    lora_path: Optional[str] = Field(None, description="Path to LoRA adapter file (leave empty if not using LoRA)")
     numa: Union[bool, int] = False
-    chat_format: Optional[str] = None
+    chat_format: Optional[str] = Field(None, description="Chat template format (leave empty for auto-detection)")
     verbose: bool = False
     type_k: Optional[int] = None
     type_v: Optional[int] = None
@@ -178,6 +178,48 @@ async def load_model(request: LoadRequest):
         load_options_dict = load_options.model_dump(exclude_none=True)
         load_options_dict["model_path"] = request.model_path
         
+        # Comprehensive parameter validation
+        # Remove invalid tensor_split values
+        if "tensor_split" in load_options_dict and load_options_dict["tensor_split"]:
+            tensor_split = load_options_dict["tensor_split"]
+            if isinstance(tensor_split, list):
+                # Remove if contains zeros, single element, or doesn't sum close to 1.0
+                if (any(x <= 0 for x in tensor_split) or 
+                    len(tensor_split) == 1 or 
+                    (len(tensor_split) > 1 and abs(sum(tensor_split) - 1.0) > 0.01)):
+                    del load_options_dict["tensor_split"]
+        
+        # Remove zero thread counts (causes crashes)
+        if "n_threads" in load_options_dict and load_options_dict["n_threads"] == 0:
+            del load_options_dict["n_threads"]
+        
+        if "n_threads_batch" in load_options_dict and load_options_dict["n_threads_batch"] == 0:
+            del load_options_dict["n_threads_batch"]
+        
+        # Remove invalid rope_scaling_type (must be -1 or valid enum value)
+        if "rope_scaling_type" in load_options_dict and load_options_dict["rope_scaling_type"] not in [-1, 0, 1, 2, 3]:
+            load_options_dict["rope_scaling_type"] = -1
+        
+        # Remove string placeholders and empty strings that could cause crashes
+        string_params = ["lora_base", "lora_path", "chat_format"]
+        for param in string_params:
+            if param in load_options_dict and (
+                load_options_dict[param] == "string" or 
+                load_options_dict[param] == "" or
+                load_options_dict[param] == "null"
+            ):
+                del load_options_dict[param]
+        
+        # Validate context and batch sizes
+        if "n_ctx" in load_options_dict and load_options_dict["n_ctx"] <= 0:
+            load_options_dict["n_ctx"] = 2048
+        
+        if "n_batch" in load_options_dict and load_options_dict["n_batch"] <= 0:
+            load_options_dict["n_batch"] = 256
+        
+        if "n_ubatch" in load_options_dict and load_options_dict["n_ubatch"] <= 0:
+            load_options_dict["n_ubatch"] = 512
+        
         llm = Llama(**load_options_dict)
         return {"status": "success", "message": "Model and tokenizer loaded successfully"}
     except Exception as e:
@@ -209,6 +251,27 @@ async def chat(request: ChatRequest):
         chat_options = request.options or ChatOptions()
         completion_options = chat_options.model_dump(exclude_none=True)
         completion_options["prompt"] = prompt
+        
+        # Validate completion parameters
+        if "max_tokens" in completion_options and completion_options["max_tokens"] <= 0:
+            completion_options["max_tokens"] = 16
+        
+        if "temperature" in completion_options and completion_options["temperature"] < 0:
+            completion_options["temperature"] = 0.8
+        
+        if "top_p" in completion_options and (completion_options["top_p"] <= 0 or completion_options["top_p"] > 1):
+            completion_options["top_p"] = 0.95
+        
+        if "top_k" in completion_options and completion_options["top_k"] <= 0:
+            completion_options["top_k"] = 40
+        
+        # Remove invalid model parameter (placeholder strings)
+        if "model" in completion_options and (
+            completion_options["model"] == "" or 
+            completion_options["model"] == "string" or
+            completion_options["model"] == "null"
+        ):
+            del completion_options["model"]
         
         # Handle JSON schema
         if request.response_format and request.response_format.get("type") == "json_object":
