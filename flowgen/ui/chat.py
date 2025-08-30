@@ -175,7 +175,7 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
                     gr.ChatMessage(
                         role="assistant",
                         content=f"Calling {tool_name}...\n```json\n{json.dumps(tool_args, indent=2)}\n```",
-                        metadata={"title": "🔧 Tool Call", "status": "pending"},
+                        metadata={"title": f"🔧 {tool_name}", "status": "pending"},
                     )
                 )
             
@@ -187,15 +187,14 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
                 # Update the pending tool call with result
                 for i, msg in enumerate(result):
                     if (msg.metadata and 
-                        msg.metadata.get('title') == '🔧 Tool Call' and 
-                        msg.metadata.get('status') == 'pending' and
-                        tool_name in msg.content):
+                        msg.metadata.get('title') == f'🔧 {tool_name}' and 
+                        msg.metadata.get('status') == 'pending'):
                         
                         tool_content = f"**Function:** {tool_name}\n**Arguments:** {json.dumps(tool_args, indent=2)}\n**Result:** {tool_result}"
                         result[i] = gr.ChatMessage(
                             role="assistant", 
                             content=tool_content, 
-                            metadata={"title": "🔧 Tool Call", "status": "done"}
+                            metadata={"title": f"🔧 {tool_name}", "status": "done"}
                         )
                         break
                 
