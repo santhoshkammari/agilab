@@ -9,7 +9,7 @@ from .basellm import BaseLLM
 class OpenAICompatible(BaseLLM):
     """OpenAI-compatible LLM wrapper for any OpenAI API-compatible service."""
     
-    def __init__(self, model=None, api_key=None, base_url="https://api.openai.com/v1", 
+    def __init__(self, model="", api_key="EMPTY", base_url="http://0.0.0.0:8000/v1", 
                  organization=None, project=None, **kwargs):
         """
         Initialize OpenAI-compatible client.
