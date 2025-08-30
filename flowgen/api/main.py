@@ -14,6 +14,30 @@ tokenizer = None
 class ChatRequest(BaseModel):
     messages: list
     tools: Optional[list] = None
+    options: Optional[dict] = None
+
+class CompletionOptions(BaseModel):
+    suffix: Optional[str] = None
+    max_tokens: Optional[int] = 16
+    temperature: float = 0.8
+    top_p: float = 0.95
+    min_p: float = 0.05
+    typical_p: float = 1.0
+    logprobs: Optional[int] = None
+    echo: bool = False
+    stop: Optional[list] = []
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
+    repeat_penalty: float = 1.0
+    top_k: int = 40
+    stream: bool = False
+    seed: Optional[int] = None
+    tfs_z: float = 1.0
+    mirostat_mode: int = 0
+    mirostat_tau: float = 5.0
+    mirostat_eta: float = 0.1
+    model: Optional[str] = None
+    logit_bias: Optional[dict] = None
 
 class LoadRequest(BaseModel):
     model_path: str
@@ -71,12 +95,23 @@ async def chat(request: ChatRequest):
             # Reset model state before each completion
             model.reset()
             
-            response = model.create_completion(
-                prompt=prompt,
-                max_tokens=100,
-                temperature=0.7,
-                stream=True
-            )
+            # Use options if provided, otherwise use defaults
+            completion_options = {
+                "prompt": prompt,
+                "stream": True
+            }
+            
+            # Apply default options
+            default_options = CompletionOptions()
+            for field, value in default_options.dict().items():
+                if field != "stream":  # stream is already set
+                    completion_options[field] = value
+            
+            # Override with user-provided options
+            if request.options:
+                completion_options.update(request.options)
+            
+            response = model.create_completion(**completion_options)
             
             for chunk in response:
                 if chunk["choices"][0]["text"]:

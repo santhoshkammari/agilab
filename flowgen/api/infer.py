@@ -157,7 +157,12 @@ def test_case_chat():
     
     payload = {
         "messages": messages,
-        "tools": tools_schema
+        "tools": tools_schema,
+        "options": {
+            "max_tokens": 150,
+            "temperature": 0.8,
+            "top_p": 0.9
+        }
     }
     
     with requests.post(url, json=payload, stream=True) as r:
