@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import re
 import requests
 from typing import Any, Optional, List, Dict
 
@@ -113,6 +114,9 @@ class LLM(BaseLLM):
                 )
                 response.raise_for_status()
                 
+                content_parts = []
+                tool_calls = []
+                
                 for line in response.iter_lines():
                     if line:
                         line_str = line.decode('utf-8')
@@ -123,9 +127,13 @@ class LLM(BaseLLM):
                             try:
                                 chunk_data = json.loads(data)
                                 if 'content' in chunk_data:
-                                    yield {"think": "", "content": chunk_data['content'], "tool_calls": []}
+                                    content = chunk_data['content']
+                                    if content is not None:
+                                        content_parts.append(content)
+                                        # Yield chunk like ollama/vllm do
+                                        yield {"think": "", "content": content, "tool_calls": []}
                                 elif 'completion' in chunk_data:
-                                    # Final completion with tool calls
+                                    # Handle final completion with tool calls
                                     completion = chunk_data['completion']
                                     final_result = self._convert_api_response(completion)
                                     if final_result['tool_calls']:

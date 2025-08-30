@@ -15,6 +15,20 @@ import json
 import gradio as gr
 from css import theme
 from scout_component import create_scout_textbox_ui
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
+from flowgen.llm.llm import LLM
+from flowgen.agent.agent import Agent
+
+
+def get_weather(location: str, unit: str = "celsius") -> str:
+    """Get the current weather for a given location."""
+    return f"The weather in {location} is 22°{unit[0].upper()}, partly cloudy with light breeze."
+
+def calculate_sum(a: float, b: float) -> float:
+    """Calculate the sum of two numbers."""
+    return a + b
 
 
 def fetch_models(endpoint):
@@ -44,12 +58,12 @@ def update_models(endpoint):
 
 def chat_function(message, history, endpoint, model_name, key, temperature, top_p, max_tokens, think_start_token):
     """
-    Chat function that communicates with unified API endpoint.
+    Chat function using Agent class for proper tool handling.
     """
     base_url = f"http://{endpoint}" if not endpoint.startswith("http") else endpoint
 
+    # Convert history to messages format
     messages = []
-
     for msg in history:
         if msg["role"] in ["user", "assistant"]:
             msg_content = msg["content"]
@@ -57,166 +71,151 @@ def chat_function(message, history, endpoint, model_name, key, temperature, top_
                 msg_content = msg_content.split("</think>")[-1]
             messages.append({"role": msg["role"], "content": msg_content})
 
-    messages.append({"role": "user", "content": message})
-
-    payload = {
-        "messages": messages,
-        "options": {
-            "temperature": temperature,
-            "top_p": top_p,
-            "max_tokens": int(max_tokens),
-            "stream": True
-        }
-    }
-
+    # Create LLM instance
+    llm = LLM(base_url=base_url)
+    
+    # Create Agent with tools
+    agent = Agent(
+        llm=llm,
+        tools=[get_weather, calculate_sum],
+        stream=True,
+        history=messages,
+        enable_rich_debug=False
+    )
+    
     try:
-        response = requests.post(
-            f"{base_url}/chat",
-            json=payload,
+        # Use Agent for proper streaming tool handling
+        agent_stream = agent(
+            message,
             stream=True,
-            timeout=30
+            temperature=temperature,
+            top_p=top_p, 
+            max_tokens=int(max_tokens)
         )
-        response.raise_for_status()
-
-        # Initialize buffers
-        current_buffer = ""
         
-        ## Use think start token based on user setting from UI sidebar
-        if think_start_token:
-            current_buffer = "<think> "  # For models that need explicit thinking activation
-
-        in_thinking = False
-        thinking_content = ""
-        final_content = ""
-        thinking_blocks = []
-        seen_non_whitespace = False
-
-        # Process the stream
-        for line in response.iter_lines():
-            if line:
-                line_str = line.decode('utf-8')
-                if line_str.startswith('data: '):
-                    data = line_str[6:]
-                    if data == '[DONE]':
-                        break
-                    try:
-                        chunk_data = json.loads(data)
-                        if 'content' in chunk_data:
-                            content = chunk_data['content']
-                            if content is not None:
-                                current_buffer += content
-                        elif 'completion' in chunk_data:
-                            # Handle final completion if needed
-                            continue
-                    except json.JSONDecodeError:
-                        continue
+        result = []
+        current_thinking = ""
+        current_content = ""
+        tool_calls_completed = []
+        
+        for event in agent_stream:
+            event_type = event.get('type', 'unknown')
+            
+            if event_type == 'token':
+                token = event.get('content', '')
+                current_content += token
+                
+                # Update or add main response with streaming content
+                main_msg_exists = any(msg.metadata is None or msg.metadata.get('title') is None for msg in result)
+                if main_msg_exists:
+                    # Update existing main message
+                    for i, msg in enumerate(result):
+                        if msg.metadata is None or msg.metadata.get('title') is None:
+                            result[i] = gr.ChatMessage(role="assistant", content=current_content)
+                            break
                 else:
-                    continue
-
-                # Process buffer for complete tags
-                processed = True
-                while processed:
-                    processed = False
-
-                    if not in_thinking:
-                        # First check if we have enough content to make decisions
-                        # Look for first non-whitespace content
-                        non_ws_match = re.search(r"\S", current_buffer)
-
-                        if non_ws_match:
-                            # We found non-whitespace, now check what it is
-                            seen_non_whitespace = True
-
-                            # Check if the non-whitespace starts with a thinking tag
-                            think_at_start = re.match(r"^(\s*)<think>", current_buffer)
-                            if think_at_start:
-                                # Save any whitespace before thinking
-                                final_content += think_at_start.group(1)
-                                current_buffer = current_buffer[think_at_start.end() :]
-                                in_thinking = True
-                                thinking_content = ""
-                                processed = True
-                                continue
-
-                            # Check for thinking tag later in buffer
-                            think_match = re.search(r"<think>", current_buffer)
-                            if think_match:
-                                # Save content before thinking
-                                final_content += current_buffer[: think_match.start()]
-                                current_buffer = current_buffer[think_match.end() :]
-                                in_thinking = True
-                                thinking_content = ""
-                                processed = True
-                                continue
-
-                        # Check if we might be building up to a thinking tag
-                        if not seen_non_whitespace or re.search(r"<t?h?i?n?k?$", current_buffer):
-                            # Don't process yet - might be partial tag
+                    # Add new main message
+                    result.append(gr.ChatMessage(role="assistant", content=current_content))
+            
+            elif event_type == 'think_token':
+                think_token = event.get('content', '')
+                current_thinking += think_token
+                
+                # Update or add thinking message with streaming content
+                think_msg_exists = any(msg.metadata and msg.metadata.get('title') == '💭 Thinking' and msg.metadata.get('status') == 'pending' for msg in result)
+                if think_msg_exists:
+                    # Update existing pending thinking message
+                    for i, msg in enumerate(result):
+                        if (msg.metadata and 
+                            msg.metadata.get('title') == '💭 Thinking' and 
+                            msg.metadata.get('status') == 'pending'):
+                            result[i] = gr.ChatMessage(
+                                role="assistant",
+                                content=current_thinking,
+                                metadata={"title": "💭 Thinking", "status": "pending"}
+                            )
                             break
-
-                        # Safe to add current buffer to final content
-                        final_content += current_buffer
-                        current_buffer = ""
-
-                    else:
-                        # In thinking mode - look for closing tag
-                        end_match = re.search(r"</think>", current_buffer)
-                        if end_match:
-                            # Extract thinking content
-                            thinking_content += current_buffer[: end_match.start()]
-                            current_buffer = current_buffer[end_match.end() :]
-                            in_thinking = False
-
-                            # Store the thinking block
-                            if thinking_content.strip():
-                                thinking_blocks.append(thinking_content.strip())
-                            thinking_content = ""
-                            processed = True
-                            continue
-
-                        # Check if buffer might contain partial closing tag
-                        if re.search(r"</t?h?i?n?k?$", current_buffer):
-                            # Hold the partial tag, add the rest to thinking
-                            partial_match = re.search(r"</t?h?i?n?k?$", current_buffer)
-                            thinking_content += current_buffer[: partial_match.start()]
-                            current_buffer = current_buffer[partial_match.start() :]
-                            break
-
-                        # No closing tag or partial - accumulate all
-                        thinking_content += current_buffer
-                        current_buffer = ""
-
-                # Build and yield current state
-                result = []
-
-                # Add completed thinking blocks
-                for i, think_block in enumerate(thinking_blocks):
-                    result.append(
-                        gr.ChatMessage(
-                            role="assistant", content=think_block, metadata={"title": "💭 Thinking", "status": "done"}
-                        )
-                    )
-
-                # Add current thinking if in progress
-                if in_thinking and thinking_content:
+                else:
+                    # Add new thinking message
                     result.append(
                         gr.ChatMessage(
                             role="assistant",
-                            content=thinking_content,
-                            metadata={"title": "💭 Thinking", "status": "pending"},
+                            content=current_thinking,
+                            metadata={"title": "💭 Thinking", "status": "pending"}
                         )
                     )
-
-                # Only add main response if we have non-whitespace content
-                # and we're not potentially waiting for a thinking tag
-                if final_content.strip() and seen_non_whitespace:
-                    # Only show if we're not in the middle of a potential tag
-                    if not re.search(r"^\s*<t?h?i?n?k?$", current_buffer):
-                        result.append(gr.ChatMessage(role="assistant", content=final_content.strip()))
-
-                # Only yield if we have content
-                if result:
-                    yield result
+            
+            elif event_type == 'think_block':
+                # Complete thinking block
+                thinking_content = event.get('content', '')
+                current_thinking = ""  # Reset
+                
+                # Update pending thinking to completed
+                for i, msg in enumerate(result):
+                    if (msg.metadata and 
+                        msg.metadata.get('title') == '💭 Thinking' and 
+                        msg.metadata.get('status') == 'pending'):
+                        result[i] = gr.ChatMessage(
+                            role="assistant",
+                            content=thinking_content,
+                            metadata={"title": "💭 Thinking", "status": "done"}
+                        )
+                        break
+            
+            elif event_type == 'tool_start':
+                tool_name = event.get('tool_name', 'unknown')
+                tool_args = event.get('tool_args', {})
+                
+                result.append(
+                    gr.ChatMessage(
+                        role="assistant",
+                        content=f"Calling {tool_name}...\n```json\n{json.dumps(tool_args, indent=2)}\n```",
+                        metadata={"title": "🔧 Tool Call", "status": "pending"},
+                    )
+                )
+            
+            elif event_type == 'tool_result':
+                tool_name = event.get('tool_name', 'unknown')
+                tool_args = event.get('tool_args', {})
+                tool_result = event.get('result', '')
+                
+                # Update the pending tool call with result
+                for i, msg in enumerate(result):
+                    if (msg.metadata and 
+                        msg.metadata.get('title') == '🔧 Tool Call' and 
+                        msg.metadata.get('status') == 'pending' and
+                        tool_name in msg.content):
+                        
+                        tool_content = f"**Function:** {tool_name}\n**Arguments:** {json.dumps(tool_args, indent=2)}\n**Result:** {tool_result}"
+                        result[i] = gr.ChatMessage(
+                            role="assistant", 
+                            content=tool_content, 
+                            metadata={"title": "🔧 Tool Call", "status": "done"}
+                        )
+                        break
+            
+            elif event_type == 'final':
+                # Final response - make sure we have the complete content
+                final_content = event.get('content', '')
+                if final_content.strip():
+                    # Clean up any remaining tags
+                    final_content = re.sub(r'<think>.*?</think>', '', final_content, flags=re.DOTALL).strip()
+                    final_content = re.sub(r'<tool_call>.*?</tool_call>', '', final_content, flags=re.DOTALL).strip()
+                    
+                    if final_content:
+                        # Update or add final main message
+                        main_msg_exists = any(msg.metadata is None or msg.metadata.get('title') is None for msg in result)
+                        if main_msg_exists:
+                            for i, msg in enumerate(result):
+                                if msg.metadata is None or msg.metadata.get('title') is None:
+                                    result[i] = gr.ChatMessage(role="assistant", content=final_content)
+                                    break
+                        else:
+                            result.append(gr.ChatMessage(role="assistant", content=final_content))
+            
+            # Yield current state
+            if result:
+                yield result
 
     except Exception as e:
         yield [

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Generator, Dict, Any, List, Callable, Optional, Union
 from ..llm import BaseLLM
 from rich.console import Console
@@ -287,51 +288,185 @@ class Agent:
                             tool_call['function']['arguments'] = '{}'
                 
                 elif hasattr(llm_stream, '__iter__') and not isinstance(llm_stream, (str, dict)):
-                    # Custom streaming format (hgLLM style)
+                    # Custom streaming format (LLM/hgLLM style)
                     accumulated_content = ""
                     accumulated_think = ""
+                    current_buffer = ""
+                    in_thinking = False
+                    thinking_content = ""
+                    in_tool_call = False
+                    tool_call_content = ""
+                    tool_calls_found = []
                     
                     for chunk in llm_stream:
                         if isinstance(chunk, str):
                             # Raw token streaming
-                            accumulated_content += chunk
-                            
-                            yield {
-                                'type': 'token',
-                                'content': chunk,
-                                'accumulated_content': accumulated_content,
-                                'iteration': iteration + 1
-                            }
+                            current_buffer += chunk
                         elif isinstance(chunk, dict):
-                            # Structured chunk streaming
-                            chunk_type = chunk.get('type', 'token')
+                            # LLM chunk format
+                            if 'content' in chunk:
+                                token = chunk.get('content', '')
+                                current_buffer += token
+                        
+                        # Process buffer for thinking and tool call tags
+                        while True:
+                            processed = False
                             
-                            if chunk_type == 'token' or 'content' in chunk:
-                                token = chunk.get('content', chunk.get('token', ''))
-                                accumulated_content += token
+                            if not in_thinking and not in_tool_call:
+                                # Check for thinking tag
+                                think_match = re.search(r'<think>', current_buffer)
+                                if think_match:
+                                    # Yield content before thinking
+                                    before_think = current_buffer[:think_match.start()]
+                                    if before_think:
+                                        accumulated_content += before_think
+                                        yield {
+                                            'type': 'token',
+                                            'content': before_think,
+                                            'accumulated_content': accumulated_content,
+                                            'iteration': iteration + 1
+                                        }
+                                    
+                                    current_buffer = current_buffer[think_match.end():]
+                                    in_thinking = True
+                                    thinking_content = ""
+                                    processed = True
+                                    continue
                                 
-                                yield {
-                                    'type': 'token',
-                                    'content': token,
-                                    'accumulated_content': accumulated_content,
-                                    'iteration': iteration + 1
-                                }
+                                # Check for tool_call tag
+                                tool_match = re.search(r'<tool_call>', current_buffer)
+                                if tool_match:
+                                    # Yield content before tool call
+                                    before_tool = current_buffer[:tool_match.start()]
+                                    if before_tool:
+                                        accumulated_content += before_tool
+                                        yield {
+                                            'type': 'token',
+                                            'content': before_tool,
+                                            'accumulated_content': accumulated_content,
+                                            'iteration': iteration + 1
+                                        }
+                                    
+                                    current_buffer = current_buffer[tool_match.end():]
+                                    in_tool_call = True
+                                    tool_call_content = ""
+                                    processed = True
+                                    continue
+                                
+                                # No special tags - yield as regular content
+                                if current_buffer and not re.search(r'<t?h?i?n?k?>?$|<t?o?o?l?_?c?a?l?l?>?$', current_buffer):
+                                    accumulated_content += current_buffer
+                                    yield {
+                                        'type': 'token',
+                                        'content': current_buffer,
+                                        'accumulated_content': accumulated_content,
+                                        'iteration': iteration + 1
+                                    }
+                                    current_buffer = ""
                             
-                            elif chunk_type == 'think_token':
-                                think_token = chunk.get('content', chunk.get('token', ''))
-                                accumulated_think += think_token
-                                
-                                yield {
-                                    'type': 'think_token',
-                                    'content': think_token,
-                                    'accumulated_think': accumulated_think,
-                                    'iteration': iteration + 1
-                                }
+                            elif in_thinking:
+                                # Look for thinking end tag
+                                end_match = re.search(r'</think>', current_buffer)
+                                if end_match:
+                                    thinking_content += current_buffer[:end_match.start()]
+                                    current_buffer = current_buffer[end_match.end():]
+                                    in_thinking = False
+                                    
+                                    if thinking_content.strip():
+                                        accumulated_think += thinking_content
+                                        yield {
+                                            'type': 'think_block',
+                                            'content': thinking_content.strip(),
+                                            'accumulated_think': accumulated_think,
+                                            'iteration': iteration + 1
+                                        }
+                                    
+                                    thinking_content = ""
+                                    processed = True
+                                    continue
+                                else:
+                                    # Accumulate thinking content and yield as think tokens
+                                    if current_buffer and not re.search(r'</t?h?i?n?k?>?$', current_buffer):
+                                        thinking_content += current_buffer
+                                        yield {
+                                            'type': 'think_token',
+                                            'content': current_buffer,
+                                            'accumulated_think': thinking_content,
+                                            'iteration': iteration + 1
+                                        }
+                                        current_buffer = ""
+                            
+                            elif in_tool_call:
+                                # Look for tool call end tag
+                                end_match = re.search(r'</tool_call>', current_buffer)
+                                if end_match:
+                                    tool_call_content += current_buffer[:end_match.start()]
+                                    current_buffer = current_buffer[end_match.end():]
+                                    in_tool_call = False
+                                    
+                                    # Parse tool call
+                                    if tool_call_content.strip():
+                                        try:
+                                            tool_data = json.loads(tool_call_content.strip())
+                                            tool_name = tool_data.get("name", "unknown")
+                                            tool_args = tool_data.get("arguments", {})
+                                            
+                                            yield {
+                                                'type': 'tool_start',
+                                                'tool_name': tool_name,
+                                                'tool_args': tool_args,
+                                                'iteration': iteration + 1
+                                            }
+                                            
+                                            # Execute tool
+                                            tool_result = self._execute_tool_sync({
+                                                'name': tool_name,
+                                                'arguments': json.dumps(tool_args) if isinstance(tool_args, dict) else tool_args
+                                            })
+                                            
+                                            yield {
+                                                'type': 'tool_result',
+                                                'tool_name': tool_name,
+                                                'tool_args': tool_args,
+                                                'result': str(tool_result),
+                                                'iteration': iteration + 1
+                                            }
+                                            
+                                            # Add to tool calls for response
+                                            tool_calls_found.append({
+                                                'id': f'call_{len(tool_calls_found)}',
+                                                'type': 'function',
+                                                'function': {
+                                                    'name': tool_name,
+                                                    'arguments': json.dumps(tool_args) if isinstance(tool_args, dict) else tool_args
+                                                }
+                                            })
+                                            
+                                        except Exception as e:
+                                            yield {
+                                                'type': 'tool_result',
+                                                'tool_name': 'error',
+                                                'tool_args': {},
+                                                'result': f"Failed to parse/execute tool: {str(e)}",
+                                                'iteration': iteration + 1
+                                            }
+                                    
+                                    tool_call_content = ""
+                                    processed = True
+                                    continue
+                                else:
+                                    # Accumulate tool call content
+                                    if current_buffer and not re.search(r'</t?o?o?l?_?c?a?l?l?>?$', current_buffer):
+                                        tool_call_content += current_buffer
+                                        current_buffer = ""
+                            
+                            if not processed:
+                                break
                     
                     response = {
                         'content': accumulated_content,
                         'think': accumulated_think,
-                        'tool_calls': []
+                        'tool_calls': tool_calls_found
                     }
                 
                 else:
