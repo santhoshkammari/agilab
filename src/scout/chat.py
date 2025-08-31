@@ -10,6 +10,7 @@ import argparse
 import re
 import json
 import asyncio
+import time
 from typing import AsyncGenerator
 
 import gradio as gr
@@ -29,10 +30,16 @@ async def chat_function_async(message, history, session_id=None):
         result = []
         current_content = ""
         extracted_session_id = session_id
+        last_yield_time = time.time()
         
         # Stream responses from claudecode
         async for event in claude_code(message, session_id=session_id):
             event_type = event.get('type', 'unknown')
+            
+            # Skip KeepConnectionLiveMessage type but still yield to keep connection alive
+            if event_type == 'KeepConnectionLiveMessage':
+                yield result, extracted_session_id
+                continue
             
             # Extract session_id from SystemMessage
             if event_type == 'SystemMessage' and not extracted_session_id:
@@ -113,14 +120,20 @@ async def chat_function_async(message, history, session_id=None):
                     else:
                         result.append(gr.ChatMessage(role="assistant", content=final_result))
             
-            # Yield current state with session_id
-            if result:
-                yield result, extracted_session_id
+            # CRITICAL: Always yield on every iteration (following Qwen-Agent pattern)
+            # This prevents timeout regardless of content changes
+            yield result, extracted_session_id
 
+    except asyncio.TimeoutError:
+        yield [
+            gr.ChatMessage(
+                role="assistant", content="⏱️ Request timed out. The model is taking longer than expected. Please try again or break your request into smaller parts."
+            )
+        ], session_id
     except Exception as e:
         yield [
             gr.ChatMessage(
-                role="assistant", content=f"Error: {str(e)}\n\nPlease check your claude-code setup."
+                role="assistant", content=f"⚠️ Error: {str(e)}\n\nPlease check your claude-code setup."
             )
         ], session_id
 
@@ -155,10 +168,16 @@ def chat_function(message, history, session_id=None):
         for result, _ in results:
             yield result, final_session_id
             
+    except asyncio.TimeoutError:
+        yield [
+            gr.ChatMessage(
+                role="assistant", content="⏱️ Request timed out. The model is taking longer than expected. Please try again or break your request into smaller parts."
+            )
+        ], session_id
     except Exception as e:
         yield [
             gr.ChatMessage(
-                role="assistant", content=f"Error: {str(e)}\\n\\nPlease check your claude-code setup."
+                role="assistant", content=f"⚠️ Error: {str(e)}\\n\\nPlease check your claude-code setup."
             )
         ], session_id
 
@@ -386,6 +405,9 @@ def create_demo():
             # Add user message to history
             new_history = history + [{"role": "user", "content": message}]
             
+            # Add thinking indicator immediately
+            thinking_history = new_history + [{"role": "assistant", "content": "🤔 Thinking...", "metadata": {"title": "💭 Processing", "status": "pending"}}]
+            
             # Make chatbot visible and hide placeholder when first message is sent
             chatbot_update = gr.update(visible=True)
             placeholder_update = gr.update(visible=False)
@@ -396,6 +418,9 @@ def create_demo():
             
             if not current_chat_id:
                 current_chat_id = chat_manager.create_chat()
+            
+            # Show thinking indicator first
+            yield thinking_history, "", chatbot_update, placeholder_update, current_chat_id, current_session_id
             
             # Call the chat function with streaming
             response_gen = chat_function(message, history, current_session_id)
@@ -418,17 +443,19 @@ def create_demo():
                 
                 yield complete_history, "", chatbot_update, placeholder_update, current_chat_id, current_session_id
         
-        # Connect send button and textbox submit
+        # Connect send button and textbox submit (following Qwen-Agent pattern)
         send_button.click(
             fn=handle_chat,
             inputs=[scout_textbox, chatbot, current_chat_id, current_session_id],
             outputs=[chatbot, scout_textbox, chatbot, placeholder_md, current_chat_id, current_session_id],
+            queue=True,
         )
         
         scout_textbox.submit(
             fn=handle_chat,
             inputs=[scout_textbox, chatbot, current_chat_id, current_session_id],
             outputs=[chatbot, scout_textbox, chatbot, placeholder_md, current_chat_id, current_session_id],
+            queue=True,
         )
         
         # Connect sidebar buttons
@@ -481,6 +508,9 @@ def main():
     # Create the demo
     demo = create_demo()
 
+    # Enable queue to prevent timeout errors (following Qwen-Agent pattern)
+    demo.queue(default_concurrency_limit=10)
+    
     # Launch the app
     demo.launch(
         server_name="0.0.0.0",  # Bind to all interfaces
