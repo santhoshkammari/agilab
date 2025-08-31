@@ -316,10 +316,6 @@ async def get_chat_ui():
         
         <!-- Main content -->
         <div class="main-content">
-            <div class="chat-header">
-                <h1>🔍 Scout - AI Code Assistant</h1>
-            </div>
-            
             <div id="chat-history" class="chat-history">
                 <div class="message assistant-message">
                     <div class="message-content">
