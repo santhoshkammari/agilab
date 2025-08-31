@@ -28,7 +28,7 @@ async def claude_code(prompt: str,session_id:str|None=None):
         mcp_servers={
             "WebSearch": {
                 "command": "python",
-                "args": ["/home/ntlpt59/master/own/agi/web.py"],
+                "args": ["web.py"],
                 #"env": {}
                 }
             },
