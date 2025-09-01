@@ -23,12 +23,18 @@ async def claude_code(prompt: str,session_id:str|None=None):
         permission_mode="bypassPermissions", # modes are of : "plan", "bypassPermissions"
         disallowed_tools=[
             "Bash(rm:*)","Bash(git rm:*)",  # security & safety disallowed commands
-            "WebSearch" # disabling default WebSearch for TokenEfficiency and leveraging custom web mcp server
+            "WebSearch", # disabling default WebSearch for TokenEfficiency and leveraging custom web Search mcp server
+            "WebFetch" # disabling default WebFetch for TokenEfficiency and leveraging custom web Fetch mcp server
             ],
         mcp_servers={
             "WebSearch": {
                 "command": "python",
                 "args": ["tools/web.py"],
+                #"env": {}
+                },
+            "WebFetch": {
+                "command": "python",
+                "args": ["tools/fetch.py"],
                 #"env": {}
                 }
             },
