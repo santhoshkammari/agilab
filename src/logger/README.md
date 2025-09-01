@@ -465,6 +465,7 @@ log = get_logger("app")  # Automatically detects environment and sets optimal de
 
 **Your brain stays focused on building features, not wrestling with logs.**
 
+
 ## 📦 Requirements
 
 - Python 3.6+
@@ -484,3 +485,4 @@ log = get_logger("app")  # Automatically detects environment and sets optimal de
 ---
 
 **Universal Logger** - Because logging should be beautiful, simple, and powerful. ✨
+
