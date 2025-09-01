@@ -209,10 +209,10 @@ killport9() {
     lsof -ti:$1 | xargs kill -9
 }
 # Git aliases
-alias ga='git add .'
+ga() { git add "$@"; }
 alias gaa='git add -A'
 alias gb='git branch'
-alias gc='git commit -m'
+gc() { git commit -m "$*"; }
 alias gp='git push'
 alias gpl='git pull'
 alias gs='git status'
@@ -225,6 +225,29 @@ alias gstp='git stash pop'
 alias grm='git remote -v'
 alias gac='git add . && git commit -m'
 alias gacp='f() { git add . && git commit -m "$@" && git push; }; f'
+
+# Fast commit aliases
+alias gam='git add . && git commit -m'         # Quick commit with message
+alias gamp='f() { git add . && git commit -m "$@" && git push; }; f'  # Same as gacp for consistency
+alias gq='f() { git add . && git commit -m "quick: $@"; }; f'          # Quick commit with "quick:" prefix
+alias gqp='f() { git add . && git commit -m "quick: $@" && git push; }; f'  # Quick commit + push
+alias gwip='git add . && git commit -m "WIP"'  # Work in progress commit
+alias gwipp='git add . && git commit -m "WIP" && git push'  # WIP + push
+alias gfix='f() { git add . && git commit -m "fix: $@"; }; f'          # Fix commit
+alias gfixp='f() { git add . && git commit -m "fix: $@" && git push; }; f'  # Fix + push
+alias gfeat='f() { git add . && git commit -m "feat: $@"; }; f'        # Feature commit
+alias gfeatp='f() { git add . && git commit -m "feat: $@" && git push; }; f'  # Feature + push
+alias gup='f() { git add . && git commit -m "update: $@"; }; f'        # Update commit
+alias gupp='f() { git add . && git commit -m "update: $@" && git push; }; f'  # Update + push
+
+# Smart gg aliases - commit with message and push
+gg() { 
+    if [ "$#" -eq 0 ]; then
+        echo "Usage: gg <commit message>"
+        return 1
+    fi
+    git commit -m "$*" && git push
+}
 
 # Add an "alert" alias for long running commands.  Use like so:
 #   sleep 10; alert
@@ -360,3 +383,5 @@ Save this as $report_file and provide the filename at the end."
 wreport() {
     mreport 7
 }
+alias pycharm="snap run pycharm-community"
+alias dss='source /home/ntlpt59/main/bin/activate && cd /home/ntlpt59/master/products/dss'
