@@ -5,7 +5,8 @@ from typing import List
 import requests
 from pydantic import BaseModel
 from liteauto.parselite import parse
-from flowgen.utils.custom_markdownify import custom_markdownify
+from scrapling.fetchers import Fetcher
+from scrapling.core.shell import Convertor
 
 SYSTEM_PROMPT = """You are a content extraction assistant. You have access to the following tools for extracting and processing web content:
 
@@ -13,34 +14,36 @@ SYSTEM_PROMPT = """You are a content extraction assistant. You have access to th
 
 Use this tool to extract, parse, and convert web content as requested by the user."""
 
-from trafilatura import fetch_url
-def extract_html_from_url(url: str):
-    content = get_url_content(url)
-    # if isinstance(result, list):
-    #     res = [{"url": x.url, "content": x.content} for x in result]
-    #     return res
+def extract_markdown_from_url(url: str):
+    """Extract markdown content directly from URL using scrapling"""
+    content = get_url_content_as_markdown(url)
     return {"url": url, "content": content}
 
 
-def extract_markdown_from_html(html: str):
-    return custom_markdownify(html) if html else ""
-
-
-def get_url_content(url: str) -> str | None:
+def get_url_content_as_markdown(url: str) -> str | None:
     """
-    Fetches the content of a given URL and returns it as text.
+    Fetches the content of a given URL and returns it as markdown.
 
     Args:
         url (str): The URL to fetch.
 
     Returns:
-        str: The content of the URL as text.
+        str: The content of the URL as markdown text.
     """
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()  # Raise error for bad status codes
-        return response.text
-    except requests.exceptions.RequestException as e:
+        response = Fetcher.get(url, timeout=30)
+        if response.status != 200:
+            return None
+        
+        # Extract content as markdown using scrapling's built-in converter
+        markdown_content = list(Convertor._extract_content(
+            response, 
+            extraction_type='markdown',
+            main_content_only=True
+        ))
+        
+        return ''.join(markdown_content) if markdown_content else None
+    except Exception as e:
         return None
 
 
@@ -73,16 +76,19 @@ def web_search(query: str) -> List[Dict]:
         return []
 
 def web_fetch(url: str):
-    """Parse multiple list of URLs and convert them to markdown in batch
+    """Fetch URL and convert to markdown using scrapling's built-in conversion
     Args:
-        url: the html url string
+        url: the URL string to fetch
     """
     import re
     import urllib.parse
     from datetime import datetime
     from pathlib import Path
     
-    htmls = extract_html_from_url(url)
+    markdown_data = extract_markdown_from_url(url)
+    
+    if not markdown_data['content']:
+        return "Failed to fetch content from URL"
     
     # Create .claudecode directory if it doesn't exist
     Path(".claudecode").mkdir(exist_ok=True)
@@ -121,13 +127,12 @@ def web_fetch(url: str):
     filepath = Path(".claudecode") / filename
     
     with open(filepath, "w", encoding="utf-8") as f:
-        f.write(extract_markdown_from_html(htmls['content']))
+        f.write(markdown_data['content'])
     
     return f"Markdown saved at {filepath}"
 
 tool_functions = {
-    # "extract_html_from_url": extract_html_from_url,
-    # "extract_markdown_from_html": extract_markdown_from_html,
+    "extract_markdown_from_url": extract_markdown_from_url,
     "web_fetch": web_fetch,
 }
 
