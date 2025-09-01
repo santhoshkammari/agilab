@@ -1,3 +1,12 @@
+## Optimizations
+- Plan/Action Modes
+- mcp websearch over builtin WebSearch
+- Leverage Local/Gemini/Qwen cli's/Models
+- Enforce MultiEdit for Max Model Efficiency
+
+## Unlocking Model Capabilities
+
+
 ## WebSearch Comparison: MCP vs Claude Built-in
 ---
 *Query: "find top5 rag papers, with 10 parallel search requests"*
