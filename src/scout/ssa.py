@@ -34,15 +34,27 @@ async def claude_code(prompt: str,session_id:str|None=None):
             },
     )
 
+    client = None
     try:
-        async with ClaudeSDKClient(options) as client:
-            await client.query(prompt)
-            async for message in client.receive_response():
-                yield to_dict_with_type(message)
+        client = ClaudeSDKClient(options)
+        await client.connect()
+        await client.query(prompt)
+        
+        async for message in client.receive_response():
+            yield to_dict_with_type(message)
+            
     except CLINotFoundError:
         print("Install CLI: npm install -g @anthropic-ai/claude-code")
     except ProcessError as e:
         print(f"Process error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+    finally:
+        if client:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass  # Ignore disconnect errors
 
 
 async def test_case():
