@@ -349,22 +349,14 @@ def create_demo():
                     padding-right: 4px !important;
                 }}
                 
-                /* iOS-style scrollbar */
+                /* Hide scrollbars completely for smooth iOS look */
                 #chat-items::-webkit-scrollbar {{
-                    width: 4px !important;
+                    display: none !important;
                 }}
                 
-                #chat-items::-webkit-scrollbar-track {{
-                    background: transparent !important;
-                }}
-                
-                #chat-items::-webkit-scrollbar-thumb {{
-                    background: rgba(142, 142, 147, 0.3) !important;
-                    border-radius: 2px !important;
-                }}
-                
-                #chat-items::-webkit-scrollbar-thumb:hover {{
-                    background: rgba(142, 142, 147, 0.5) !important;
+                #chat-items {{
+                    scrollbar-width: none !important;
+                    -ms-overflow-style: none !important;
                 }}
                 
                 .chat-item {{
@@ -414,22 +406,14 @@ def create_demo():
                     overflow-y: auto !important;
                 }}
                 
-                /* Scrollbar styling for chat list */
+                /* Hide scrollbars for chat list */
                 .chat-list .gradio-radio fieldset::-webkit-scrollbar {{
-                    width: 6px !important;
+                    display: none !important;
                 }}
                 
-                .chat-list .gradio-radio fieldset::-webkit-scrollbar-track {{
-                    background: transparent !important;
-                }}
-                
-                .chat-list .gradio-radio fieldset::-webkit-scrollbar-thumb {{
-                    background: #D1D5DB !important;
-                    border-radius: 3px !important;
-                }}
-                
-                .chat-list .gradio-radio fieldset::-webkit-scrollbar-thumb:hover {{
-                    background: #9CA3AF !important;
+                .chat-list .gradio-radio fieldset {{
+                    scrollbar-width: none !important;
+                    -ms-overflow-style: none !important;
                 }}
                 
                 /* Style each radio option - clean iOS style */
