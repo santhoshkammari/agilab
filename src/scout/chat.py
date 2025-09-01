@@ -17,6 +17,7 @@ from css import theme
 from scout_component import create_scout_textbox_ui
 from ssa import claude_code
 from chat_manager import ChatManager
+from utils import status_messages
 
 
 def chat_function_sync(message, history, session_id=None):
@@ -68,19 +69,6 @@ def chat_function_sync(message, history, session_id=None):
     current_content = ""
     extracted_session_id = session_id
     
-    # Fun status messages for heartbeat yields
-    status_messages = [
-        "🍳 Cooking up something good...",
-        "🤔 Deep thinking in progress...",
-        "⚡ Processing your request...", 
-        "🔍 Analyzing the situation...",
-        "🧠 Brain cells working overtime...",
-        "⚙️ Gears turning...",
-        "🎯 Focusing on your question...",
-        "📚 Consulting my knowledge...",
-        "🚀 Launching thoughts into orbit...",
-        "🔮 Divining the answer..."
-    ]
     status_index = 0
     
     while True:
