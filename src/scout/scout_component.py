@@ -137,12 +137,12 @@ def create_scout_textbox_ui(
     placeholder: str = "Type your message here...",
     context_handler: Callable = None,
     send_handler: Callable = None,
-) -> tuple[gr.Textbox, gr.Button, gr.Button]:
+) -> tuple[gr.Textbox, gr.Button, gr.Button, gr.Button]:
     """
     Create Scout-style textbox UI components using standard Gradio components.
     
     Returns:
-        tuple: (textbox, context_button, send_button)
+        tuple: (textbox, context_button, send_button, mode_toggle)
     """
     
     # CSS for Scout styling
@@ -243,9 +243,98 @@ def create_scout_textbox_ui(
             0 4px 12px rgba(0, 122, 255, 0.2) !important;
     }
     
+    .scout-mode-toggle {
+        background: linear-gradient(135deg, #007AFF, #0056CC) !important;
+        border: none !important;
+        color: white !important;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 8px 16px !important;
+        border-radius: 16px !important;
+        transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        height: auto !important;
+        min-height: 32px !important;
+        min-width: 70px !important;
+        box-shadow: 
+            0 1px 3px rgba(0, 122, 255, 0.3),
+            0 2px 8px rgba(0, 122, 255, 0.15),
+            inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+        position: relative;
+        overflow: hidden;
+        backdrop-filter: blur(20px);
+    }
+    
+    .scout-mode-toggle::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), transparent);
+        pointer-events: none;
+    }
+    
+    .scout-mode-toggle:hover {
+        transform: translateY(-1px);
+        box-shadow: 
+            0 2px 6px rgba(0, 122, 255, 0.4),
+            0 4px 16px rgba(0, 122, 255, 0.2),
+            inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
+    }
+    
+    .scout-mode-toggle[data-mode="Plan"] {
+        background: rgba(120, 120, 128, 0.16) !important;
+        color: rgba(60, 60, 67, 0.6) !important;
+        box-shadow: 
+            0 1px 3px rgba(0, 0, 0, 0.1),
+            0 2px 8px rgba(0, 0, 0, 0.04),
+            inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+        backdrop-filter: blur(30px);
+    }
+    
+    .scout-mode-toggle[data-mode="Plan"]:hover {
+        background: rgba(120, 120, 128, 0.24) !important;
+        box-shadow: 
+            0 2px 6px rgba(0, 0, 0, 0.15),
+            0 4px 16px rgba(0, 0, 0, 0.06),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+    }
+    
     .scout-textbox-wrapper:focus-within {
         border: none;
         box-shadow: none;
+    }
+    
+    /* Plan mode textbox styling - iOS glass inactive */
+    .scout-textbox-wrapper[data-mode="Plan"] {
+        background: rgba(242, 242, 247, 0.7) !important;
+        border: 1px solid rgba(0, 0, 0, 0.04) !important;
+        box-shadow: 
+            0 1px 3px rgba(0, 0, 0, 0.06),
+            0 4px 12px rgba(0, 0, 0, 0.02),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+        backdrop-filter: blur(40px);
+    }
+    
+    .scout-textbox-wrapper[data-mode="Plan"]:focus-within {
+        background: rgba(242, 242, 247, 0.8) !important;
+        box-shadow: 
+            0 2px 6px rgba(0, 0, 0, 0.1),
+            0 8px 20px rgba(0, 0, 0, 0.04),
+            inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+    }
+    
+    /* Context button in Plan mode */
+    .scout-textbox-wrapper[data-mode="Plan"] .scout-context-btn {
+        background: rgba(120, 120, 128, 0.12) !important;
+        border: 1px solid rgba(120, 120, 128, 0.16) !important;
+        color: rgba(60, 60, 67, 0.6) !important;
+    }
+    
+    .scout-textbox-wrapper[data-mode="Plan"] .scout-context-btn:hover {
+        background: rgba(120, 120, 128, 0.18) !important;
+        border-color: rgba(120, 120, 128, 0.24) !important;
     }
     
     /* Remove borders from all textbox and input elements */
@@ -327,7 +416,15 @@ def create_scout_textbox_ui(
                     elem_classes=["scout-context-btn"],
                     scale=0,
                 )
-                gr.Markdown()
+                
+                mode_toggle = gr.Button(
+                    "Scout",
+                    variant="secondary",
+                    size="sm",
+                    elem_classes=["scout-mode-toggle"],
+                    scale=0,
+                )
+                
                 gr.Markdown()
 
                 send_button = gr.Button(
@@ -340,4 +437,4 @@ def create_scout_textbox_ui(
 
         gr.Markdown()
 
-    return textbox, context_button, send_button, scout_css
+    return textbox, context_button, send_button, mode_toggle, scout_css

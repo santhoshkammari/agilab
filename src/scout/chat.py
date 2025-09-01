@@ -20,7 +20,7 @@ from chat_manager import ChatManager
 from utils import status_messages
 
 
-def chat_function_sync(message, history, session_id=None):
+def chat_function_sync(message, history, session_id=None, mode="Scout"):
     """
     Sync chat function using threading to handle claude_code async calls.
     This avoids Gradio's async issues completely.
@@ -43,7 +43,7 @@ def chat_function_sync(message, history, session_id=None):
             async def collect_events():
                 events = []
                 try:
-                    async for event in claude_code(message, session_id=session_id):
+                    async for event in claude_code(message, session_id=session_id, mode=mode):
                         events.append(event)
                         # Put each event in queue immediately for streaming
                         result_queue.put(('event', event))
@@ -218,6 +218,7 @@ def create_demo():
         # State variables
         current_chat_id = gr.State(None)
         current_session_id = gr.State(None)
+        current_mode = gr.State("Scout")
         
         with gr.Sidebar(open=True):
             gr.Markdown("## 🔍 Scout Chats")
@@ -253,7 +254,7 @@ def create_demo():
         )
         
         # Create Scout-style textbox
-        scout_textbox, context_button, send_button, scout_css = create_scout_textbox_ui(
+        scout_textbox, context_button, send_button, mode_toggle, scout_css = create_scout_textbox_ui(
             placeholder="Create a website based on my vibes"
         )
         
@@ -363,6 +364,18 @@ def create_demo():
                     background-clip: text !important;
                 }}`;
                 document.head.appendChild(style);
+                
+                // Set initial mode attribute
+                setTimeout(() => {{
+                    const toggleBtn = document.querySelector('.scout-mode-toggle');
+                    const textboxWrapper = document.querySelector('.scout-textbox-wrapper');
+                    if (toggleBtn) {{
+                        toggleBtn.setAttribute('data-mode', 'Scout');
+                    }}
+                    if (textboxWrapper) {{
+                        textboxWrapper.setAttribute('data-mode', 'Scout');
+                    }}
+                }}, 500);
             }}
         """)
         
@@ -420,7 +433,7 @@ def create_demo():
             )
         
         # Custom chat function wrapper
-        def handle_chat(message, history, chat_id_state, session_id_state):
+        def handle_chat(message, history, chat_id_state, session_id_state, selected_mode):
             if not message.strip():
                 return history, "", gr.update(), gr.update(), chat_id_state, session_id_state
             
@@ -444,8 +457,8 @@ def create_demo():
             # Show thinking indicator first
             yield thinking_history, "", chatbot_update, placeholder_update, current_chat_id, current_session_id
             
-            # Call the sync chat function with streaming
-            response_gen = chat_function_sync(message, history, current_session_id)
+            # Call the sync chat function with streaming, passing the selected mode
+            response_gen = chat_function_sync(message, history, current_session_id, selected_mode)
             
             # Stream the response and build complete conversation history
             for response_messages, updated_session_id in response_gen:
@@ -468,14 +481,14 @@ def create_demo():
         # Connect send button and textbox submit
         send_button.click(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id],
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode],
             outputs=[chatbot, scout_textbox, chatbot, placeholder_md, current_chat_id, current_session_id],
             queue=True,
         )
         
         scout_textbox.submit(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id],
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode],
             outputs=[chatbot, scout_textbox, chatbot, placeholder_md, current_chat_id, current_session_id],
             queue=True,
         )
@@ -516,6 +529,33 @@ def create_demo():
             fn=handle_context,
             inputs=[],
             outputs=[]
+        )
+        
+        # Toggle mode function
+        def toggle_mode(current_mode_state):
+            new_mode = "Plan" if current_mode_state == "Scout" else "Scout"
+            return new_mode, gr.update(value=new_mode)
+        
+        mode_toggle.click(
+            fn=toggle_mode,
+            inputs=[current_mode],
+            outputs=[current_mode, mode_toggle],
+            js="""
+            function(current_mode) {
+                const new_mode = current_mode === "Scout" ? "Plan" : "Scout";
+                setTimeout(() => {
+                    const toggleBtn = document.querySelector('.scout-mode-toggle');
+                    const textboxWrapper = document.querySelector('.scout-textbox-wrapper');
+                    if (toggleBtn) {
+                        toggleBtn.setAttribute('data-mode', new_mode);
+                    }
+                    if (textboxWrapper) {
+                        textboxWrapper.setAttribute('data-mode', new_mode);
+                    }
+                }, 100);
+                return new_mode;
+            }
+            """
         )
 
     return demo
