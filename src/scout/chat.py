@@ -68,14 +68,52 @@ def chat_function_sync(message, history, session_id=None):
     current_content = ""
     extracted_session_id = session_id
     
+    # Fun status messages for heartbeat yields
+    status_messages = [
+        "🍳 Cooking up something good...",
+        "🤔 Deep thinking in progress...",
+        "⚡ Processing your request...", 
+        "🔍 Analyzing the situation...",
+        "🧠 Brain cells working overtime...",
+        "⚙️ Gears turning...",
+        "🎯 Focusing on your question...",
+        "📚 Consulting my knowledge...",
+        "🚀 Launching thoughts into orbit...",
+        "🔮 Divining the answer..."
+    ]
+    status_index = 0
+    
     while True:
         try:
             # Get next item from queue with timeout for heartbeat
             try:
-                item_type, item_data = result_queue.get(timeout=10.0)
+                item_type, item_data = result_queue.get(timeout=1.0)
             except queue.Empty:
-                # No event in 10 seconds, yield heartbeat
-                yield result, extracted_session_id
+                # No event in 1 second, yield heartbeat with rotating fun message
+                # Update the last message if it's a thinking/status message
+                if result and result[-1].metadata and result[-1].metadata.get('status') == 'pending':
+                    # Update existing thinking message with new status
+                    result[-1] = gr.ChatMessage(
+                        role="assistant", 
+                        content=status_messages[status_index % len(status_messages)],
+                        metadata={"title": "💭 Working...", "status": "pending"}
+                    )
+                    status_index += 1
+                    yield result, extracted_session_id
+                elif not result:
+                    # Show initial status message
+                    heartbeat_result = [
+                        gr.ChatMessage(
+                            role="assistant", 
+                            content=status_messages[status_index % len(status_messages)],
+                            metadata={"title": "💭 Working...", "status": "pending"}
+                        )
+                    ]
+                    status_index += 1
+                    yield heartbeat_result, extracted_session_id
+                else:
+                    # Just yield current result for heartbeat
+                    yield result, extracted_session_id
                 continue
                 
             if item_type == 'done':
@@ -196,7 +234,7 @@ def create_demo():
         current_chat_id = gr.State(None)
         current_session_id = gr.State(None)
         
-        with gr.Sidebar(open=False):
+        with gr.Sidebar(open=True):
             gr.Markdown("## 🔍 Scout Chats")
             
             # New chat button
@@ -404,8 +442,8 @@ def create_demo():
             # Add user message to history
             new_history = history + [{"role": "user", "content": message}]
             
-            # Add thinking indicator immediately
-            thinking_history = new_history + [{"role": "assistant", "content": "🤔 Thinking...", "metadata": {"title": "💭 Processing", "status": "pending"}}]
+            # Add initial thinking indicator  
+            thinking_history = new_history + [{"role": "assistant", "content": "🍳 Cooking up something good...", "metadata": {"title": "💭 Working", "status": "pending"}}]
             
             # Make chatbot visible and hide placeholder when first message is sent
             chatbot_update = gr.update(visible=True)
