@@ -90,29 +90,26 @@ def chat_function_sync(message, history, session_id=None):
                 item_type, item_data = result_queue.get(timeout=1.0)
             except queue.Empty:
                 # No event in 1 second, yield heartbeat with rotating fun message
-                # Update the last message if it's a thinking/status message
-                if result and result[-1].metadata and result[-1].metadata.get('status') == 'pending':
-                    # Update existing thinking message with new status
-                    result[-1] = gr.ChatMessage(
-                        role="assistant", 
-                        content=status_messages[status_index % len(status_messages)],
-                        metadata={"title": "💭 Working...", "status": "pending"}
-                    )
-                    status_index += 1
-                    yield result, extracted_session_id
-                elif not result:
-                    # Show initial status message
+                if not result:
+                    # Show rotating status message
                     heartbeat_result = [
                         gr.ChatMessage(
                             role="assistant", 
-                            content=status_messages[status_index % len(status_messages)],
-                            metadata={"title": "💭 Working...", "status": "pending"}
+                            content=status_messages[status_index % len(status_messages)]
                         )
                     ]
                     status_index += 1
                     yield heartbeat_result, extracted_session_id
                 else:
-                    # Just yield current result for heartbeat
+                    # Update last message if it's just a status message (no real content yet)
+                    if (len(result) == 1 and 
+                        any(status in result[-1].content for status in ["🍳", "🤔", "⚡", "🔍", "🧠", "⚙️", "🎯", "📚", "🚀", "🔮"])):
+                        # Update with next rotating message
+                        result[-1] = gr.ChatMessage(
+                            role="assistant", 
+                            content=status_messages[status_index % len(status_messages)]
+                        )
+                        status_index += 1
                     yield result, extracted_session_id
                 continue
                 
@@ -443,7 +440,7 @@ def create_demo():
             new_history = history + [{"role": "user", "content": message}]
             
             # Add initial thinking indicator  
-            thinking_history = new_history + [{"role": "assistant", "content": "🍳 Cooking up something good...", "metadata": {"title": "💭 Working", "status": "pending"}}]
+            thinking_history = new_history + [{"role": "assistant", "content": "🍳 Cooking up something good..."}]
             
             # Make chatbot visible and hide placeholder when first message is sent
             chatbot_update = gr.update(visible=True)
