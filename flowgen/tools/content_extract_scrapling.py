@@ -7,6 +7,7 @@ from scrapling.fetchers import Fetcher, DynamicFetcher, StealthyFetcher
 from scrapling.core.shell import Convertor
 from scrapling.core._types import extraction_types, SelectorWaitStates
 from curl_cffi.requests import BrowserTypeLiteral
+import requests
 
 SYSTEM_PROMPT = """You are a web scraping assistant with access to powerful scrapling tools for extracting and processing web content:
 
@@ -16,6 +17,7 @@ SYSTEM_PROMPT = """You are a web scraping assistant with access to powerful scra
 - scrapling_bulk_fetch: Async bulk browser fetching for multiple dynamic URLs
 - scrapling_stealthy_fetch: Stealth browser fetching to bypass Cloudflare and anti-bot protections
 - scrapling_bulk_stealthy_fetch: Async bulk stealth fetching for multiple protected URLs
+- web_search: Search the web using a local search API to find relevant URLs
 
 All tools support markdown, HTML, or text extraction with CSS selector targeting and main content filtering."""
 
@@ -418,6 +420,32 @@ def web_fetch(url: str):
     return f"Markdown saved at {filepath}"
 
 
+def web_search(query: str) -> List[Dict]:
+    """
+    Search the web using the local search API.
+
+    Args:
+        query (str): Search query.
+
+    Returns:
+        List[Dict]: A list of search results, each containing
+                    'url', 'title', and 'description'.
+    """
+    try:
+        res = requests.post(
+            url="http://0.0.0.0:8999/search",
+            params={"query": query},
+            timeout=10
+        )
+        res.raise_for_status()
+        results = res.json()
+
+        return results.get('results',[])
+    except (requests.RequestException, ValueError) as e:
+        print(f"Error during search: {e}")
+        return []
+
+
 tool_functions = {
     "scrapling_get": scrapling_get,
     "scrapling_bulk_get": scrapling_bulk_get_sync,
@@ -427,6 +455,7 @@ tool_functions = {
     "scrapling_bulk_stealthy_fetch": scrapling_bulk_stealthy_fetch_sync,
     "extract_markdown_from_url": extract_markdown_from_url,
     "web_fetch": web_fetch,
+    "web_search": web_search,
 }
 
 
