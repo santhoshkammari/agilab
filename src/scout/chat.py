@@ -12,6 +12,11 @@ import asyncio
 import time
 from typing import AsyncGenerator
 
+from logger import get_logger
+
+# Set up logger
+logger = get_logger("chat", level="DEBUG")
+
 import gradio as gr
 from css import theme
 from scout_component import create_scout_textbox_ui
@@ -35,30 +40,21 @@ def chat_function_sync(message, history, session_id=None, mode="Scout"):
     
     def run_claude_code_in_thread():
         """Run claude_code in a separate thread with its own event loop."""
-        try:
-            # Create new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            async def collect_events():
-                events = []
-                try:
-                    async for event in claude_code(message, session_id=session_id, mode=mode):
-                        events.append(event)
-                        # Put each event in queue immediately for streaming
-                        result_queue.put(('event', event))
-                except Exception as e:
-                    result_queue.put(('error', e))
-                finally:
-                    result_queue.put(('done', None))
-            
-            # Run the async collection
-            loop.run_until_complete(collect_events())
-            loop.close()
-            
-        except Exception as e:
-            result_queue.put(('error', e))
+        # Create new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        async def collect_events():
+            events = []
+            async for event in claude_code(message, session_id=session_id, mode=mode):
+                events.append(event)
+                # Put each event in queue immediately for streaming
+                result_queue.put(('event', event))
             result_queue.put(('done', None))
+        
+        # Run the async collection
+        loop.run_until_complete(collect_events())
+        loop.close()
     
     # Start the thread
     thread = threading.Thread(target=run_claude_code_in_thread, daemon=True)
@@ -72,136 +68,168 @@ def chat_function_sync(message, history, session_id=None, mode="Scout"):
     status_index = 0
     
     while True:
+        # Get next item from queue with timeout for heartbeat
         try:
-            # Get next item from queue with timeout for heartbeat
-            try:
-                item_type, item_data = result_queue.get(timeout=1.0)
-            except queue.Empty:
-                # No event in 1 second, yield heartbeat with rotating fun message
-                if not result:
-                    # Show rotating status message
-                    heartbeat_result = [
-                        gr.ChatMessage(
-                            role="assistant", 
-                            content=status_messages[status_index % len(status_messages)]
-                        )
-                    ]
-                    status_index += 1
-                    yield heartbeat_result, extracted_session_id
-                else:
-                    # Update last message if it's just a status message (no real content yet)
-                    if (len(result) == 1 and 
-                        any(status in result[-1].content for status in ["🍳", "🤔", "⚡", "🔍", "🧠", "⚙️", "🎯", "📚", "🚀", "🔮"])):
-                        # Update with next rotating message
-                        result[-1] = gr.ChatMessage(
-                            role="assistant", 
-                            content=status_messages[status_index % len(status_messages)]
-                        )
-                        status_index += 1
-                    yield result, extracted_session_id
-                continue
-                
-            if item_type == 'done':
-                break
-            elif item_type == 'error':
-                yield [
+            item_type, item_data = result_queue.get(timeout=1.0)
+        except queue.Empty:
+            # No event in 1 second, yield heartbeat with rotating fun message
+            if not result:
+                # Show rotating status message
+                heartbeat_result = [
                     gr.ChatMessage(
-                        role="assistant", content=f"⚠️ Error: {str(item_data)}\n\nPlease check your claude-code setup."
+                        role="assistant", 
+                        content=status_messages[status_index % len(status_messages)]
                     )
-                ], session_id
-                break
-            elif item_type == 'event':
-                event = item_data
-                event_type = event.get('type', 'unknown')
-                
-                # Extract session_id from SystemMessage
-                if event_type == 'SystemMessage' and not extracted_session_id:
-                    data = event.get('data', {})
-                    if data.get('session_id'):
-                        extracted_session_id = data['session_id']
-                
-                elif event_type == 'AssistantMessage':
-                    content = event.get('content', [])
-                    if content and len(content) > 0:
-                        # Handle text content
-                        if content[0].get('text'):
-                            text_content = content[0]['text']
-                            current_content += text_content
-                            
-                            # Update or add main response
-                            main_msg_exists = any(msg.metadata is None or msg.metadata.get('title') is None for msg in result)
-                            if main_msg_exists:
-                                for i, msg in enumerate(result):
-                                    if msg.metadata is None or msg.metadata.get('title') is None:
-                                        result[i] = gr.ChatMessage(role="assistant", content=current_content)
-                                        break
-                            else:
-                                result.append(gr.ChatMessage(role="assistant", content=current_content))
+                ]
+                status_index += 1
+                yield heartbeat_result, extracted_session_id
+            else:
+                # Update last message if it's just a status message (no real content yet)
+                if (len(result) == 1 and 
+                    any(status in result[-1].content for status in ["🍳", "🤔", "⚡", "🔍", "🧠", "⚙️", "🎯", "📚", "🚀", "🔮"])):
+                    # Update with next rotating message
+                    result[-1] = gr.ChatMessage(
+                        role="assistant", 
+                        content=status_messages[status_index % len(status_messages)]
+                    )
+                    status_index += 1
+                yield result, extracted_session_id
+            continue
+            
+        if item_type == 'done':
+            break
+        elif item_type == 'error':
+            yield [
+                gr.ChatMessage(
+                    role="assistant", content=f"⚠️ Error: {str(item_data)}\n\nPlease check your claude-code setup."
+                )
+            ], session_id
+            break
+        elif item_type == 'event':
+            event = item_data
+            event_type = event.get('type', 'unknown')
+            
+            # Extract session_id from SystemMessage
+            if event_type == 'SystemMessage' and not extracted_session_id:
+                data = event.get('data', {})
+                if data.get('session_id'):
+                    extracted_session_id = data['session_id']
+            
+            elif event_type == 'AssistantMessage':
+                content = event.get('content', [])
+                if content and len(content) > 0:
+                    # Handle text content
+                    if content[0].get('text'):
+                        text_content = content[0]['text']
+                        current_content += text_content
                         
-                        # Handle tool use
-                        elif content[0].get('name'):
-                            tool_name = content[0]['name']
-                            tool_input = content[0].get('input', {})
-                            
-                            result.append(
-                                gr.ChatMessage(
-                                    role="assistant",
-                                    content=f"Using {tool_name}...\n```json\n{json.dumps(tool_input, indent=2)}\n```",
-                                    metadata={"title": f"🔧 {tool_name}", "status": "pending"},
-                                )
-                            )
-                
-                elif event_type == 'UserMessage':
-                    # Handle tool results
-                    user_content = event.get('content', [])
-                    if user_content and len(user_content) > 0:
-                        tool_use_id = user_content[0].get('tool_use_id')
-                        if tool_use_id:
-                            tool_result_content = user_content[0].get('content', [])
-                            if tool_result_content and len(tool_result_content) > 0:
-                                result_text = tool_result_content[0].get('text', '')
-                                
-                                # Find and update the corresponding pending tool message
-                                for i, msg in enumerate(result):
-                                    if (msg.metadata and 
-                                        msg.metadata.get('status') == 'pending' and
-                                        msg.metadata.get('title', '').startswith('🔧')):
-                                        
-                                        tool_name = msg.metadata['title'].replace('🔧 ', '')
-                                        tool_content = f"**Tool:** {tool_name}\n**Result:** {result_text[:500]}{'...' if len(result_text) > 500 else ''}"
-                                        result[i] = gr.ChatMessage(
-                                            role="assistant", 
-                                            content=tool_content, 
-                                            metadata={"title": f"🔧 {tool_name}", "status": "done"}
-                                        )
-                                        break
-                
-                elif event_type == 'ResultMessage':
-                    # Final result - ensure we have a clean main response
-                    final_result = event.get('result', '')
-                    if final_result.strip():
-                        # Remove any pending tool messages and ensure clean final response
-                        result = [msg for msg in result if not (msg.metadata and msg.metadata.get('status') == 'pending')]
-                        
-                        # Update or add final response
+                        # Update or add main response
                         main_msg_exists = any(msg.metadata is None or msg.metadata.get('title') is None for msg in result)
                         if main_msg_exists:
                             for i, msg in enumerate(result):
                                 if msg.metadata is None or msg.metadata.get('title') is None:
-                                    result[i] = gr.ChatMessage(role="assistant", content=final_result)
+                                    result[i] = gr.ChatMessage(role="assistant", content=current_content)
                                     break
                         else:
-                            result.append(gr.ChatMessage(role="assistant", content=final_result))
-                
-                # Yield after processing each event
-                yield result, extracted_session_id
+                            result.append(gr.ChatMessage(role="assistant", content=current_content))
+                    
+                    # Handle tool use
+                    elif content[0].get('name'):
+                        tool_name = content[0]['name']
+                        tool_input = content[0].get('input', {})
+                        
+                        result.append(
+                            gr.ChatMessage(
+                                role="assistant",
+                                content=f"Using {tool_name}...\n```json\n{json.dumps(tool_input, indent=2)}\n```",
+                                metadata={"title": f"🔧 {tool_name}", "status": "pending"},
+                            )
+                        )
+            
+            elif event_type == 'UserMessage':
+                # Handle tool results
+                user_content = event.get('content', [])
+                if user_content and len(user_content) > 0:
+                    tool_use_id = user_content[0].get('tool_use_id')
+                    if tool_use_id:
+                        tool_result_content = user_content[0].get('content', [])
+                        logger.debug(f'=== TOOL RESULT DEBUG START ===')
+                        logger.debug(f'tool_use_id: {tool_use_id}')
+                        logger.debug(f'user_content[0]: {user_content[0]}')
+                        logger.debug(f'tool_result_content type: {type(tool_result_content)}')
+                        logger.debug(f'tool_result_content: {tool_result_content}')
+                        if tool_result_content and len(tool_result_content) > 0:
+                            logger.debug(f'tool_result_content[0] type: {type(tool_result_content[0])}')
+                            logger.debug(f'tool_result_content[0]: {repr(tool_result_content[0])}')
+                        logger.debug(f'=== TOOL RESULT DEBUG END ===\n')
+                        if tool_result_content:
+                            if isinstance(tool_result_content, str):
+                                # Direct string content (Write, Read, etc.)
+                                result_text = tool_result_content
+                            elif isinstance(tool_result_content, list) and len(tool_result_content) > 0:
+                                # List format (WebSearch, etc.)
+                                if isinstance(tool_result_content[0], dict):
+                                    result_text = tool_result_content[0].get('text', '')
+                                else:
+                                    result_text = str(tool_result_content[0])
+                            elif isinstance(tool_result_content, dict):
+                                # Direct dict format
+                                result_text = tool_result_content.get('text', '')
+                            else:
+                                result_text = str(tool_result_content)
+                            
+                            # Skip empty or whitespace-only results
+                            if not result_text or not result_text.strip():
+                                continue
+                            
+                            # Find and update the corresponding pending tool message
+                            for i, msg in enumerate(result):
+                                if (msg.metadata and 
+                                    msg.metadata.get('status') == 'pending' and
+                                    msg.metadata.get('title', '').startswith('🔧')):
+                                    
+                                    tool_name = msg.metadata['title'].replace('🔧 ', '')
+                                    
+                                    # Format tool result based on content type
+                                    if result_text.startswith('<tool_use_error>') and result_text.endswith('</tool_use_error>'):
+                                        # Extract error message
+                                        error_msg = result_text[16:-17]  # Remove <tool_use_error> tags
+                                        tool_content = f"**Tool:** {tool_name}\n**Error:** {error_msg}"
+                                    elif len(result_text) > 1000:
+                                        # Show first part and indicate truncation
+                                        tool_content = f"**Tool:** {tool_name}\n**Result:** {result_text[:1000]}...\n\n*[Result truncated for display]*"
+                                    else:
+                                        # Show full result
+                                        tool_content = f"**Tool:** {tool_name}\n**Result:** {result_text}"
+                                    
+                                    result[i] = gr.ChatMessage(
+                                        role="assistant", 
+                                        content=tool_content, 
+                                        metadata={"title": f"🔧 {tool_name}", "status": "done"}
+                                    )
+                                    break
+            
+            elif event_type == 'ResultMessage':
+                # Final result - ensure we have a clean main response
+                final_result = event.get('result', '')
+                if final_result and final_result.strip():
+                    # Remove any pending tool messages and ensure clean final response
+                    result = [msg for msg in result if not (msg.metadata and msg.metadata.get('status') == 'pending')]
+                    
+                    # Update or add final response
+                    main_msg_exists = any(msg.metadata is None or msg.metadata.get('title') is None for msg in result)
+                    if main_msg_exists:
+                        for i, msg in enumerate(result):
+                            if msg.metadata is None or msg.metadata.get('title') is None:
+                                result[i] = gr.ChatMessage(role="assistant", content=final_result)
+                                break
+                    else:
+                        result.append(gr.ChatMessage(role="assistant", content=final_result))
+            
+            # Yield after processing each event
+            yield result, extracted_session_id
         
-        except Exception as e:
-            yield [
-                gr.ChatMessage(
-                    role="assistant", content=f"⚠️ Error: {str(e)}\n\nPlease check your claude-code setup."
-                )
-            ], session_id
+        
 
 
 def create_demo():
