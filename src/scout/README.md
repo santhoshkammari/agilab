@@ -1,6 +1,6 @@
 ## Optimizations
 - [x] Plan/Action Modes
-- [ ] mcp websearch over builtin WebSearch
+- [x] mcp websearch over builtin WebSearch
 - [ ] Leverage Local/Gemini/Qwen cli's/Models
 - [ ] Enforce MultiEdit for Max Model Efficiency
 
