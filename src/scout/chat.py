@@ -328,6 +328,86 @@ def create_demo():
                     padding: 16px !important;
                 }}
                 
+                /* iOS-style dropdown styling - remove all borders and lines */
+                .secondary-wrap.svelte-1hfxrpf,
+                input[role="listbox"].svelte-1hfxrpf,
+                .secondary-wrap.svelte-1hfxrpf *,
+                input[role="listbox"].svelte-1hfxrpf * {{
+                    background: #F9FAFB !important;
+                    background-color: #F9FAFB !important;
+                    border: none !important;
+                    border-radius: 8px !important;
+                    color: #374151 !important;
+                    font-size: 14px !important;
+                    margin-bottom: 8px !important;
+                    box-shadow: none !important;
+                    outline: none !important;
+                }}
+                
+                /* Target the outer dropdown container and all related elements */
+                .gradio-sidebar label,
+                .gradio-sidebar label > div,
+                .gradio-sidebar div[class*="dropdown"],
+                .gradio-sidebar div[class*="wrap"] {{
+                    background: #F9FAFB !important;
+                    background-color: #F9FAFB !important;
+                    border: none !important;
+                    border-radius: 8px !important;
+                    box-shadow: none !important;
+                }}
+                
+                /* Aggressive border removal for Recent Chats area */
+                .gradio-sidebar *[class*="svelte"] {{
+                    border: none !important;
+                    box-shadow: none !important;
+                    outline: none !important;
+                }}
+                
+                /* Ensure the Recent Chats label area also gets the background */
+                .gradio-sidebar .block.svelte-1svsvh2,
+                .gradio-sidebar .form.svelte-633qhp,
+                .gradio-sidebar .container.svelte-1hfxrpf,
+                .gradio-sidebar span.svelte-g2oxp3,
+                .gradio-sidebar .block,
+                .gradio-sidebar .form {{
+                    background: #F9FAFB !important;
+                    background-color: #F9FAFB !important;
+                    border: none !important;
+                    border-radius: 8px !important;
+                    padding: 8px !important;
+                    box-shadow: none !important;
+                }}
+                
+                /* Hide dropdown arrow with maximum specificity */
+                .icon-wrap.svelte-1hfxrpf,
+                .icon-wrap svg,
+                svg.dropdown-arrow.svelte-xjn76a,
+                .dropdown-arrow.svelte-xjn76a {{
+                    display: none !important;
+                    visibility: hidden !important;
+                    opacity: 0 !important;
+                    width: 0 !important;
+                    height: 0 !important;
+                }}
+                
+                /* Style dropdown options when opened */
+                .gradio-sidebar .gradio-dropdown .dropdown {{
+                    background: #F9FAFB !important;
+                    border: 1px solid #E5E7EB !important;
+                    border-radius: 8px !important;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+                }}
+                
+                .gradio-sidebar .gradio-dropdown .option {{
+                    background: #F9FAFB !important;
+                    color: #374151 !important;
+                    padding: 8px 12px !important;
+                }}
+                
+                .gradio-sidebar .gradio-dropdown .option:hover {{
+                    background: #F3F4F6 !important;
+                }}
+                
                 /* New Chat button styling */
                 .gradio-sidebar button[data-testid] {{
                     width: 100% !important;
