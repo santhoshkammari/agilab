@@ -204,10 +204,6 @@ def chat_function_sync(message, history, session_id=None, mode="Scout"):
             ], session_id
 
 
-# Custom Scout textbox will be created in the demo function
-
-
-
 def create_demo():
     """Create and configure the Gradio interface."""
     
@@ -226,18 +222,17 @@ def create_demo():
             # New chat button
             new_chat_btn = gr.Button("➕ New Chat", variant="primary", size="sm")
             
-            # Chat list using HTML for full control
-            chat_list_html = gr.HTML(
-                value="<div class='custom-chat-list'><h3>Chat History</h3><div id='chat-items'></div></div>",
-                elem_classes=["chat-list-container"]
+            # Chat list using dropdown
+            chat_dropdown = gr.Dropdown(
+                label="Recent Chats",
+                choices=[],
+                value=None,
+                interactive=True,
+                allow_custom_value=False
             )
-            
-            # Hidden component to track selected chat
-            selected_chat = gr.State(value=None)
             
             # Delete chat button
             delete_chat_btn = gr.Button("🗑️ Delete Chat", variant="secondary", size="sm")
-        
 
         # Create placeholder markdown (visible initially)
         placeholder_md = gr.Markdown("", visible=True, height=280)
@@ -303,169 +298,6 @@ def create_demo():
                     background: #F8F9FA !important;
                     border-right: 1px solid #E5E7EB !important;
                     padding: 16px !important;
-                }}
-                
-                /* Chat list iOS styling - target Gradio radio component */
-                .chat-list {{
-                    background: transparent !important;
-                }}
-                
-                .chat-list .block-title {{
-                    display: none !important;
-                }}
-                
-                /* Custom chat list styling */
-                .chat-list-container {{
-                    background: transparent !important;
-                    border: none !important;
-                    padding: 0 !important;
-                    margin: 0 !important;
-                }}
-                
-                .custom-chat-list {{
-                    background: transparent !important;
-                    border: none !important;
-                    border-radius: 0 !important;
-                    padding: 0 !important;
-                    margin: 16px 0 !important;
-                }}
-                
-                .custom-chat-list h3 {{
-                    margin: 0 0 12px 0 !important;
-                    font-size: 13px !important;
-                    font-weight: 600 !important;
-                    color: #8E8E93 !important;
-                    text-transform: none !important;
-                    letter-spacing: 0 !important;
-                    padding-left: 8px !important;
-                }}
-                
-                #chat-items {{
-                    display: flex !important;
-                    flex-direction: column !important;
-                    gap: 2px !important;
-                    max-height: 400px !important;
-                    overflow-y: auto !important;
-                    padding-right: 4px !important;
-                }}
-                
-                /* Hide scrollbars completely for smooth iOS look */
-                #chat-items::-webkit-scrollbar {{
-                    display: none !important;
-                }}
-                
-                #chat-items {{
-                    scrollbar-width: none !important;
-                    -ms-overflow-style: none !important;
-                }}
-                
-                .chat-item {{
-                    padding: 12px 14px !important;
-                    background: rgba(255, 255, 255, 0.1) !important;
-                    backdrop-filter: blur(20px) !important;
-                    -webkit-backdrop-filter: blur(20px) !important;
-                    border: 1px solid rgba(255, 255, 255, 0.15) !important;
-                    border-radius: 10px !important;
-                    cursor: pointer !important;
-                    transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
-                    font-size: 14px !important;
-                    color: #1C1C1E !important;
-                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
-                }}
-                
-                .chat-item:hover {{
-                    background: rgba(255, 255, 255, 0.2) !important;
-                    border-color: rgba(255, 255, 255, 0.25) !important;
-                    transform: translateY(-1px) !important;
-                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
-                }}
-                
-                .chat-item.selected {{
-                    background: rgba(0, 122, 255, 0.85) !important;
-                    color: white !important;
-                    border-color: rgba(0, 122, 255, 0.4) !important;
-                    box-shadow: 0 2px 12px rgba(0, 122, 255, 0.3) !important;
-                }}
-                
-                /* Remove blue theme from all radio groups in sidebar */
-                .gradio-sidebar fieldset,
-                .gradio-sidebar .block {{
-                    background: transparent !important;
-                    background-color: transparent !important;
-                }}
-                
-                /* Target the radio container */
-                .chat-list .gradio-radio fieldset {{
-                    border: none !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    display: flex !important;
-                    flex-direction: column !important;
-                    gap: 6px !important;
-                    max-height: 400px !important;
-                    overflow-y: auto !important;
-                }}
-                
-                /* Hide scrollbars for chat list */
-                .chat-list .gradio-radio fieldset::-webkit-scrollbar {{
-                    display: none !important;
-                }}
-                
-                .chat-list .gradio-radio fieldset {{
-                    scrollbar-width: none !important;
-                    -ms-overflow-style: none !important;
-                }}
-                
-                /* Style each radio option - clean iOS style */
-                .chat-list .gradio-radio fieldset > label {{
-                    margin: 0 !important;
-                    padding: 12px 16px !important;
-                    background: white !important;
-                    border: 1px solid #E5E7EB !important;
-                    border-radius: 8px !important;
-                    cursor: pointer !important;
-                    transition: all 0.15s ease !important;
-                    font-size: 14px !important;
-                    font-weight: 500 !important;
-                    color: #374151 !important;
-                    display: block !important;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-                    line-height: 1.4 !important;
-                    margin-bottom: 4px !important;
-                }}
-                
-                .chat-list .gradio-radio fieldset > label:hover {{
-                    background: #F9FAFB !important;
-                    border-color: #D1D5DB !important;
-                }}
-                
-                /* Hide radio input */
-                .chat-list .gradio-radio fieldset > label > input[type="radio"] {{
-                    display: none !important;
-                }}
-                
-                /* Selected state - clean iOS blue */
-                .chat-list .gradio-radio fieldset > label:has(input[type="radio"]:checked) {{
-                    background: #007AFF !important;
-                    color: white !important;
-                    border: 1px solid #007AFF !important;
-                    box-shadow: 0 2px 8px rgba(0,122,255,0.2) !important;
-                }}
-                
-                /* Text content styling */
-                .chat-list .gradio-radio fieldset > label > span {{
-                    display: block !important;
-                    width: 100% !important;
-                    padding: 0 !important;
-                    margin: 0 !important;
-                    background: transparent !important;
-                    border: none !important;
-                    font-weight: inherit !important;
-                    color: inherit !important;
-                    text-align: left !important;
-                    white-space: nowrap !important;
-                    overflow: hidden !important;
-                    text-overflow: ellipsis !important;
                 }}
                 
                 /* New Chat button styling */
@@ -550,7 +382,7 @@ def create_demo():
                 *[style*="background: #f3f4f6"] {{
                     background: transparent !important;
                     background-color: transparent !important;
-                
+
                 /* Keep thinking messages with light grey background */
                 .gradio-chatbot .message[data-title="💭 Thinking"],
                 div[data-testid="chatbot"] .message[data-title="💭 Thinking"],
@@ -597,44 +429,24 @@ def create_demo():
         
         # Chat management functions
         def load_chat_list():
-            """Load and format chat list for the custom HTML component."""
+            """Load and format chat list for dropdown."""
             chats = chat_manager.get_chats()
             if not chats:
-                return "<div class='custom-chat-list'><h3>Recents</h3><div id='chat-items'><p style='color: #9CA3AF; font-style: italic; padding: 20px; text-align: center;'>No chats yet</p></div></div>"
+                return gr.update(choices=[], value=None)
             
-            items_html = ""
+            choices = []
             for chat in chats:
                 title = chat['title'][:50] + "..." if len(chat['title']) > 50 else chat['title']
-                date = chat['updated_at'][:16]
-                items_html += f"""
-                <div class='chat-item' onclick='selectChat("{chat["id"]}")' data-chat-id='{chat["id"]}'>
-                    <div style='font-weight: 500;'>{title}</div>
-                    <div style='font-size: 12px; color: #9CA3AF; margin-top: 2px;'>{date}</div>
-                </div>
-                """
+                choices.append((title, chat['id']))
             
-            return f"""
-            <div class='custom-chat-list'>
-                <h3>Recents</h3>
-                <div id='chat-items'>{items_html}</div>
-            </div>
-            <script>
-                function selectChat(chatId) {{
-                    // Remove selected class from all items
-                    document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('selected'));
-                    // Add selected class to clicked item
-                    document.querySelector(`[data-chat-id="${{chatId}}"]`).classList.add('selected');
-                    // Trigger Gradio event to load chat
-                    window.gradio_config.components.find(c => c.props && c.props.elem_id === 'selected_chat_state').props.value = chatId;
-                }}
-            </script>
-            """
+            return gr.update(choices=choices, value=None)
         
         def create_new_chat():
             """Create a new chat and update the UI."""
             chat_id = chat_manager.create_chat()
+            updated_dropdown = load_chat_list()
             return (
-                load_chat_list(),  # Update chat list
+                updated_dropdown,  # Update chat dropdown
                 [],  # Clear chatbot
                 gr.update(visible=False),  # Hide chatbot
                 gr.update(visible=True),   # Show placeholder
@@ -645,7 +457,7 @@ def create_demo():
         def load_selected_chat(chat_id):
             """Load a selected chat."""
             if not chat_id:
-                return [], gr.update(visible=False), gr.update(visible=True), None
+                return [], gr.update(visible=False), gr.update(visible=True), None, None
             
             chat = chat_manager.get_chat(chat_id)
             if chat:
@@ -656,16 +468,18 @@ def create_demo():
                         messages,  # Load chat history
                         gr.update(visible=True),   # Show chatbot
                         gr.update(visible=False),  # Hide placeholder
-                        session_id  # Update session_id
+                        session_id,  # Update session_id
+                        chat_id  # Update current_chat_id
                     )
-            return [], gr.update(visible=False), gr.update(visible=True), None
+            return [], gr.update(visible=False), gr.update(visible=True), None, None
         
         def delete_selected_chat(chat_id):
             """Delete the selected chat."""
             if chat_id:
                 chat_manager.delete_chat(chat_id)
+            updated_dropdown = load_chat_list()
             return (
-                load_chat_list(),  # Update chat list
+                updated_dropdown,  # Update chat dropdown
                 [],  # Clear chatbot
                 gr.update(visible=False),  # Hide chatbot
                 gr.update(visible=True),   # Show placeholder
@@ -734,32 +548,32 @@ def create_demo():
             queue=True,
         )
         
+        # Connect chat dropdown to load selected chat
+        chat_dropdown.change(
+            fn=load_selected_chat,
+            inputs=[chat_dropdown],
+            outputs=[chatbot, chatbot, placeholder_md, current_session_id, current_chat_id]
+        )
+        
         # Connect sidebar buttons
         new_chat_btn.click(
             fn=create_new_chat,
             inputs=[],
-            outputs=[chat_list_html, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id]
-        )
-        
-        selected_chat.change(
-            fn=load_selected_chat,
-            inputs=[selected_chat],
-            outputs=[chatbot, chatbot, placeholder_md, current_session_id]
+            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id]
         )
         
         delete_chat_btn.click(
             fn=delete_selected_chat,
             inputs=[current_chat_id],
-            outputs=[chat_list_html, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id]
+            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id]
         )
         
         # Load chat list on startup
         demo.load(
             fn=load_chat_list,
             inputs=[],
-            outputs=[chat_list_html]
+            outputs=[chat_dropdown]
         )
-        
 
         # Connect context button (placeholder functionality)
         def handle_context():
