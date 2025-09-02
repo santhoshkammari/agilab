@@ -344,13 +344,37 @@ def create_demo():
                     outline: none !important;
                 }}
                 
-                /* Target the outer dropdown container */
+                /* Target the outer dropdown container and all related elements */
                 .gradio-sidebar label,
-                .gradio-sidebar label > div {{
+                .gradio-sidebar label > div,
+                .gradio-sidebar div[class*="dropdown"],
+                .gradio-sidebar div[class*="wrap"] {{
                     background: #F9FAFB !important;
                     background-color: #F9FAFB !important;
                     border: none !important;
                     border-radius: 8px !important;
+                    box-shadow: none !important;
+                }}
+                
+                /* Aggressive border removal for Recent Chats area */
+                .gradio-sidebar *[class*="svelte"] {{
+                    border: none !important;
+                    box-shadow: none !important;
+                    outline: none !important;
+                }}
+                
+                /* Ensure the Recent Chats label area also gets the background */
+                .gradio-sidebar .block.svelte-1svsvh2,
+                .gradio-sidebar .form.svelte-633qhp,
+                .gradio-sidebar .container.svelte-1hfxrpf,
+                .gradio-sidebar span.svelte-g2oxp3,
+                .gradio-sidebar .block,
+                .gradio-sidebar .form {{
+                    background: #F9FAFB !important;
+                    background-color: #F9FAFB !important;
+                    border: none !important;
+                    border-radius: 8px !important;
+                    padding: 8px !important;
                     box-shadow: none !important;
                 }}
                 
