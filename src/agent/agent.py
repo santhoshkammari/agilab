@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import re
 from typing import Generator, Dict, Any, List, Callable, Optional, Union
-from ..llm import BaseLLM
+from src.llm import BaseLLM
+from src.llm import LLM
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -20,20 +21,23 @@ class Agent:
     Executes immediately when called, returning results directly.
     """
     
-    def __init__(self, llm: BaseLLM, tools: Optional[List[Callable]] = None, 
-                 max_iterations: int = 25, stream: bool = False,
-                 history: Optional[List[Dict]] = None, enable_rich_debug: bool = True):
-        """Initialize Agent with any LLM and optional tools.
+    def __init__(self, system_prompt: Optional[str] = None, llm: Optional[BaseLLM] = None, 
+                 tools: Optional[List[Callable]] = None, max_iterations: int = 25, 
+                 stream: bool = False, history: Optional[List[Dict]] = None, 
+                 enable_rich_debug: bool = True):
+        """Initialize Agent with optional system prompt and LLM.
         
         Args:
-            llm: Any BaseLLM instance (vLLM, Gemini, Ollama, etc.)
+            system_prompt: System prompt for the agent. If provided, automatically adds to history.
+            llm: Any BaseLLM instance. If None, creates LLM() automatically.
             tools: List of callable functions to use as tools
             max_iterations: Maximum number of tool-calling iterations
             stream: If True, yields intermediate results during execution
             history: Previous conversation messages to continue from
             enable_rich_debug: If True, prints rich debug panels during execution
         """
-        self.llm = llm
+        # Auto-create LLM if none provided
+        self.llm = llm if llm is not None else LLM()
         self.tools = tools or []
         self.max_iterations = max_iterations
         self.stream = stream
@@ -42,6 +46,10 @@ class Agent:
         self._tool_functions = {tool.__name__: tool for tool in self.tools}
         self._conversation = []  # Current conversation (gets reset on new calls)
         self._console = Console()
+        
+        # Add system prompt to history if provided
+        if system_prompt:
+            self.history.append({"role": "system", "content": system_prompt})
     
     
     def _run_sync(self, input: Union[str, List[Dict]], **kwargs) -> Union[Dict, Generator]:

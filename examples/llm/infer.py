@@ -1,15 +1,21 @@
 from src.llm import LLM
-
-llm = LLM('http://192.168.170.76:8000')
-
-response = llm('hai')
-print(response)
-
-
 from pydantic import BaseModel
-class Person(BaseModel):
-    name:str
-    age:int
 
-response = llm('hi',format=Person)
+# initialize llm
+llm = LLM()
+
+# pydantic schema
+class TaskTitle(BaseModel):
+    title: str
+
+# build messages
+messages = [
+    {"role": "system", "content": "you are a helper that generates a short 2-3 word title for the given user query."},
+    {"role": "user", "content": "i am working on genai, where i develop a lot of rag related things and ai deployment integrated"},
+]
+
+# call llm with schema
+response = llm(messages, format=TaskTitle)
+
 print(response)
+
