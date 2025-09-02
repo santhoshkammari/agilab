@@ -1,0 +1,35 @@
+ qwen
+
+ PRAgent
+ ParallelToolCallLeverageAgent
+
+1. anallyze web + (high, low, medium) : [ aware about latest docs]
+2. OneShot ( using multiedit)
+3. Oneshot+ Review Cycle ( using multiedit)
+4. Disable Todo
+5. AutoBashing
+ 
+
+'Task', 'ExitPlanMode','NotebookEdit', 
+
+'Bash', 
+
+'Glob', 'Grep','LS',
+
+Read', 
+'Edit',
+'Write',
+
+
+'WebFetch', 'WebSearch', 
+
+
+'MultiEdit',
+
+
+'TodoWrite', 
+
+
+'BashOutput',
+'KillBash'
+
