@@ -263,11 +263,11 @@ def create_demo():
             delete_chat_btn = gr.Button("🗑️ Delete Chat", variant="secondary", size="sm")
 
         # Create placeholder markdown (visible initially)
-        placeholder_md = gr.Markdown("", visible=True, height=280)
+        placeholder_md = gr.Markdown("", visible=True, height="30vh")
         
         # Create custom chatbot
         chatbot = gr.Chatbot(
-            height=640,
+            height="79vh",
             show_copy_button=False,
             placeholder="START HERE",
             type="messages",
