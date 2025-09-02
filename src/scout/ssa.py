@@ -26,7 +26,8 @@ async def claude_code(prompt: str,session_id:str|None=None, mode: str = "Scout")
             "WebSearch", # disabling default WebSearch for TokenEfficiency and leveraging custom web Search mcp server
             "WebFetch", # disabling default WebFetch for TokenEfficiency and leveraging custom web Fetch mcp server
             "ExitPlanMode", # disabling default ExitPlanModel for TokenEfficiency
-
+            "Task",
+            "NotebookEdit"
             ],
         mcp_servers={
             "WebSearch": {
