@@ -397,7 +397,7 @@ def create_demo():
         with gr.Row(elem_classes=["scout-info-cards"]):
             with gr.Column(scale=1):
                 gr.Markdown()
-            with gr.Column(scale=3):
+            with gr.Row(scale=3):
                 # Directory card (top card)
                 dir_card = gr.Markdown(
                     value=f"📁 **{get_directory_name()}**",
