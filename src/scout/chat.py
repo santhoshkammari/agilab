@@ -657,59 +657,69 @@ def create_demo():
                     background-clip: text !important;
                 }}
                 
-                /* Scout Info Cards - iOS-style deck */
+                /* Scout Info Cards - Match Add context button style */
                 .scout-info-cards {{
                     margin-top: 16px !important;
                     margin-bottom: 24px !important;
-                    position: relative;
-                    z-index: 1;
                 }}
                 
-                .scout-info-card {{
-                    background: rgba(255, 255, 255, 0.85) !important;
-                    backdrop-filter: blur(20px) !important;
-                    border: 1px solid rgba(0, 0, 0, 0.06) !important;
-                    border-radius: 12px !important;
-                    padding: 12px 16px !important;
-                    margin: 0 !important;
-                    box-shadow: 
-                        0 1px 3px rgba(0, 0, 0, 0.08),
-                        0 4px 12px rgba(0, 0, 0, 0.04),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
-                    position: relative;
+                /* Make the parent row flex for side-by-side layout */
+                .row.scout-info-cards > .svelte-vuh1yp {{
+                    display: flex !important;
+                    gap: 8px !important;
+                    justify-content: center !important;
+                    align-items: center !important;
+                }}
+                
+                /* Target the prose elements that wrap our cards */
+                .prose.scout-info-card {{
+                    background: rgba(0, 122, 255, 0.08) !important;
+                    border: 1px solid rgba(0, 122, 255, 0.12) !important;
+                    color: #007AFF !important;
                     font-size: 14px !important;
                     font-weight: 500 !important;
-                    color: #374151 !important;
+                    padding: 8px 14px !important;
+                    border-radius: 12px !important;
+                    transition: all 0.15s ease !important;
+                    height: auto !important;
+                    min-height: 32px !important;
+                    box-shadow: 0 1px 3px rgba(0, 122, 255, 0.08) !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    margin: 0 4px !important;
                 }}
                 
-                .scout-dir-card {{
-                    margin-bottom: 8px !important;
-                    transform: translateY(0px);
-                    z-index: 2;
+                .prose.scout-branch-card {{
+                    background: rgba(52, 199, 89, 0.08) !important;
+                    border: 1px solid rgba(52, 199, 89, 0.12) !important;
                 }}
                 
-                .scout-branch-card {{
-                    transform: translateY(-4px);
-                    margin-left: 8px !important;
-                    margin-right: -8px !important;
-                    opacity: 0.9;
-                    z-index: 1;
-                    background: rgba(240, 245, 255, 0.9) !important;
+                .prose.scout-info-card:hover {{
+                    background: rgba(0, 122, 255, 0.12) !important;
+                    border-color: rgba(0, 122, 255, 0.18) !important;
+                    transform: translateY(-0.5px) !important;
                 }}
                 
-                .scout-info-card p {{
+                .prose.scout-branch-card:hover {{
+                    background: rgba(52, 199, 89, 0.12) !important;
+                    border-color: rgba(52, 199, 89, 0.18) !important;
+                }}
+                
+                .prose.scout-info-card p {{
                     margin: 0 !important;
                     padding: 0 !important;
                     font-size: 14px !important;
                     font-weight: 500 !important;
-                    color: #374151 !important;
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
+                    color: #007AFF !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    gap: 6px !important;
                 }}
                 
-                .scout-branch-card p {{
-                    color: #3B82F6 !important;
+                .prose.scout-branch-card p {{
+                    color: #34C759 !important;
                 }}
                 
                 /* Placeholder content styling - target the actual Gradio markdown block structure */
@@ -760,6 +770,116 @@ def create_demo():
                     }}
                     if (textboxWrapper) {{
                         textboxWrapper.setAttribute('data-mode', 'Scout');
+                    }}
+                    
+                    // Style the info cards to look like buttons
+                    const cards = document.querySelectorAll('p');
+                    let foundCards = [];
+                    
+                    for (let card of cards) {{
+                        const text = card.textContent.trim();
+                        if (text.includes('scout') || text.includes('chat_under_branch')) {{
+                            let current = card;
+                            while (current.parentElement) {{
+                                current = current.parentElement;
+                                if (current.classList.contains('scout-info-card')) {{
+                                    foundCards.push({{
+                                        text: text,
+                                        element: current,
+                                        classes: current.className
+                                    }});
+                                    break;
+                                }}
+                            }}
+                        }}
+                    }}
+                    
+                    // Apply styling directly to found elements
+                    foundCards.forEach((cardInfo, index) => {{
+                        const element = cardInfo.element;
+                        
+                        // Base button styling like "Add context"
+                        element.style.cssText = `
+                            background: rgba(0, 122, 255, 0.08) !important;
+                            border: 1px solid rgba(0, 122, 255, 0.12) !important;
+                            color: #007AFF !important;
+                            font-size: 14px !important;
+                            font-weight: 500 !important;
+                            padding: 8px 14px !important;
+                            border-radius: 12px !important;
+                            transition: all 0.15s ease !important;
+                            height: auto !important;
+                            min-height: 32px !important;
+                            box-shadow: 0 1px 3px rgba(0, 122, 255, 0.08) !important;
+                            display: inline-flex !important;
+                            align-items: center !important;
+                            justify-content: center !important;
+                            margin: 0 4px !important;
+                            cursor: pointer !important;
+                        `;
+                        
+                        // Branch card gets green styling
+                        if (cardInfo.text.includes('chat_under_branch')) {{
+                            element.style.background = 'rgba(52, 199, 89, 0.08) !important';
+                            element.style.borderColor = 'rgba(52, 199, 89, 0.12) !important';
+                            
+                            const p = element.querySelector('p');
+                            if (p) {{
+                                p.style.color = '#34C759 !important';
+                            }}
+                        }}
+                        
+                        // Style the paragraph inside
+                        const p = element.querySelector('p');
+                        if (p) {{
+                            p.style.cssText += `
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                font-size: 14px !important;
+                                font-weight: 500 !important;
+                                display: flex !important;
+                                align-items: center !important;
+                                justify-content: center !important;
+                                gap: 6px !important;
+                            `;
+                        }}
+                        
+                        // Add hover effects
+                        element.addEventListener('mouseenter', () => {{
+                            if (cardInfo.text.includes('chat_under_branch')) {{
+                                element.style.background = 'rgba(52, 199, 89, 0.12) !important';
+                                element.style.borderColor = 'rgba(52, 199, 89, 0.18) !important';
+                            }} else {{
+                                element.style.background = 'rgba(0, 122, 255, 0.12) !important';
+                                element.style.borderColor = 'rgba(0, 122, 255, 0.18) !important';
+                            }}
+                            element.style.transform = 'translateY(-0.5px) !important';
+                        }});
+                        
+                        element.addEventListener('mouseleave', () => {{
+                            if (cardInfo.text.includes('chat_under_branch')) {{
+                                element.style.background = 'rgba(52, 199, 89, 0.08) !important';
+                                element.style.borderColor = 'rgba(52, 199, 89, 0.12) !important';
+                            }} else {{
+                                element.style.background = 'rgba(0, 122, 255, 0.08) !important';
+                                element.style.borderColor = 'rgba(0, 122, 255, 0.12) !important';
+                            }}
+                            element.style.transform = 'translateY(0px) !important';
+                        }});
+                    }});
+                    
+                    // Make the container row flex
+                    const row = document.querySelector('.scout-info-cards');
+                    if (row) {{
+                        const container = row.querySelector('.svelte-vuh1yp');
+                        if (container) {{
+                            container.style.cssText = `
+                                display: flex !important;
+                                gap: 8px !important;
+                                justify-content: center !important;
+                                align-items: center !important;
+                            `;
+                        }}
                     }}
                     
                     // Style the placeholder content
