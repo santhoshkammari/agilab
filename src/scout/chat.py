@@ -343,8 +343,7 @@ def create_demo():
                     placeholder="Additional instructions for Claude...",
                     value="",
                     interactive=True,
-                    lines=3,
-                    info="Append custom system prompt to built-in prompt"
+                    lines=3
                 )
             
             # Add some placeholder settings
