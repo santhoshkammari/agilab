@@ -313,7 +313,7 @@ def create_demo():
         
         # Create custom chatbot
         chatbot = gr.Chatbot(
-            height="79vh",
+            height="78vh",
             show_copy_button=False,
             placeholder="START HERE",
             type="messages",
@@ -330,23 +330,13 @@ def create_demo():
             # Add Claude Code configuration settings
             with gr.Group():
                 gr.Markdown("### Claude Code Settings")
-                cwd_textbox = gr.Textbox(
-                    label="Working Directory (cwd)",
-                    placeholder="Type directory path (e.g., agilab)...",
-                    value="",
-                    interactive=True,
-                    info="Type to search directories across your system"
-                )
-                
-                # Directory suggestions dropdown
-                cwd_suggestions = gr.Dropdown(
-                    label="Directory Suggestions",
+                cwd_textbox = gr.Dropdown(
+                    label="Set Directory",
                     choices=search_directories(""),
                     value="",
                     allow_custom_value=True,
                     interactive=True,
-                    visible=True,
-                    info="Click to select from suggestions"
+                    filterable=True
                 )
                 append_system_prompt_textbox = gr.Textbox(
                     label="Additional System Prompt",
@@ -722,20 +712,14 @@ def create_demo():
         """)
         
         # Directory search handler
-        def update_directory_suggestions(search_query):
-            """Update directory suggestions based on search query."""
-            if search_query and len(search_query) >= 2:
-                dirs = search_directories(search_query)
-                return gr.update(choices=dirs, value="")
+        def update_directory_choices(current_value):
+            """Update directory choices based on current input."""
+            if current_value and len(current_value) >= 2:
+                dirs = search_directories(current_value)
+                return gr.update(choices=dirs)
             else:
                 dirs = search_directories("")
-                return gr.update(choices=dirs, value="")
-        
-        def select_directory_from_suggestions(selected_dir):
-            """Copy selected directory to the textbox."""
-            if selected_dir:
-                return gr.update(value=selected_dir), gr.update(value="")
-            return gr.update(), gr.update()
+                return gr.update(choices=dirs)
         
         # Chat management functions
         def load_chat_list():
@@ -880,23 +864,9 @@ def create_demo():
         
         # Connect directory search functionality
         cwd_textbox.change(
-            fn=update_directory_suggestions,
+            fn=update_directory_choices,
             inputs=[cwd_textbox],
-            outputs=[cwd_suggestions]
-        )
-        
-        # Real-time updates as user types
-        cwd_textbox.input(
-            fn=update_directory_suggestions,
-            inputs=[cwd_textbox],
-            outputs=[cwd_suggestions]
-        )
-        
-        # Select from suggestions
-        cwd_suggestions.change(
-            fn=select_directory_from_suggestions,
-            inputs=[cwd_suggestions],
-            outputs=[cwd_textbox, cwd_suggestions]
+            outputs=[cwd_textbox]
         )
         
         # Load chat list on startup
