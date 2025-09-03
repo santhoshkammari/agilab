@@ -395,21 +395,14 @@ def create_demo():
         
         # Create info cards for directory and branch - positioned right above chat input
         with gr.Row(elem_classes=["scout-info-cards"]):
-            with gr.Column(scale=1):
+            with gr.Column(scale=5):
                 gr.Markdown()
-            with gr.Row(scale=3):
-                # Directory card with iOS-style folder icon
-                dir_card = gr.Markdown(
-                    value=f"📂 **{get_directory_name()}**",
-                    elem_classes=["scout-info-card", "scout-dir-card"]
+            with gr.Column(scale=4, min_width=0):
+                # Combined directory and branch info in single markdown
+                combined_info = gr.Markdown(
+                    value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
+                    elem_classes=["scout-info-card", "scout-combined-card"]
                 )
-                # Branch card
-                branch_card = gr.Markdown(
-                    value=f"🌿 **{get_current_branch()}**",
-                    elem_classes=["scout-info-card", "scout-branch-card"]
-                )
-            with gr.Column(scale=1):
-                gr.Markdown()
         
         # Apply Scout CSS and hide footer
         demo.load(lambda: None, js=f"""
@@ -666,7 +659,7 @@ def create_demo():
                 /* Make the parent row flex for side-by-side layout */
                 .row.scout-info-cards > .svelte-vuh1yp {{
                     display: flex !important;
-                    gap: 8px !important;
+                    gap: 0px !important;
                     justify-content: center !important;
                     align-items: center !important;
                 }}
@@ -687,7 +680,7 @@ def create_demo():
                     display: inline-flex !important;
                     align-items: center !important;
                     justify-content: center !important;
-                    margin: 0 4px !important;
+                    margin: 0 !important;
                 }}
                 
                 .prose.scout-branch-card {{
@@ -942,16 +935,15 @@ def create_demo():
             dir_name = get_directory_name(cwd_value)
             branch_name = get_current_branch()
             
-            dir_content = f"📂 **{dir_name}**"
-            branch_content = f"🌿 **{branch_name}**"
+            combined_content = f"🌱 **{dir_name}**      🌿 **{branch_name}**"
             
-            return gr.update(value=dir_content), gr.update(value=branch_content)
+            return gr.update(value=combined_content)
         
         def update_directory_and_cards(cwd_value):
             """Update both directory choices and info cards."""
             choices_update = update_directory_choices(cwd_value)
-            dir_update, branch_update = update_info_cards(cwd_value)
-            return choices_update, dir_update, branch_update
+            combined_update = update_info_cards(cwd_value)
+            return choices_update, combined_update
         
         # Chat management functions
         def load_chat_list():
@@ -1146,19 +1138,19 @@ def create_demo():
         cwd_textbox.change(
             fn=update_directory_and_cards,
             inputs=[cwd_textbox],
-            outputs=[cwd_textbox, dir_card, branch_card]
+            outputs=[cwd_textbox, combined_info]
         )
         
         # Load chat list and info cards on startup
         def initialize_ui():
             chat_list = load_chat_list()
-            dir_update, branch_update = update_info_cards("")
-            return chat_list, dir_update, branch_update
+            combined_update = update_info_cards("")
+            return chat_list, combined_update
         
         demo.load(
             fn=initialize_ui,
             inputs=[],
-            outputs=[chat_dropdown, dir_card, branch_card]
+            outputs=[chat_dropdown, combined_info]
         )
 
         # Connect context button (placeholder functionality)
