@@ -367,16 +367,18 @@ def create_demo():
                     )
                     
                     # Info cards positioned close to chat input
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            gr.Markdown()  # Left spacer
+                    with gr.Row(elem_classes=["scout-info-cards"]):
+                        gr.Markdown()
+                        gr.Markdown()
+                        gr.Markdown()
+                        gr.Markdown()
+                        gr.Markdown()
                         with gr.Column(scale=2):
                             combined_info = gr.Markdown(
                                 value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
                                 elem_classes=["scout-info-card", "scout-combined-card"]
                             )
-                        with gr.Column(scale=1):
-                            gr.Markdown()  # Right spacer
+                        gr.Markdown()
                     
                     # Create Scout-style textbox
                     scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
@@ -791,7 +793,7 @@ def create_demo():
                 /* Scout Info Cards - Position closer to chat input */
                 .scout-info-cards {{
                     margin-top: 4px !important;
-                    margin-bottom: 8px !important;
+                    margin-bottom: 0px !important;
                 }}`;
                 document.head.appendChild(style);
                 
