@@ -263,7 +263,7 @@ def create_demo():
             delete_chat_btn = gr.Button("🗑️ Delete Chat", variant="secondary", size="sm")
 
         # Create placeholder markdown (visible initially)
-        placeholder_md = gr.Markdown("", visible=True, height="30vh")
+        placeholder_md = gr.Markdown("Drop Ideas", visible=True, height="25vh", elem_classes="placeholder-content")
         
         # Create custom chatbot
         chatbot = gr.Chatbot(
@@ -518,10 +518,48 @@ def create_demo():
                     -webkit-background-clip: text !important;
                     -webkit-text-fill-color: transparent !important;
                     background-clip: text !important;
+                }}
+                
+                /* Placeholder content styling - target the actual Gradio markdown block structure */
+                .block.placeholder-content,
+                div.block.placeholder-content {{
+                    display: flex !important;
+                    align-items: flex-end !important;
+                    justify-content: center !important;
+                    height: 35vh !important;
+                    min-height: 25vh !important;
+                    width: 100% !important;
+                    margin-bottom: 20px !important;
+                }}
+                
+                .block.placeholder-content .prose,
+                .block.placeholder-content div,
+                div.block.placeholder-content .prose,
+                div.block.placeholder-content div {{
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    height: 100% !important;
+                    width: 100% !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                }}
+                
+                .block.placeholder-content p,
+                div.block.placeholder-content p {{
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    font-size: 2.5rem !important;
+                    font-weight: 400 !important;
+                    color: #64748B !important;
+                    text-align: center !important;
+                    line-height: 1.2 !important;
+                    letter-spacing: -0.02em !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
                 }}`;
                 document.head.appendChild(style);
                 
-                // Set initial mode attribute
+                // Set initial mode attribute and style placeholder
                 setTimeout(() => {{
                     const toggleBtn = document.querySelector('.scout-mode-toggle');
                     const textboxWrapper = document.querySelector('.scout-textbox-wrapper');
@@ -530,6 +568,48 @@ def create_demo():
                     }}
                     if (textboxWrapper) {{
                         textboxWrapper.setAttribute('data-mode', 'Scout');
+                    }}
+                    
+                    // Style the placeholder content
+                    const dropIdeas = document.querySelector('p');
+                    if (dropIdeas && dropIdeas.textContent.trim() === 'Drop Ideas') {{
+                        const container = dropIdeas.closest('.block.placeholder-content');
+                        if (container) {{
+                            container.style.cssText += `
+                                display: flex !important;
+                                align-items: flex-end !important;
+                                justify-content: center !important;
+                                height: 25vh !important;
+                                min-height: 25vh !important;
+                                width: 100% !important;
+                                margin-bottom: 20px !important;
+                            `;
+                            
+                            const prose = container.querySelector('.prose');
+                            if (prose) {{
+                                prose.style.cssText += `
+                                    display: flex !important;
+                                    align-items: center !important;
+                                    justify-content: center !important;
+                                    height: 100% !important;
+                                    width: 100% !important;
+                                    margin: 0 !important;
+                                    padding: 0 !important;
+                                `;
+                            }}
+                            
+                            dropIdeas.style.cssText += `
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                font-size: 2.5rem !important;
+                                font-weight: 400 !important;
+                                color: #64748B !important;
+                                text-align: center !important;
+                                line-height: 1.2 !important;
+                                letter-spacing: -0.02em !important;
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                            `;
+                        }}
                     }}
                 }}, 500);
             }}
