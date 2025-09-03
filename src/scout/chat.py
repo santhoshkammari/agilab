@@ -339,7 +339,7 @@ def create_demo():
                 # Create main content area with tight spacing
                 with gr.Column():
                     # Flexible spacer to push content down
-                    gr.Markdown("", elem_classes="flexible-spacer")
+                    flexible_spacer = gr.Markdown("", elem_classes="flexible-spacer")
                     
                     # Centered placeholder with minimal bottom margin
                     with gr.Row():
@@ -356,7 +356,7 @@ def create_demo():
                     
                     # Custom chatbot
                     chatbot = gr.Chatbot(
-                        height="78vh",
+                        height="63vh",
                         show_copy_button=False,
                         placeholder="START HERE",
                         type="messages",
@@ -1133,7 +1133,7 @@ def create_demo():
         # Custom chat function wrapper
         def handle_chat(message, history, chat_id_state, session_id_state, selected_mode, cwd_value, append_prompt_value):
             if not message.strip():
-                return history, "", gr.update(), gr.update(), chat_id_state, session_id_state
+                return history, "", gr.update(), gr.update(), gr.update(), chat_id_state, session_id_state
             
             # Add user message to history
             new_history = history + [{"role": "user", "content": message}]
@@ -1144,6 +1144,7 @@ def create_demo():
             # Make chatbot visible and hide placeholder when first message is sent
             chatbot_update = gr.update(visible=True)
             placeholder_update = gr.update(visible=False)
+            flexible_spacer_update = gr.update(visible=False)
             
             # Create new chat if needed
             current_chat_id = chat_id_state
@@ -1153,7 +1154,7 @@ def create_demo():
                 current_chat_id = chat_manager.create_chat()
             
             # Show thinking indicator first
-            yield thinking_history, "", chatbot_update, placeholder_update, current_chat_id, current_session_id
+            yield thinking_history, "", chatbot_update, placeholder_update, flexible_spacer_update, current_chat_id, current_session_id
             
             # Call the sync chat function with streaming, passing the selected mode and settings
             response_gen = chat_function_sync(message, history, current_session_id, selected_mode, cwd_value, append_prompt_value)
@@ -1174,20 +1175,20 @@ def create_demo():
                 else:
                     chat_manager.update_chat(current_chat_id, complete_history)
                 
-                yield complete_history, "", chatbot_update, placeholder_update, current_chat_id, current_session_id
+                yield complete_history, "", chatbot_update, placeholder_update, flexible_spacer_update, current_chat_id, current_session_id
         
         # Connect send button and textbox submit
         send_button.click(
             fn=handle_chat,
             inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox],
-            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, current_chat_id, current_session_id],
+            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id],
             queue=True,
         )
         
         scout_textbox.submit(
             fn=handle_chat,
             inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox],
-            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, current_chat_id, current_session_id],
+            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id],
             queue=True,
         )
         
