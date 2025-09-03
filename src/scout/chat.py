@@ -527,7 +527,7 @@ def create_demo():
                     align-items: flex-end !important;
                     justify-content: center !important;
                     height: 35vh !important;
-                    min-height: 25vh !important;
+                    min-height: 35vh !important;
                     width: 100% !important;
                     margin-bottom: 20px !important;
                 }}
@@ -579,8 +579,8 @@ def create_demo():
                                 display: flex !important;
                                 align-items: flex-end !important;
                                 justify-content: center !important;
-                                height: 25vh !important;
-                                min-height: 25vh !important;
+                                height: 35vh !important;
+                                min-height: 35vh !important;
                                 width: 100% !important;
                                 margin-bottom: 20px !important;
                             `;
