@@ -137,12 +137,12 @@ def create_scout_textbox_ui(
     placeholder: str = "Type your message here...",
     context_handler: Callable = None,
     send_handler: Callable = None,
-) -> tuple[gr.Textbox, gr.Button, gr.Button, gr.Button]:
+) -> tuple[gr.Textbox, gr.Button, gr.Button, gr.Button, gr.Button]:
     """
     Create Scout-style textbox UI components using standard Gradio components.
     
     Returns:
-        tuple: (textbox, context_button, send_button, mode_toggle)
+        tuple: (textbox, context_button, send_button, mode_toggle, settings_button)
     """
     
     # CSS for Scout styling
@@ -337,6 +337,31 @@ def create_scout_textbox_ui(
         border-color: rgba(120, 120, 128, 0.24) !important;
     }
     
+    .scout-settings-btn {
+        background: rgba(120, 120, 128, 0.12) !important;
+        border: 1px solid rgba(120, 120, 128, 0.16) !important;
+        color: rgba(60, 60, 67, 0.6) !important;
+        font-size: 16px;
+        font-weight: 500;
+        padding: 0 !important;
+        border-radius: 50% !important;
+        width: 32px !important;
+        height: 32px !important;
+        min-width: 32px !important;
+        min-height: 32px !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+        box-shadow: 0 1px 3px rgba(120, 120, 128, 0.12) !important;
+    }
+    
+    .scout-settings-btn:hover {
+        background: rgba(120, 120, 128, 0.18) !important;
+        border-color: rgba(120, 120, 128, 0.24) !important;
+        transform: rotate(45deg);
+    }
+    
     /* Remove borders from all textbox and input elements */
     .gradio-textbox,
     .gradio-textbox textarea,
@@ -426,6 +451,14 @@ def create_scout_textbox_ui(
                 )
                 
                 gr.Markdown()
+                
+                settings_button = gr.Button(
+                    "⚙️",
+                    variant="secondary",
+                    size="sm",
+                    elem_classes=["scout-settings-btn"],
+                    scale=0,
+                )
 
                 send_button = gr.Button(
                     "↑",
@@ -437,4 +470,4 @@ def create_scout_textbox_ui(
 
         gr.Markdown()
 
-    return textbox, context_button, send_button, mode_toggle, scout_css
+    return textbox, context_button, send_button, mode_toggle, settings_button, scout_css

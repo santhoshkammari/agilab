@@ -10,6 +10,8 @@ import re
 import json
 import asyncio
 import time
+import os
+import subprocess
 from typing import AsyncGenerator
 
 from logger import get_logger
@@ -25,7 +27,49 @@ from chat_manager import ChatManager
 from utils import status_messages
 
 
-def chat_function_sync(message, history, session_id=None, mode="Scout"):
+def search_directories(query="", max_results=20):
+    """Search for directories using find command with smart sorting."""
+    if not query:
+        return [os.path.expanduser("~"), "/tmp", "/opt", "/usr/local"]
+    
+    try:
+        # Search in multiple locations
+        result = subprocess.run(
+            f"find ~ /opt /usr/local -type d -name '*{query}*' 2>/dev/null",
+            shell=True, capture_output=True, text=True, timeout=3
+        )
+        dirs = [d.strip() for d in result.stdout.split('\n') if d.strip() and os.path.isdir(d.strip())]
+        
+        if not dirs:
+            return [os.path.expanduser("~")]
+        
+        # Smart sorting function
+        def sort_priority(path):
+            path_lower = path.lower()
+            
+            # Priority 1: Normal project directories (highest priority)
+            if not any(x in path_lower for x in ['.cache', '.local', 'site-packages', '.claude', '.config', '/usr/', '/opt/']):
+                if query.lower() in os.path.basename(path).lower():
+                    return (1, len(path))  # Normal dir with name match
+                return (2, len(path))     # Normal dir
+            
+            # Priority 2: System/package directories  
+            elif any(x in path_lower for x in ['site-packages', '/opt/', '/usr/']):
+                return (3, len(path))
+            
+            # Priority 3: Hidden/cache directories (lowest priority)
+            else:
+                return (4, len(path))
+        
+        # Sort and return
+        dirs.sort(key=sort_priority)
+        return dirs[:max_results]
+        
+    except:
+        return [os.path.expanduser("~")]
+
+
+def chat_function_sync(message, history, session_id=None, mode="Scout", cwd="", append_system_prompt=""):
     """
     Sync chat function using threading to handle claude_code async calls.
     This avoids Gradio's async issues completely.
@@ -46,7 +90,7 @@ def chat_function_sync(message, history, session_id=None, mode="Scout"):
         
         async def collect_events():
             events = []
-            async for event in claude_code(message, session_id=session_id, mode=mode):
+            async for event in claude_code(message, session_id=session_id, mode=mode, cwd=cwd if cwd else None, append_system_prompt=append_system_prompt):
                 events.append(event)
                 # Put each event in queue immediately for streaming
                 result_queue.put(('event', event))
@@ -243,8 +287,10 @@ def create_demo():
         current_chat_id = gr.State(None)
         current_session_id = gr.State(None)
         current_mode = gr.State("Scout")
+        current_cwd = gr.State("")
+        current_append_system_prompt = gr.State("")
         
-        with gr.Sidebar(open=True):
+        with gr.Sidebar(open=False):
             gr.Markdown("## 🔍 Scout Chats")
             
             # New chat button
@@ -267,7 +313,7 @@ def create_demo():
         
         # Create custom chatbot
         chatbot = gr.Chatbot(
-            height="79vh",
+            height="78vh",
             show_copy_button=False,
             placeholder="START HERE",
             type="messages",
@@ -277,8 +323,49 @@ def create_demo():
             visible=False,
         )
         
+        # Create right sidebar using Gradio's native Sidebar
+        with gr.Sidebar(position="right", open=False) as right_sidebar:
+            gr.Markdown("## ⚙️ Settings")
+            
+            # Add Claude Code configuration settings
+            with gr.Group():
+                gr.Markdown("### Claude Code Settings")
+                cwd_textbox = gr.Dropdown(
+                    label="Set Directory",
+                    choices=search_directories(""),
+                    value="",
+                    allow_custom_value=True,
+                    interactive=True,
+                    filterable=True
+                )
+                append_system_prompt_textbox = gr.Textbox(
+                    label="Additional System Prompt",
+                    placeholder="Additional instructions for Claude...",
+                    value="",
+                    interactive=True,
+                    lines=3
+                )
+            
+            # Add some placeholder settings
+            with gr.Group():
+                gr.Markdown("### Chat Settings")
+                model_dropdown = gr.Dropdown(
+                    label="Model",
+                    choices=["Claude-3", "Claude-2", "GPT-4"],
+                    value="Claude-3",
+                    interactive=True
+                )
+                temperature_slider = gr.Slider(
+                    label="Temperature",
+                    minimum=0.0,
+                    maximum=1.0,
+                    value=0.7,
+                    step=0.1,
+                    interactive=True
+                )
+        
         # Create Scout-style textbox
-        scout_textbox, context_button, send_button, mode_toggle, scout_css = create_scout_textbox_ui(
+        scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
             placeholder="Create a website based on my vibes"
         )
         
@@ -325,6 +412,14 @@ def create_demo():
                 .gradio-sidebar {{
                     background: #F8F9FA !important;
                     border-right: 1px solid #E5E7EB !important;
+                    padding: 16px !important;
+                }}
+                
+                /* Right sidebar styling using Gradio's native sidebar */
+                .gradio-sidebar[data-position="right"] {{
+                    background: #F8F9FA !important;
+                    border-left: 1px solid #E5E7EB !important;
+                    border-right: none !important;
                     padding: 16px !important;
                 }}
                 
@@ -615,6 +710,16 @@ def create_demo():
             }}
         """)
         
+        # Directory search handler
+        def update_directory_choices(current_value):
+            """Update directory choices based on current input."""
+            if current_value and len(current_value) >= 2:
+                dirs = search_directories(current_value)
+                return gr.update(choices=dirs)
+            else:
+                dirs = search_directories("")
+                return gr.update(choices=dirs)
+        
         # Chat management functions
         def load_chat_list():
             """Load and format chat list for dropdown."""
@@ -676,7 +781,7 @@ def create_demo():
             )
         
         # Custom chat function wrapper
-        def handle_chat(message, history, chat_id_state, session_id_state, selected_mode):
+        def handle_chat(message, history, chat_id_state, session_id_state, selected_mode, cwd_value, append_prompt_value):
             if not message.strip():
                 return history, "", gr.update(), gr.update(), chat_id_state, session_id_state
             
@@ -700,8 +805,8 @@ def create_demo():
             # Show thinking indicator first
             yield thinking_history, "", chatbot_update, placeholder_update, current_chat_id, current_session_id
             
-            # Call the sync chat function with streaming, passing the selected mode
-            response_gen = chat_function_sync(message, history, current_session_id, selected_mode)
+            # Call the sync chat function with streaming, passing the selected mode and settings
+            response_gen = chat_function_sync(message, history, current_session_id, selected_mode, cwd_value, append_prompt_value)
             
             # Stream the response and build complete conversation history
             for response_messages, updated_session_id in response_gen:
@@ -724,14 +829,14 @@ def create_demo():
         # Connect send button and textbox submit
         send_button.click(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode],
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox],
             outputs=[chatbot, scout_textbox, chatbot, placeholder_md, current_chat_id, current_session_id],
             queue=True,
         )
         
         scout_textbox.submit(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode],
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox],
             outputs=[chatbot, scout_textbox, chatbot, placeholder_md, current_chat_id, current_session_id],
             queue=True,
         )
@@ -747,13 +852,68 @@ def create_demo():
         new_chat_btn.click(
             fn=create_new_chat,
             inputs=[],
-            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id]
+            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id],
+            js="""
+            function() {
+                // Re-apply placeholder styling when new chat is created
+                setTimeout(() => {
+                    // Find the placeholder container first, then the paragraph
+                    const container = document.querySelector('.block.placeholder-content');
+                    if (container && container.style.display !== 'none') {
+                        const dropIdeas = container.querySelector('p');
+                        if (dropIdeas && dropIdeas.textContent.trim() === 'Drop Ideas') {
+                            container.style.cssText += `
+                                display: flex !important;
+                                align-items: flex-end !important;
+                                justify-content: center !important;
+                                height: 35vh !important;
+                                min-height: 35vh !important;
+                                width: 100% !important;
+                                margin-bottom: 20px !important;
+                            `;
+                            
+                            const prose = container.querySelector('.prose');
+                            if (prose) {
+                                prose.style.cssText += `
+                                    display: flex !important;
+                                    align-items: center !important;
+                                    justify-content: center !important;
+                                    height: 100% !important;
+                                    width: 100% !important;
+                                    margin: 0 !important;
+                                    padding: 0 !important;
+                                `;
+                            }
+                            
+                            dropIdeas.style.cssText += `
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                font-size: 2.5rem !important;
+                                font-weight: 400 !important;
+                                color: #64748B !important;
+                                text-align: center !important;
+                                line-height: 1.2 !important;
+                                letter-spacing: -0.02em !important;
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                            `;
+                        }
+                    }
+                }, 100);
+            }
+            """
         )
         
         delete_chat_btn.click(
             fn=delete_selected_chat,
             inputs=[current_chat_id],
             outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id]
+        )
+        
+        # Connect directory search functionality
+        cwd_textbox.change(
+            fn=update_directory_choices,
+            inputs=[cwd_textbox],
+            outputs=[cwd_textbox]
         )
         
         # Load chat list on startup
@@ -772,6 +932,71 @@ def create_demo():
             fn=handle_context,
             inputs=[],
             outputs=[]
+        )
+        
+        # State to track right sidebar open/closed  
+        right_sidebar_open = gr.State(False)
+        
+        # Function to toggle right sidebar state
+        def toggle_right_sidebar_state(current_open):
+            new_state = not current_open
+            return new_state, gr.update(open=new_state)
+        
+        # Connect settings button to toggle right sidebar state
+        settings_button.click(
+            fn=toggle_right_sidebar_state,
+            inputs=[right_sidebar_open],
+            outputs=[right_sidebar_open, right_sidebar]
+        )
+        
+        # Listen to state changes and trigger sidebar events
+        right_sidebar_open.change(
+            fn=lambda is_open: None,
+            inputs=[right_sidebar_open],
+            outputs=[],
+            js="""
+            function(is_open) {
+                console.log('Triggering right sidebar toggle...');
+                
+                // Super direct approach: simulate Playwright's exact selection
+                // Use Playwright's approach: getByRole('button', { name: 'Toggle Sidebar' }).nth(1)
+                setTimeout(() => {
+                    try {
+                        // Get all buttons with "Toggle Sidebar" text
+                        const toggleButtons = Array.from(document.querySelectorAll('button')).filter(btn => {
+                            // Check both textContent and innerText for robustness  
+                            const text = (btn.textContent || btn.innerText || '').trim();
+                            return text === 'Toggle Sidebar';
+                        });
+                        
+                        console.log('Found Toggle Sidebar buttons:', toggleButtons.length);
+                        
+                        if (toggleButtons.length >= 2) {
+                            // Click the second one (index 1) - this is the right sidebar
+                            const rightToggle = toggleButtons[1];
+                            console.log('SUCCESS: Clicking RIGHT sidebar toggle button!');
+                            rightToggle.click();
+                        } else {
+                            console.log('Fallback: Looking for buttons by position...');
+                            // Absolute fallback: find button in right half of screen
+                            const rightSideButtons = Array.from(document.querySelectorAll('button')).filter(btn => {
+                                const rect = btn.getBoundingClientRect();
+                                return rect.left > window.innerWidth / 2 && 
+                                       (btn.getAttribute('aria-expanded') !== null || 
+                                        (btn.textContent && btn.textContent.includes('Toggle')));
+                            });
+                            
+                            if (rightSideButtons.length > 0) {
+                                console.log('Found right-side button, clicking:', rightSideButtons[0]);
+                                rightSideButtons[0].click();
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error in sidebar toggle:', error);
+                    }
+                }, 100);
+            }
+            """
         )
         
         # Toggle mode function
