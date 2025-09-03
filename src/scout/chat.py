@@ -395,7 +395,7 @@ def create_demo():
             gr.Markdown()
             gr.Markdown()
             gr.Markdown()
-            with gr.Column(scale=3):
+            with gr.Column(scale=2):
                 combined_info = gr.Markdown(
                             value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
                             elem_classes=["scout-info-card", "scout-combined-card"]
