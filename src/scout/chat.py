@@ -853,7 +853,55 @@ def create_demo():
         new_chat_btn.click(
             fn=create_new_chat,
             inputs=[],
-            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id]
+            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id],
+            js="""
+            function() {
+                // Re-apply placeholder styling when new chat is created
+                setTimeout(() => {
+                    // Find the placeholder container first, then the paragraph
+                    const container = document.querySelector('.block.placeholder-content');
+                    if (container && container.style.display !== 'none') {
+                        const dropIdeas = container.querySelector('p');
+                        if (dropIdeas && dropIdeas.textContent.trim() === 'Drop Ideas') {
+                            container.style.cssText += `
+                                display: flex !important;
+                                align-items: flex-end !important;
+                                justify-content: center !important;
+                                height: 35vh !important;
+                                min-height: 35vh !important;
+                                width: 100% !important;
+                                margin-bottom: 20px !important;
+                            `;
+                            
+                            const prose = container.querySelector('.prose');
+                            if (prose) {
+                                prose.style.cssText += `
+                                    display: flex !important;
+                                    align-items: center !important;
+                                    justify-content: center !important;
+                                    height: 100% !important;
+                                    width: 100% !important;
+                                    margin: 0 !important;
+                                    padding: 0 !important;
+                                `;
+                            }
+                            
+                            dropIdeas.style.cssText += `
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                font-size: 2.5rem !important;
+                                font-weight: 400 !important;
+                                color: #64748B !important;
+                                text-align: center !important;
+                                line-height: 1.2 !important;
+                                letter-spacing: -0.02em !important;
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                            `;
+                        }
+                    }
+                }, 100);
+            }
+            """
         )
         
         delete_chat_btn.click(
