@@ -27,6 +27,30 @@ from chat_manager import ChatManager
 from utils import status_messages
 
 
+def get_current_branch():
+    """Get the current Git branch name."""
+    try:
+        result = subprocess.run(
+            "git branch --show-current",
+            shell=True, capture_output=True, text=True, timeout=2
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+        return "main"  # fallback
+    except:
+        return "main"  # fallback
+
+
+def get_directory_name(cwd_path=None):
+    """Get the current directory name (basename only)."""
+    try:
+        if cwd_path and cwd_path.strip():
+            return os.path.basename(cwd_path.rstrip('/'))
+        return os.path.basename(os.getcwd())
+    except:
+        return "scout"  # fallback
+
+
 def search_directories(query="", max_results=20):
     """Search for directories using find command with smart sorting."""
     if not query:
@@ -369,6 +393,24 @@ def create_demo():
             placeholder="Create a website based on my vibes"
         )
         
+        # Create info cards for directory and branch
+        with gr.Row(elem_classes=["scout-info-cards"]):
+            with gr.Column(scale=1):
+                gr.Markdown()
+            with gr.Column(scale=3):
+                # Directory card (top card)
+                dir_card = gr.Markdown(
+                    value=f"📁 **{get_directory_name()}**",
+                    elem_classes=["scout-info-card", "scout-dir-card"]
+                )
+                # Branch card (bottom card, slightly offset)
+                branch_card = gr.Markdown(
+                    value=f"🌿 **{get_current_branch()}**",
+                    elem_classes=["scout-info-card", "scout-branch-card"]
+                )
+            with gr.Column(scale=1):
+                gr.Markdown()
+        
         # Apply Scout CSS and hide footer
         demo.load(lambda: None, js=f"""
             function() {{
@@ -615,6 +657,61 @@ def create_demo():
                     background-clip: text !important;
                 }}
                 
+                /* Scout Info Cards - iOS-style deck */
+                .scout-info-cards {{
+                    margin-top: 16px !important;
+                    margin-bottom: 24px !important;
+                    position: relative;
+                    z-index: 1;
+                }}
+                
+                .scout-info-card {{
+                    background: rgba(255, 255, 255, 0.85) !important;
+                    backdrop-filter: blur(20px) !important;
+                    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+                    border-radius: 12px !important;
+                    padding: 12px 16px !important;
+                    margin: 0 !important;
+                    box-shadow: 
+                        0 1px 3px rgba(0, 0, 0, 0.08),
+                        0 4px 12px rgba(0, 0, 0, 0.04),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+                    position: relative;
+                    font-size: 14px !important;
+                    font-weight: 500 !important;
+                    color: #374151 !important;
+                }}
+                
+                .scout-dir-card {{
+                    margin-bottom: 8px !important;
+                    transform: translateY(0px);
+                    z-index: 2;
+                }}
+                
+                .scout-branch-card {{
+                    transform: translateY(-4px);
+                    margin-left: 8px !important;
+                    margin-right: -8px !important;
+                    opacity: 0.9;
+                    z-index: 1;
+                    background: rgba(240, 245, 255, 0.9) !important;
+                }}
+                
+                .scout-info-card p {{
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    font-size: 14px !important;
+                    font-weight: 500 !important;
+                    color: #374151 !important;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }}
+                
+                .scout-branch-card p {{
+                    color: #3B82F6 !important;
+                }}
+                
                 /* Placeholder content styling - target the actual Gradio markdown block structure */
                 .block.placeholder-content,
                 div.block.placeholder-content {{
@@ -719,6 +816,22 @@ def create_demo():
             else:
                 dirs = search_directories("")
                 return gr.update(choices=dirs)
+        
+        def update_info_cards(cwd_value):
+            """Update info cards with current directory and branch."""
+            dir_name = get_directory_name(cwd_value)
+            branch_name = get_current_branch()
+            
+            dir_content = f"📁 **{dir_name}**"
+            branch_content = f"🌿 **{branch_name}**"
+            
+            return gr.update(value=dir_content), gr.update(value=branch_content)
+        
+        def update_directory_and_cards(cwd_value):
+            """Update both directory choices and info cards."""
+            choices_update = update_directory_choices(cwd_value)
+            dir_update, branch_update = update_info_cards(cwd_value)
+            return choices_update, dir_update, branch_update
         
         # Chat management functions
         def load_chat_list():
@@ -911,16 +1024,21 @@ def create_demo():
         
         # Connect directory search functionality
         cwd_textbox.change(
-            fn=update_directory_choices,
+            fn=update_directory_and_cards,
             inputs=[cwd_textbox],
-            outputs=[cwd_textbox]
+            outputs=[cwd_textbox, dir_card, branch_card]
         )
         
-        # Load chat list on startup
+        # Load chat list and info cards on startup
+        def initialize_ui():
+            chat_list = load_chat_list()
+            dir_update, branch_update = update_info_cards("")
+            return chat_list, dir_update, branch_update
+        
         demo.load(
-            fn=load_chat_list,
+            fn=initialize_ui,
             inputs=[],
-            outputs=[chat_dropdown]
+            outputs=[chat_dropdown, dir_card, branch_card]
         )
 
         # Connect context button (placeholder functionality)
