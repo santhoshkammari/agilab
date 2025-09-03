@@ -277,8 +277,34 @@ def create_demo():
             visible=False,
         )
         
+        # Create right sidebar (initially hidden)
+        with gr.Sidebar(position="right", open=False) as right_sidebar:
+            gr.Markdown("## ⚙️ Settings")
+            gr.Markdown("Settings panel coming soon!")
+            
+            # Add some placeholder settings
+            with gr.Group():
+                gr.Markdown("### Chat Settings")
+                model_dropdown = gr.Dropdown(
+                    label="Model",
+                    choices=["Claude-3", "Claude-2", "GPT-4"],
+                    value="Claude-3",
+                    interactive=True
+                )
+                temperature_slider = gr.Slider(
+                    label="Temperature",
+                    minimum=0.0,
+                    maximum=1.0,
+                    value=0.7,
+                    step=0.1,
+                    interactive=True
+                )
+        
+        # State for sidebar visibility
+        sidebar_visible = gr.State(False)
+        
         # Create Scout-style textbox
-        scout_textbox, context_button, send_button, mode_toggle, scout_css = create_scout_textbox_ui(
+        scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
             placeholder="Create a website based on my vibes"
         )
         
@@ -326,6 +352,28 @@ def create_demo():
                     background: #F8F9FA !important;
                     border-right: 1px solid #E5E7EB !important;
                     padding: 16px !important;
+                }}
+                
+                /* Right sidebar styling */
+                .gradio-sidebar[data-position="right"] {{
+                    background: #F8F9FA !important;
+                    border-left: 1px solid #E5E7EB !important;
+                    border-right: none !important;
+                    padding: 16px !important;
+                    position: fixed !important;
+                    right: 0 !important;
+                    top: 0 !important;
+                    height: 100vh !important;
+                    width: 300px !important;
+                    z-index: 1000 !important;
+                    transform: translateX(100%) !important;
+                    transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+                    display: none !important;
+                }}
+                
+                .gradio-sidebar[data-position="right"].visible {{
+                    display: block !important;
+                    transform: translateX(0) !important;
                 }}
                 
                 /* iOS-style dropdown styling - remove all borders and lines */
@@ -772,6 +820,43 @@ def create_demo():
             fn=handle_context,
             inputs=[],
             outputs=[]
+        )
+        
+        # Toggle right sidebar function
+        def toggle_right_sidebar(current_visible):
+            new_visible = not current_visible
+            # Use JavaScript to toggle the sidebar
+            return new_visible
+        
+        settings_button.click(
+            fn=toggle_right_sidebar,
+            inputs=[sidebar_visible],
+            outputs=[sidebar_visible],
+            js="""
+            function(current_visible) {
+                const rightSidebar = document.querySelector('.gradio-sidebar[data-position="right"]') ||
+                                   document.querySelector('[data-position="right"]') ||
+                                   document.querySelectorAll('.gradio-sidebar')[1];
+                if (rightSidebar) {
+                    const newVisible = !current_visible;
+                    if (newVisible) {
+                        rightSidebar.style.display = 'block';
+                        setTimeout(() => {
+                            rightSidebar.classList.add('visible');
+                        }, 10);
+                    } else {
+                        rightSidebar.classList.remove('visible');
+                        setTimeout(() => {
+                            if (!rightSidebar.classList.contains('visible')) {
+                                rightSidebar.style.display = 'none';
+                            }
+                        }, 300);
+                    }
+                    return newVisible;
+                }
+                return current_visible;
+            }
+            """
         )
         
         # Toggle mode function
