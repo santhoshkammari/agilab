@@ -391,14 +391,12 @@ def create_demo():
         # Create info cards for directory and branch - positioned above chat input
         with gr.Row(elem_classes=["scout-info-cards"]):
             gr.Markdown()
+            gr.Markdown()
+            gr.Markdown()
+            gr.Markdown()
+            gr.Markdown()
             with gr.Column(scale=3):
-                with gr.Row():
-                    with gr.Column(scale=1):
-                        gr.Markdown()
-                    with gr.Column(scale=1):
-                        gr.Markdown()
-                    with gr.Column(scale=3):
-                        combined_info = gr.Markdown(
+                combined_info = gr.Markdown(
                             value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
                             elem_classes=["scout-info-card", "scout-combined-card"]
                         )
