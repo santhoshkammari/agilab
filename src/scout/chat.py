@@ -796,44 +796,60 @@ def create_demo():
                     margin-bottom: 0px !important;
                 }}
                 
-                /* Scout/Workspace tabs styling - using Add context button style */
+                /* Scout/Workspace tabs styling - Glass-themed aesthetic */
                 
-                /* Remove container styling, keep tabs in normal position */
+                /* Create glass-themed background container for tabs */
                 .tab-wrapper.svelte-1tcem6n {{
+                    background: rgba(255, 255, 255, 0.8) !important;
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+                    border-radius: 12px !important;
+                    padding: 3px !important;
+                    margin: 16px 0 16px 16px !important;
+                    display: inline-flex !important;
+                    width: fit-content !important;
+                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1), 
+                                0 1px 3px rgba(0, 0, 0, 0.1),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+                }}
+                
+                /* Style individual tab buttons within the glass container */
+                .tab-wrapper.svelte-1tcem6n button.svelte-1tcem6n {{
                     background: transparent !important;
                     border: none !important;
-                    padding: 0 !important;
-                    margin: 0 !important;
-                }}
-                
-                /* Style tab buttons like Add context button */
-                .tab-wrapper.svelte-1tcem6n button.svelte-1tcem6n {{
-                    background: #EAF6FF !important;
-                    border: 1px solid #EAF6FF !important;
-                    border-radius: 12px !important;
+                    border-radius: 9px !important;
                     padding: 8px 16px !important;
-                    margin: 0 8px 0 0 !important;
+                    margin: 0 1px !important;
                     font-size: 14px !important;
                     font-weight: 500 !important;
-                    color: #57BAFF !important;
-                    transition: all 0.15s ease !important;
+                    color: #64748B !important;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
                     box-shadow: none !important;
                     cursor: pointer !important;
+                    min-width: 80px !important;
                 }}
                 
-                /* Selected tab styling - like active Add context button */
+                /* Selected tab styling - glass pill effect */
                 .tab-wrapper.svelte-1tcem6n button.svelte-1tcem6n.selected,
                 .tab-wrapper.svelte-1tcem6n button.svelte-1tcem6n[aria-selected="true"] {{
-                    background: #57BAFF !important;
-                    border: 1px solid #57BAFF !important;
-                    color: #FFFFFF !important;
+                    background: rgba(255, 255, 255, 0.95) !important;
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+                    color: #1F2937 !important;
                     font-weight: 600 !important;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15),
+                                0 1px 3px rgba(0, 0, 0, 0.1),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
                 }}
                 
                 /* Hover effect for non-selected tabs */
                 .tab-wrapper.svelte-1tcem6n button.svelte-1tcem6n:hover:not(.selected):not([aria-selected="true"]) {{
-                    background: #D6ECFF !important;
-                    border-color: #D6ECFF !important;
+                    color: #475569 !important;
+                    background: rgba(255, 255, 255, 0.4) !important;
+                    backdrop-filter: blur(10px) !important;
+                    -webkit-backdrop-filter: blur(10px) !important;
                 }}
                 
                 /* Remove tab underlines completely */
