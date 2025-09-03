@@ -794,6 +794,72 @@ def create_demo():
                 .scout-info-cards {{
                     margin-top: 4px !important;
                     margin-bottom: 0px !important;
+                }}
+                
+                /* Scout/Workspace tabs styling - using Add context button style */
+                
+                /* Remove container styling, keep tabs in normal position */
+                .tab-wrapper.svelte-1tcem6n {{
+                    background: transparent !important;
+                    border: none !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }}
+                
+                /* Style tab buttons like Add context button */
+                .tab-wrapper.svelte-1tcem6n button.svelte-1tcem6n {{
+                    background: #EAF6FF !important;
+                    border: 1px solid #EAF6FF !important;
+                    border-radius: 12px !important;
+                    padding: 8px 16px !important;
+                    margin: 0 8px 0 0 !important;
+                    font-size: 14px !important;
+                    font-weight: 500 !important;
+                    color: #57BAFF !important;
+                    transition: all 0.15s ease !important;
+                    box-shadow: none !important;
+                    cursor: pointer !important;
+                }}
+                
+                /* Selected tab styling - like active Add context button */
+                .tab-wrapper.svelte-1tcem6n button.svelte-1tcem6n.selected,
+                .tab-wrapper.svelte-1tcem6n button.svelte-1tcem6n[aria-selected="true"] {{
+                    background: #57BAFF !important;
+                    border: 1px solid #57BAFF !important;
+                    color: #FFFFFF !important;
+                    font-weight: 600 !important;
+                }}
+                
+                /* Hover effect for non-selected tabs */
+                .tab-wrapper.svelte-1tcem6n button.svelte-1tcem6n:hover:not(.selected):not([aria-selected="true"]) {{
+                    background: #D6ECFF !important;
+                    border-color: #D6ECFF !important;
+                }}
+                
+                /* Remove tab underlines completely */
+                .tab-wrapper.svelte-1tcem6n button.svelte-1tcem6n::after,
+                .tab-wrapper.svelte-1tcem6n button.svelte-1tcem6n::before,
+                .tab-container.svelte-1tcem6n::after,
+                .tab-container.svelte-1tcem6n::before,
+                *[role="tab"]::after,
+                *[role="tab"]::before {{
+                    display: none !important;
+                    content: none !important;
+                    border: none !important;
+                    border-bottom: none !important;
+                }}
+                
+                /* Remove blue underline from selected tabs */
+                .tab-wrapper.svelte-1tcem6n .selected {{
+                    border-bottom: none !important;
+                    text-decoration: none !important;
+                }}
+                
+                /* Target any remaining underline elements */
+                .tab-wrapper *,
+                .tab-container * {{
+                    border-bottom: none !important;
+                    text-decoration: none !important;
                 }}`;
                 document.head.appendChild(style);
                 
