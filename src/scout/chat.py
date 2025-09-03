@@ -336,20 +336,52 @@ def create_demo():
                     # Delete chat button
                     delete_chat_btn = gr.Button("🗑️ Delete Chat", variant="secondary", size="sm")
 
-                # Create placeholder markdown (visible initially)
-                placeholder_md = gr.Markdown("Drop Ideas", visible=True, height="25vh", elem_classes="placeholder-content")
-                
-                # Create custom chatbot
-                chatbot = gr.Chatbot(
-                    height="78vh",
-                    show_copy_button=False,
-                    placeholder="START HERE",
-                    type="messages",
-                    render_markdown=True,
-                    show_label=False,
-                    show_share_button=False,
-                    visible=False,
-                )
+                # Create main content area with tight spacing
+                with gr.Column():
+                    # Flexible spacer to push content down
+                    gr.Markdown("", elem_classes="flexible-spacer")
+                    
+                    # Centered placeholder with minimal bottom margin
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown()  # Left spacer
+                        with gr.Column(scale=3):
+                            placeholder_md = gr.Markdown(
+                                "Drop Ideas", 
+                                visible=True, 
+                                elem_classes="placeholder-content-tight"
+                            )
+                        with gr.Column(scale=1):
+                            gr.Markdown()  # Right spacer
+                    
+                    # Custom chatbot
+                    chatbot = gr.Chatbot(
+                        height="78vh",
+                        show_copy_button=False,
+                        placeholder="START HERE",
+                        type="messages",
+                        render_markdown=True,
+                        show_label=False,
+                        show_share_button=False,
+                        visible=False,
+                    )
+                    
+                    # Info cards positioned close to chat input
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown()  # Left spacer
+                        with gr.Column(scale=2):
+                            combined_info = gr.Markdown(
+                                value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
+                                elem_classes=["scout-info-card", "scout-combined-card"]
+                            )
+                        with gr.Column(scale=1):
+                            gr.Markdown()  # Right spacer
+                    
+                    # Create Scout-style textbox
+                    scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
+                        placeholder="Create a website based on my vibes"
+                    )
                 
                 # Create right sidebar using Gradio's native Sidebar
                 with gr.Sidebar(position="right", open=False) as right_sidebar:
@@ -391,25 +423,6 @@ def create_demo():
                             step=0.1,
                             interactive=True
                         )
-                
-                # Create info cards for directory and branch - positioned above chat input
-                with gr.Row(elem_classes=["scout-info-cards"]):
-                    gr.Markdown()
-                    gr.Markdown()
-                    gr.Markdown()
-                    gr.Markdown()
-                    gr.Markdown()
-                    with gr.Column(scale=2):
-                        combined_info = gr.Markdown(
-                                    value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
-                                    elem_classes=["scout-info-card", "scout-combined-card"]
-                                )
-                    gr.Markdown()
-                
-                # Create Scout-style textbox
-                scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
-                    placeholder="Create a website based on my vibes"
-                )
             
             # Workspace tab (empty for now)
             with gr.Tab("Workspace"):
@@ -733,33 +746,37 @@ def create_demo():
                     color: #34C759 !important;
                 }}
                 
-                /* Placeholder content styling - target the actual Gradio markdown block structure */
-                .block.placeholder-content,
-                div.block.placeholder-content {{
-                    display: flex !important;
-                    align-items: flex-end !important;
-                    justify-content: center !important;
-                    height: 35vh !important;
-                    min-height: 35vh !important;
-                    width: 100% !important;
-                    margin-bottom: 20px !important;
+                /* Flexible spacer for pushing content down */
+                .flexible-spacer {{
+                    flex: 1 !important;
+                    min-height: 20vh !important;
                 }}
                 
-                .block.placeholder-content .prose,
-                .block.placeholder-content div,
-                div.block.placeholder-content .prose,
-                div.block.placeholder-content div {{
+                /* Tight placeholder content styling */
+                .block.placeholder-content-tight,
+                div.block.placeholder-content-tight {{
                     display: flex !important;
                     align-items: center !important;
                     justify-content: center !important;
-                    height: 100% !important;
-                    width: 100% !important;
                     margin: 0 !important;
-                    padding: 0 !important;
+                    padding: 8px 0 !important;
+                    width: 100% !important;
                 }}
                 
-                .block.placeholder-content p,
-                div.block.placeholder-content p {{
+                .block.placeholder-content-tight .prose,
+                .block.placeholder-content-tight div,
+                div.block.placeholder-content-tight .prose,
+                div.block.placeholder-content-tight div {{
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    width: 100% !important;
+                }}
+                
+                .block.placeholder-content-tight p,
+                div.block.placeholder-content-tight p {{
                     margin: 0 !important;
                     padding: 0 !important;
                     font-size: 2.5rem !important;
@@ -769,6 +786,12 @@ def create_demo():
                     line-height: 1.2 !important;
                     letter-spacing: -0.02em !important;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                }}
+                
+                /* Scout Info Cards - Position closer to chat input */
+                .scout-info-cards {{
+                    margin-top: 4px !important;
+                    margin-bottom: 8px !important;
                 }}`;
                 document.head.appendChild(style);
                 
