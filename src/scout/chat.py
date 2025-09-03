@@ -388,21 +388,21 @@ def create_demo():
                     interactive=True
                 )
         
-        # Create Scout-style textbox
-        scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
-            placeholder="Create a website based on my vibes"
-        )
-        
-        # Create info cards for directory and branch - positioned right above chat input
+        # Create info cards for directory and branch - positioned above chat input
         with gr.Row(elem_classes=["scout-info-cards"]):
-            with gr.Column(scale=5):
+            with gr.Column(scale=6):
                 gr.Markdown()
-            with gr.Column(scale=4, min_width=0):
+            with gr.Column(scale=5, min_width=0):
                 # Combined directory and branch info in single markdown
                 combined_info = gr.Markdown(
                     value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
                     elem_classes=["scout-info-card", "scout-combined-card"]
                 )
+        
+        # Create Scout-style textbox
+        scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
+            placeholder="Create a website based on my vibes"
+        )
         
         # Apply Scout CSS and hide footer
         demo.load(lambda: None, js=f"""
