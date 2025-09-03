@@ -14,11 +14,11 @@ def to_dict_with_type(obj):
     }
 
 
-async def claude_code(prompt: str,session_id:str|None=None, mode: str = "Scout"):
+async def claude_code(prompt: str, session_id:str|None=None, mode: str = "Scout", cwd: str|None=None, append_system_prompt: str = ""):
     """Execute a query with the secure agent configuration"""
     options = ClaudeCodeOptions(
-        cwd=None, #by default it runs in scripts current directory
-        append_system_prompt="", #this parameter make's sure to use builtin system prompt + ours system prompt
+        cwd=cwd, #by default it runs in scripts current directory
+        append_system_prompt=append_system_prompt, #this parameter make's sure to use builtin system prompt + ours system prompt
         resume=session_id, #str(uuid.uuid4()), #Uses session-id specific message as context/conversation maintainence , None will autocreates session-uid
         permission_mode="plan" if mode == "Plan" else "bypassPermissions", # modes are of : "plan", "bypassPermissions"
         disallowed_tools=[

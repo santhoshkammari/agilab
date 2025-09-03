@@ -10,6 +10,8 @@ import re
 import json
 import asyncio
 import time
+import os
+import subprocess
 from typing import AsyncGenerator
 
 from logger import get_logger
@@ -25,7 +27,49 @@ from chat_manager import ChatManager
 from utils import status_messages
 
 
-def chat_function_sync(message, history, session_id=None, mode="Scout"):
+def search_directories(query="", max_results=20):
+    """Search for directories using find command with smart sorting."""
+    if not query:
+        return [os.path.expanduser("~"), "/tmp", "/opt", "/usr/local"]
+    
+    try:
+        # Search in multiple locations
+        result = subprocess.run(
+            f"find ~ /opt /usr/local -type d -name '*{query}*' 2>/dev/null",
+            shell=True, capture_output=True, text=True, timeout=3
+        )
+        dirs = [d.strip() for d in result.stdout.split('\n') if d.strip() and os.path.isdir(d.strip())]
+        
+        if not dirs:
+            return [os.path.expanduser("~")]
+        
+        # Smart sorting function
+        def sort_priority(path):
+            path_lower = path.lower()
+            
+            # Priority 1: Normal project directories (highest priority)
+            if not any(x in path_lower for x in ['.cache', '.local', 'site-packages', '.claude', '.config', '/usr/', '/opt/']):
+                if query.lower() in os.path.basename(path).lower():
+                    return (1, len(path))  # Normal dir with name match
+                return (2, len(path))     # Normal dir
+            
+            # Priority 2: System/package directories  
+            elif any(x in path_lower for x in ['site-packages', '/opt/', '/usr/']):
+                return (3, len(path))
+            
+            # Priority 3: Hidden/cache directories (lowest priority)
+            else:
+                return (4, len(path))
+        
+        # Sort and return
+        dirs.sort(key=sort_priority)
+        return dirs[:max_results]
+        
+    except:
+        return [os.path.expanduser("~")]
+
+
+def chat_function_sync(message, history, session_id=None, mode="Scout", cwd="", append_system_prompt=""):
     """
     Sync chat function using threading to handle claude_code async calls.
     This avoids Gradio's async issues completely.
@@ -46,7 +90,7 @@ def chat_function_sync(message, history, session_id=None, mode="Scout"):
         
         async def collect_events():
             events = []
-            async for event in claude_code(message, session_id=session_id, mode=mode):
+            async for event in claude_code(message, session_id=session_id, mode=mode, cwd=cwd if cwd else None, append_system_prompt=append_system_prompt):
                 events.append(event)
                 # Put each event in queue immediately for streaming
                 result_queue.put(('event', event))
@@ -243,6 +287,8 @@ def create_demo():
         current_chat_id = gr.State(None)
         current_session_id = gr.State(None)
         current_mode = gr.State("Scout")
+        current_cwd = gr.State("")
+        current_append_system_prompt = gr.State("")
         
         with gr.Sidebar(open=False):
             gr.Markdown("## 🔍 Scout Chats")
@@ -280,7 +326,36 @@ def create_demo():
         # Create right sidebar using Gradio's native Sidebar
         with gr.Sidebar(position="right", open=False) as right_sidebar:
             gr.Markdown("## ⚙️ Settings")
-            gr.Markdown("Settings panel coming soon!")
+            
+            # Add Claude Code configuration settings
+            with gr.Group():
+                gr.Markdown("### Claude Code Settings")
+                cwd_textbox = gr.Textbox(
+                    label="Working Directory (cwd)",
+                    placeholder="Type directory path (e.g., agilab)...",
+                    value="",
+                    interactive=True,
+                    info="Type to search directories across your system"
+                )
+                
+                # Directory suggestions dropdown
+                cwd_suggestions = gr.Dropdown(
+                    label="Directory Suggestions",
+                    choices=search_directories(""),
+                    value="",
+                    allow_custom_value=True,
+                    interactive=True,
+                    visible=True,
+                    info="Click to select from suggestions"
+                )
+                append_system_prompt_textbox = gr.Textbox(
+                    label="Additional System Prompt",
+                    placeholder="Additional instructions for Claude...",
+                    value="",
+                    interactive=True,
+                    lines=3,
+                    info="Append custom system prompt to built-in prompt"
+                )
             
             # Add some placeholder settings
             with gr.Group():
@@ -646,6 +721,22 @@ def create_demo():
             }}
         """)
         
+        # Directory search handler
+        def update_directory_suggestions(search_query):
+            """Update directory suggestions based on search query."""
+            if search_query and len(search_query) >= 2:
+                dirs = search_directories(search_query)
+                return gr.update(choices=dirs, value="")
+            else:
+                dirs = search_directories("")
+                return gr.update(choices=dirs, value="")
+        
+        def select_directory_from_suggestions(selected_dir):
+            """Copy selected directory to the textbox."""
+            if selected_dir:
+                return gr.update(value=selected_dir), gr.update(value="")
+            return gr.update(), gr.update()
+        
         # Chat management functions
         def load_chat_list():
             """Load and format chat list for dropdown."""
@@ -707,7 +798,7 @@ def create_demo():
             )
         
         # Custom chat function wrapper
-        def handle_chat(message, history, chat_id_state, session_id_state, selected_mode):
+        def handle_chat(message, history, chat_id_state, session_id_state, selected_mode, cwd_value, append_prompt_value):
             if not message.strip():
                 return history, "", gr.update(), gr.update(), chat_id_state, session_id_state
             
@@ -731,8 +822,8 @@ def create_demo():
             # Show thinking indicator first
             yield thinking_history, "", chatbot_update, placeholder_update, current_chat_id, current_session_id
             
-            # Call the sync chat function with streaming, passing the selected mode
-            response_gen = chat_function_sync(message, history, current_session_id, selected_mode)
+            # Call the sync chat function with streaming, passing the selected mode and settings
+            response_gen = chat_function_sync(message, history, current_session_id, selected_mode, cwd_value, append_prompt_value)
             
             # Stream the response and build complete conversation history
             for response_messages, updated_session_id in response_gen:
@@ -755,14 +846,14 @@ def create_demo():
         # Connect send button and textbox submit
         send_button.click(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode],
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox],
             outputs=[chatbot, scout_textbox, chatbot, placeholder_md, current_chat_id, current_session_id],
             queue=True,
         )
         
         scout_textbox.submit(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode],
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox],
             outputs=[chatbot, scout_textbox, chatbot, placeholder_md, current_chat_id, current_session_id],
             queue=True,
         )
@@ -785,6 +876,27 @@ def create_demo():
             fn=delete_selected_chat,
             inputs=[current_chat_id],
             outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id]
+        )
+        
+        # Connect directory search functionality
+        cwd_textbox.change(
+            fn=update_directory_suggestions,
+            inputs=[cwd_textbox],
+            outputs=[cwd_suggestions]
+        )
+        
+        # Real-time updates as user types
+        cwd_textbox.input(
+            fn=update_directory_suggestions,
+            inputs=[cwd_textbox],
+            outputs=[cwd_suggestions]
+        )
+        
+        # Select from suggestions
+        cwd_suggestions.change(
+            fn=select_directory_from_suggestions,
+            inputs=[cwd_suggestions],
+            outputs=[cwd_textbox, cwd_suggestions]
         )
         
         # Load chat list on startup
