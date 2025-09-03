@@ -27,6 +27,30 @@ from chat_manager import ChatManager
 from utils import status_messages
 
 
+def get_current_branch():
+    """Get the current Git branch name."""
+    try:
+        result = subprocess.run(
+            "git branch --show-current",
+            shell=True, capture_output=True, text=True, timeout=2
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+        return "main"  # fallback
+    except:
+        return "main"  # fallback
+
+
+def get_directory_name(cwd_path=None):
+    """Get the current directory name (basename only)."""
+    try:
+        if cwd_path and cwd_path.strip():
+            return os.path.basename(cwd_path.rstrip('/'))
+        return os.path.basename(os.getcwd())
+    except:
+        return "scout"  # fallback
+
+
 def search_directories(query="", max_results=20):
     """Search for directories using find command with smart sorting."""
     if not query:
@@ -364,6 +388,20 @@ def create_demo():
                     interactive=True
                 )
         
+        # Create info cards for directory and branch - positioned above chat input
+        with gr.Row(elem_classes=["scout-info-cards"]):
+            gr.Markdown()
+            gr.Markdown()
+            gr.Markdown()
+            gr.Markdown()
+            gr.Markdown()
+            with gr.Column(scale=3):
+                combined_info = gr.Markdown(
+                            value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
+                            elem_classes=["scout-info-card", "scout-combined-card"]
+                        )
+            gr.Markdown()
+        
         # Create Scout-style textbox
         scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
             placeholder="Create a website based on my vibes"
@@ -615,6 +653,75 @@ def create_demo():
                     background-clip: text !important;
                 }}
                 
+                /* Scout Info Cards - Position closer to chat input */
+                .scout-info-cards {{
+                    margin-top: 8px !important;
+                    margin-bottom: 12px !important;
+                }}
+                
+                /* Make the parent row flex for side-by-side layout */
+                .row.scout-info-cards > .svelte-vuh1yp {{
+                    display: flex !important;
+                    gap: 0px !important;
+                    justify-content: center !important;
+                    align-items: center !important;
+                }}
+                
+                /* Target the prose elements that wrap our cards */
+                .prose.scout-info-card {{
+                    background: rgba(0, 122, 255, 0.08) !important;
+                    border: 1px solid rgba(0, 122, 255, 0.12) !important;
+                    color: #007AFF !important;
+                    font-size: 14px !important;
+                    font-weight: 500 !important;
+                    padding: 8px 14px !important;
+                    border-radius: 12px !important;
+                    transition: all 0.15s ease !important;
+                    height: auto !important;
+                    min-height: 32px !important;
+                    box-shadow: 0 1px 3px rgba(0, 122, 255, 0.08) !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    margin: 0 !important;
+                    white-space: nowrap !important;
+                    min-width: max-content !important;
+                }}
+                
+                .prose.scout-branch-card {{
+                    background: rgba(52, 199, 89, 0.08) !important;
+                    border: 1px solid rgba(52, 199, 89, 0.12) !important;
+                }}
+                
+                .prose.scout-info-card:hover {{
+                    background: rgba(0, 122, 255, 0.12) !important;
+                    border-color: rgba(0, 122, 255, 0.18) !important;
+                    transform: translateY(-0.5px) !important;
+                }}
+                
+                .prose.scout-branch-card:hover {{
+                    background: rgba(52, 199, 89, 0.12) !important;
+                    border-color: rgba(52, 199, 89, 0.18) !important;
+                }}
+                
+                .prose.scout-info-card p {{
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    font-size: 14px !important;
+                    font-weight: 500 !important;
+                    color: #007AFF !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    gap: 6px !important;
+                    white-space: nowrap !important;
+                    min-width: max-content !important;
+                }}
+                
+                .prose.scout-branch-card p {{
+                    color: #34C759 !important;
+                }}
+                
                 /* Placeholder content styling - target the actual Gradio markdown block structure */
                 .block.placeholder-content,
                 div.block.placeholder-content {{
@@ -663,6 +770,116 @@ def create_demo():
                     }}
                     if (textboxWrapper) {{
                         textboxWrapper.setAttribute('data-mode', 'Scout');
+                    }}
+                    
+                    // Style the info cards to look like buttons
+                    const cards = document.querySelectorAll('p');
+                    let foundCards = [];
+                    
+                    for (let card of cards) {{
+                        const text = card.textContent.trim();
+                        if (text.includes('scout') || text.includes('chat_under_branch')) {{
+                            let current = card;
+                            while (current.parentElement) {{
+                                current = current.parentElement;
+                                if (current.classList.contains('scout-info-card')) {{
+                                    foundCards.push({{
+                                        text: text,
+                                        element: current,
+                                        classes: current.className
+                                    }});
+                                    break;
+                                }}
+                            }}
+                        }}
+                    }}
+                    
+                    // Apply styling directly to found elements
+                    foundCards.forEach((cardInfo, index) => {{
+                        const element = cardInfo.element;
+                        
+                        // Base button styling like "Add context"
+                        element.style.cssText = `
+                            background: rgba(0, 122, 255, 0.08) !important;
+                            border: 1px solid rgba(0, 122, 255, 0.12) !important;
+                            color: #007AFF !important;
+                            font-size: 14px !important;
+                            font-weight: 500 !important;
+                            padding: 8px 14px !important;
+                            border-radius: 12px !important;
+                            transition: all 0.15s ease !important;
+                            height: auto !important;
+                            min-height: 32px !important;
+                            box-shadow: 0 1px 3px rgba(0, 122, 255, 0.08) !important;
+                            display: inline-flex !important;
+                            align-items: center !important;
+                            justify-content: center !important;
+                            margin: 0 4px !important;
+                            cursor: pointer !important;
+                        `;
+                        
+                        // Branch card gets green styling
+                        if (cardInfo.text.includes('chat_under_branch')) {{
+                            element.style.background = 'rgba(52, 199, 89, 0.08) !important';
+                            element.style.borderColor = 'rgba(52, 199, 89, 0.12) !important';
+                            
+                            const p = element.querySelector('p');
+                            if (p) {{
+                                p.style.color = '#34C759 !important';
+                            }}
+                        }}
+                        
+                        // Style the paragraph inside
+                        const p = element.querySelector('p');
+                        if (p) {{
+                            p.style.cssText += `
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                font-size: 14px !important;
+                                font-weight: 500 !important;
+                                display: flex !important;
+                                align-items: center !important;
+                                justify-content: center !important;
+                                gap: 6px !important;
+                            `;
+                        }}
+                        
+                        // Add hover effects
+                        element.addEventListener('mouseenter', () => {{
+                            if (cardInfo.text.includes('chat_under_branch')) {{
+                                element.style.background = 'rgba(52, 199, 89, 0.12) !important';
+                                element.style.borderColor = 'rgba(52, 199, 89, 0.18) !important';
+                            }} else {{
+                                element.style.background = 'rgba(0, 122, 255, 0.12) !important';
+                                element.style.borderColor = 'rgba(0, 122, 255, 0.18) !important';
+                            }}
+                            element.style.transform = 'translateY(-0.5px) !important';
+                        }});
+                        
+                        element.addEventListener('mouseleave', () => {{
+                            if (cardInfo.text.includes('chat_under_branch')) {{
+                                element.style.background = 'rgba(52, 199, 89, 0.08) !important';
+                                element.style.borderColor = 'rgba(52, 199, 89, 0.12) !important';
+                            }} else {{
+                                element.style.background = 'rgba(0, 122, 255, 0.08) !important';
+                                element.style.borderColor = 'rgba(0, 122, 255, 0.12) !important';
+                            }}
+                            element.style.transform = 'translateY(0px) !important';
+                        }});
+                    }});
+                    
+                    // Make the container row flex
+                    const row = document.querySelector('.scout-info-cards');
+                    if (row) {{
+                        const container = row.querySelector('.svelte-vuh1yp');
+                        if (container) {{
+                            container.style.cssText = `
+                                display: flex !important;
+                                gap: 8px !important;
+                                justify-content: center !important;
+                                align-items: center !important;
+                            `;
+                        }}
                     }}
                     
                     // Style the placeholder content
@@ -719,6 +936,21 @@ def create_demo():
             else:
                 dirs = search_directories("")
                 return gr.update(choices=dirs)
+        
+        def update_info_cards(cwd_value):
+            """Update info cards with current directory and branch."""
+            dir_name = get_directory_name(cwd_value)
+            branch_name = get_current_branch()
+            
+            combined_content = f"🌱 **{dir_name}**      🌿 **{branch_name}**"
+            
+            return gr.update(value=combined_content)
+        
+        def update_directory_and_cards(cwd_value):
+            """Update both directory choices and info cards."""
+            choices_update = update_directory_choices(cwd_value)
+            combined_update = update_info_cards(cwd_value)
+            return choices_update, combined_update
         
         # Chat management functions
         def load_chat_list():
@@ -911,16 +1143,21 @@ def create_demo():
         
         # Connect directory search functionality
         cwd_textbox.change(
-            fn=update_directory_choices,
+            fn=update_directory_and_cards,
             inputs=[cwd_textbox],
-            outputs=[cwd_textbox]
+            outputs=[cwd_textbox, combined_info]
         )
         
-        # Load chat list on startup
+        # Load chat list and info cards on startup
+        def initialize_ui():
+            chat_list = load_chat_list()
+            combined_update = update_info_cards("")
+            return chat_list, combined_update
+        
         demo.load(
-            fn=load_chat_list,
+            fn=initialize_ui,
             inputs=[],
-            outputs=[chat_dropdown]
+            outputs=[chat_dropdown, combined_info]
         )
 
         # Connect context button (placeholder functionality)

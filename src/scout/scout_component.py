@@ -424,10 +424,10 @@ def create_scout_textbox_ui(
             # Main textbox
             textbox = gr.Textbox(
                 placeholder=placeholder,
+                show_label=False,
+                container=False,
                 lines=1,
                 max_lines=2,
-                container=False,
-                show_label=False,
                 elem_classes=["scout-main-input"],
                 interactive=True,
             )
