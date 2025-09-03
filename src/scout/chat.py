@@ -393,17 +393,17 @@ def create_demo():
             placeholder="Create a website based on my vibes"
         )
         
-        # Create info cards for directory and branch
+        # Create info cards for directory and branch - positioned right above chat input
         with gr.Row(elem_classes=["scout-info-cards"]):
             with gr.Column(scale=1):
                 gr.Markdown()
             with gr.Row(scale=3):
-                # Directory card (top card)
+                # Directory card with iOS-style folder icon
                 dir_card = gr.Markdown(
-                    value=f"📁 **{get_directory_name()}**",
+                    value=f"📂 **{get_directory_name()}**",
                     elem_classes=["scout-info-card", "scout-dir-card"]
                 )
-                # Branch card (bottom card, slightly offset)
+                # Branch card
                 branch_card = gr.Markdown(
                     value=f"🌿 **{get_current_branch()}**",
                     elem_classes=["scout-info-card", "scout-branch-card"]
@@ -657,10 +657,10 @@ def create_demo():
                     background-clip: text !important;
                 }}
                 
-                /* Scout Info Cards - Match Add context button style */
+                /* Scout Info Cards - Position closer to chat input */
                 .scout-info-cards {{
-                    margin-top: 16px !important;
-                    margin-bottom: 24px !important;
+                    margin-top: 8px !important;
+                    margin-bottom: 12px !important;
                 }}
                 
                 /* Make the parent row flex for side-by-side layout */
@@ -942,7 +942,7 @@ def create_demo():
             dir_name = get_directory_name(cwd_value)
             branch_name = get_current_branch()
             
-            dir_content = f"📁 **{dir_name}**"
+            dir_content = f"📂 **{dir_name}**"
             branch_content = f"🌿 **{branch_name}**"
             
             return gr.update(value=dir_content), gr.update(value=branch_content)
