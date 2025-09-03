@@ -314,98 +314,108 @@ def create_demo():
         current_cwd = gr.State("")
         current_append_system_prompt = gr.State("")
         
-        with gr.Sidebar(open=False):
-            gr.Markdown("## 🔍 Scout Chats")
-            
-            # New chat button
-            new_chat_btn = gr.Button("➕ New Chat", variant="primary", size="sm")
-            
-            # Chat list using dropdown
-            chat_dropdown = gr.Dropdown(
-                label="Recent Chats",
-                choices=[],
-                value=None,
-                interactive=True,
-                allow_custom_value=False
-            )
-            
-            # Delete chat button
-            delete_chat_btn = gr.Button("🗑️ Delete Chat", variant="secondary", size="sm")
+        # Create main tabs
+        with gr.Tabs() as main_tabs:
+            # Scout tab with all existing functionality
+            with gr.Tab("Scout"):
+                with gr.Sidebar(open=False):
+                    gr.Markdown("## 🔍 Scout Chats")
+                    
+                    # New chat button
+                    new_chat_btn = gr.Button("➕ New Chat", variant="primary", size="sm")
+                    
+                    # Chat list using dropdown
+                    chat_dropdown = gr.Dropdown(
+                        label="Recent Chats",
+                        choices=[],
+                        value=None,
+                        interactive=True,
+                        allow_custom_value=False
+                    )
+                    
+                    # Delete chat button
+                    delete_chat_btn = gr.Button("🗑️ Delete Chat", variant="secondary", size="sm")
 
-        # Create placeholder markdown (visible initially)
-        placeholder_md = gr.Markdown("Drop Ideas", visible=True, height="25vh", elem_classes="placeholder-content")
-        
-        # Create custom chatbot
-        chatbot = gr.Chatbot(
-            height="78vh",
-            show_copy_button=False,
-            placeholder="START HERE",
-            type="messages",
-            render_markdown=True,
-            show_label=False,
-            show_share_button=False,
-            visible=False,
-        )
-        
-        # Create right sidebar using Gradio's native Sidebar
-        with gr.Sidebar(position="right", open=False) as right_sidebar:
-            gr.Markdown("## ⚙️ Settings")
-            
-            # Add Claude Code configuration settings
-            with gr.Group():
-                gr.Markdown("### Claude Code Settings")
-                cwd_textbox = gr.Dropdown(
-                    label="Set Directory",
-                    choices=search_directories(""),
-                    value="",
-                    allow_custom_value=True,
-                    interactive=True,
-                    filterable=True
+                # Create placeholder markdown (visible initially)
+                placeholder_md = gr.Markdown("Drop Ideas", visible=True, height="25vh", elem_classes="placeholder-content")
+                
+                # Create custom chatbot
+                chatbot = gr.Chatbot(
+                    height="78vh",
+                    show_copy_button=False,
+                    placeholder="START HERE",
+                    type="messages",
+                    render_markdown=True,
+                    show_label=False,
+                    show_share_button=False,
+                    visible=False,
                 )
-                append_system_prompt_textbox = gr.Textbox(
-                    label="Additional System Prompt",
-                    placeholder="Additional instructions for Claude...",
-                    value="",
-                    interactive=True,
-                    lines=3
-                )
-            
-            # Add some placeholder settings
-            with gr.Group():
-                gr.Markdown("### Chat Settings")
-                model_dropdown = gr.Dropdown(
-                    label="Model",
-                    choices=["Claude-3", "Claude-2", "GPT-4"],
-                    value="Claude-3",
-                    interactive=True
-                )
-                temperature_slider = gr.Slider(
-                    label="Temperature",
-                    minimum=0.0,
-                    maximum=1.0,
-                    value=0.7,
-                    step=0.1,
-                    interactive=True
-                )
-        
-        # Create info cards for directory and branch - positioned above chat input
-        with gr.Row(elem_classes=["scout-info-cards"]):
-            gr.Markdown()
-            gr.Markdown()
-            gr.Markdown()
-            gr.Markdown()
-            gr.Markdown()
-            with gr.Column(scale=2):
-                combined_info = gr.Markdown(
-                            value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
-                            elem_classes=["scout-info-card", "scout-combined-card"]
+                
+                # Create right sidebar using Gradio's native Sidebar
+                with gr.Sidebar(position="right", open=False) as right_sidebar:
+                    gr.Markdown("## ⚙️ Settings")
+                    
+                    # Add Claude Code configuration settings
+                    with gr.Group():
+                        gr.Markdown("### Claude Code Settings")
+                        cwd_textbox = gr.Dropdown(
+                            label="Set Directory",
+                            choices=search_directories(""),
+                            value="",
+                            allow_custom_value=True,
+                            interactive=True,
+                            filterable=True
                         )
-            gr.Markdown()
-        
-        # Create Scout-style textbox
-        scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
-            placeholder="Create a website based on my vibes"
-        )
+                        append_system_prompt_textbox = gr.Textbox(
+                            label="Additional System Prompt",
+                            placeholder="Additional instructions for Claude...",
+                            value="",
+                            interactive=True,
+                            lines=3
+                        )
+                    
+                    # Add some placeholder settings
+                    with gr.Group():
+                        gr.Markdown("### Chat Settings")
+                        model_dropdown = gr.Dropdown(
+                            label="Model",
+                            choices=["Claude-3", "Claude-2", "GPT-4"],
+                            value="Claude-3",
+                            interactive=True
+                        )
+                        temperature_slider = gr.Slider(
+                            label="Temperature",
+                            minimum=0.0,
+                            maximum=1.0,
+                            value=0.7,
+                            step=0.1,
+                            interactive=True
+                        )
+                
+                # Create info cards for directory and branch - positioned above chat input
+                with gr.Row(elem_classes=["scout-info-cards"]):
+                    gr.Markdown()
+                    gr.Markdown()
+                    gr.Markdown()
+                    gr.Markdown()
+                    gr.Markdown()
+                    with gr.Column(scale=2):
+                        combined_info = gr.Markdown(
+                                    value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
+                                    elem_classes=["scout-info-card", "scout-combined-card"]
+                                )
+                    gr.Markdown()
+                
+                # Create Scout-style textbox
+                scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
+                    placeholder="Create a website based on my vibes"
+                )
+            
+            # Workspace tab (empty for now)
+            with gr.Tab("Workspace"):
+                gr.Markdown("## 🚧 Workspace", elem_classes=["title-header"])
+                gr.Markdown("Coming soon! This will be your dedicated workspace for project management and code organization.", 
+                           elem_classes=["placeholder-content"])
         
         # Apply Scout CSS and hide footer
         demo.load(lambda: None, js=f"""
@@ -623,6 +633,7 @@ def create_demo():
                 *[style*="background: #f3f4f6"] {{
                     background: transparent !important;
                     background-color: transparent !important;
+                }}
 
                 /* Keep thinking messages with light grey background */
                 .gradio-chatbot .message[data-title="💭 Thinking"],
