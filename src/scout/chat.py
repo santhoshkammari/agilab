@@ -244,7 +244,7 @@ def create_demo():
         current_session_id = gr.State(None)
         current_mode = gr.State("Scout")
         
-        with gr.Sidebar(open=True):
+        with gr.Sidebar(open=False):
             gr.Markdown("## 🔍 Scout Chats")
             
             # New chat button
@@ -277,7 +277,7 @@ def create_demo():
             visible=False,
         )
         
-        # Create right sidebar (initially hidden)
+        # Create right sidebar using Gradio's native Sidebar
         with gr.Sidebar(position="right", open=False) as right_sidebar:
             gr.Markdown("## ⚙️ Settings")
             gr.Markdown("Settings panel coming soon!")
@@ -299,9 +299,6 @@ def create_demo():
                     step=0.1,
                     interactive=True
                 )
-        
-        # State for sidebar visibility
-        sidebar_visible = gr.State(False)
         
         # Create Scout-style textbox
         scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
@@ -354,26 +351,12 @@ def create_demo():
                     padding: 16px !important;
                 }}
                 
-                /* Right sidebar styling */
+                /* Right sidebar styling using Gradio's native sidebar */
                 .gradio-sidebar[data-position="right"] {{
                     background: #F8F9FA !important;
                     border-left: 1px solid #E5E7EB !important;
                     border-right: none !important;
                     padding: 16px !important;
-                    position: fixed !important;
-                    right: 0 !important;
-                    top: 0 !important;
-                    height: 100vh !important;
-                    width: 300px !important;
-                    z-index: 1000 !important;
-                    transform: translateX(100%) !important;
-                    transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
-                    display: none !important;
-                }}
-                
-                .gradio-sidebar[data-position="right"].visible {{
-                    display: block !important;
-                    transform: translateX(0) !important;
                 }}
                 
                 /* iOS-style dropdown styling - remove all borders and lines */
@@ -822,39 +805,67 @@ def create_demo():
             outputs=[]
         )
         
-        # Toggle right sidebar function
-        def toggle_right_sidebar(current_visible):
-            new_visible = not current_visible
-            # Use JavaScript to toggle the sidebar
-            return new_visible
+        # State to track right sidebar open/closed  
+        right_sidebar_open = gr.State(False)
         
+        # Function to toggle right sidebar state
+        def toggle_right_sidebar_state(current_open):
+            new_state = not current_open
+            return new_state, gr.update(open=new_state)
+        
+        # Connect settings button to toggle right sidebar state
         settings_button.click(
-            fn=toggle_right_sidebar,
-            inputs=[sidebar_visible],
-            outputs=[sidebar_visible],
+            fn=toggle_right_sidebar_state,
+            inputs=[right_sidebar_open],
+            outputs=[right_sidebar_open, right_sidebar]
+        )
+        
+        # Listen to state changes and trigger sidebar events
+        right_sidebar_open.change(
+            fn=lambda is_open: None,
+            inputs=[right_sidebar_open],
+            outputs=[],
             js="""
-            function(current_visible) {
-                const rightSidebar = document.querySelector('.gradio-sidebar[data-position="right"]') ||
-                                   document.querySelector('[data-position="right"]') ||
-                                   document.querySelectorAll('.gradio-sidebar')[1];
-                if (rightSidebar) {
-                    const newVisible = !current_visible;
-                    if (newVisible) {
-                        rightSidebar.style.display = 'block';
-                        setTimeout(() => {
-                            rightSidebar.classList.add('visible');
-                        }, 10);
-                    } else {
-                        rightSidebar.classList.remove('visible');
-                        setTimeout(() => {
-                            if (!rightSidebar.classList.contains('visible')) {
-                                rightSidebar.style.display = 'none';
+            function(is_open) {
+                console.log('Triggering right sidebar toggle...');
+                
+                // Super direct approach: simulate Playwright's exact selection
+                // Use Playwright's approach: getByRole('button', { name: 'Toggle Sidebar' }).nth(1)
+                setTimeout(() => {
+                    try {
+                        // Get all buttons with "Toggle Sidebar" text
+                        const toggleButtons = Array.from(document.querySelectorAll('button')).filter(btn => {
+                            // Check both textContent and innerText for robustness  
+                            const text = (btn.textContent || btn.innerText || '').trim();
+                            return text === 'Toggle Sidebar';
+                        });
+                        
+                        console.log('Found Toggle Sidebar buttons:', toggleButtons.length);
+                        
+                        if (toggleButtons.length >= 2) {
+                            // Click the second one (index 1) - this is the right sidebar
+                            const rightToggle = toggleButtons[1];
+                            console.log('SUCCESS: Clicking RIGHT sidebar toggle button!');
+                            rightToggle.click();
+                        } else {
+                            console.log('Fallback: Looking for buttons by position...');
+                            // Absolute fallback: find button in right half of screen
+                            const rightSideButtons = Array.from(document.querySelectorAll('button')).filter(btn => {
+                                const rect = btn.getBoundingClientRect();
+                                return rect.left > window.innerWidth / 2 && 
+                                       (btn.getAttribute('aria-expanded') !== null || 
+                                        (btn.textContent && btn.textContent.includes('Toggle')));
+                            });
+                            
+                            if (rightSideButtons.length > 0) {
+                                console.log('Found right-side button, clicking:', rightSideButtons[0]);
+                                rightSideButtons[0].click();
                             }
-                        }, 300);
+                        }
+                    } catch (error) {
+                        console.error('Error in sidebar toggle:', error);
                     }
-                    return newVisible;
-                }
-                return current_visible;
+                }, 100);
             }
             """
         )
