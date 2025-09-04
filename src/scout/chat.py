@@ -500,10 +500,11 @@ def create_demo():
             
             # Workspace tab with task management
             with gr.Tab("Workspace"):
-                gr.Markdown("## 🚀 Task Manager", elem_classes=["title-header"])
-                
                 # Auto-refresh and manual refresh
                 with gr.Row():
+                    gr.Markdown() # dummy spaces for ui alignment
+                    gr.Markdown()
+                    gr.Markdown()
                     refresh_tasks_btn = gr.Button("🔄 Refresh Tasks", variant="primary", size="sm")
                     auto_refresh_checkbox = gr.Checkbox(label="Auto-refresh every 2s", value=True)
                 
