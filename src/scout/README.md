@@ -38,3 +38,14 @@
 - More efficient search strategy vs multiple parallel requests
 
 
+RoadMAP:
+- Enhanced session management and UI
+- Introduced FastAPI backend for async tasks and workspace UI.
+- Implemented glassmorphism UI for tabs and refined layout.
+- Added tabs, settings sidebar, and context-aware info cards.
+- Improved initial UI with styled placeholder and refined tools.
+- Refactored Agent for simpler creation and added new examples.
+- Implemented universal logger and improved chat UI/tool handling.
+- Introduced Plan mode and advanced web fetching tools.
+- Major project refactoring and removal of spotlight/STS apps.
+
