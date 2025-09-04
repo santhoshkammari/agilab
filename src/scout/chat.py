@@ -3,6 +3,8 @@
 # dependencies = [
 #     "gradio",
 #     "claude-code-sdk",
+#     "httpx",
+#     "asyncio",
 # ]
 # ///
 import argparse
@@ -12,6 +14,7 @@ import asyncio
 import time
 import os
 import subprocess
+import httpx
 from typing import AsyncGenerator
 
 from logger import get_logger
@@ -22,9 +25,11 @@ logger = get_logger("chat", level="DEBUG")
 import gradio as gr
 from css import theme
 from scout_component import create_scout_textbox_ui
-from ssa import claude_code
 from chat_manager import ChatManager
 from utils import status_messages
+
+# FastAPI configuration
+API_BASE_URL = "http://localhost:8000"
 
 
 def get_current_branch():
@@ -93,39 +98,106 @@ def search_directories(query="", max_results=20):
         return [os.path.expanduser("~")]
 
 
+async def start_chat_task(message, session_id=None, mode="Scout", cwd="", append_system_prompt=""):
+    """Start a chat task using FastAPI backend."""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{API_BASE_URL}/chat", json={
+            "message": message,
+            "session_id": session_id,
+            "mode": mode,
+            "cwd": cwd,
+            "append_system_prompt": append_system_prompt
+        })
+        response.raise_for_status()
+        return response.json()["task_id"]
+
+async def stream_chat_events(task_id):
+    """Stream events from FastAPI backend using SSE."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        async with client.stream("GET", f"{API_BASE_URL}/chat/{task_id}/stream") as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if line.startswith("data: "):
+                    data = line[6:]  # Remove "data: " prefix
+                    if data.strip():
+                        try:
+                            event_data = json.loads(data)
+                            yield event_data
+                        except json.JSONDecodeError:
+                            continue
+                elif line.startswith("event: "):
+                    # SSE event type line, continue to next line for data
+                    continue
+
 def chat_function_sync(message, history, session_id=None, mode="Scout", cwd="", append_system_prompt=""):
     """
-    Sync chat function using threading to handle claude_code async calls.
-    This avoids Gradio's async issues completely.
+    Sync chat function using FastAPI backend for processing.
     """
     import concurrent.futures
     import threading
     import queue
-    import asyncio
     
     # Create a queue to pass results between threads
     result_queue = queue.Queue()
     
-    def run_claude_code_in_thread():
-        """Run claude_code in a separate thread with its own event loop."""
+    def run_fastapi_chat_in_thread():
+        """Start chat task and stream events in a separate thread."""
         # Create new event loop for this thread
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
-        async def collect_events():
-            events = []
-            async for event in claude_code(message, session_id=session_id, mode=mode, cwd=cwd if cwd else None, append_system_prompt=append_system_prompt):
-                events.append(event)
-                # Put each event in queue immediately for streaming
-                result_queue.put(('event', event))
-            result_queue.put(('done', None))
+        async def process_chat():
+            try:
+                # Start chat task
+                task_id = await start_chat_task(
+                    message=message,
+                    session_id=session_id,
+                    mode=mode,
+                    cwd=cwd,
+                    append_system_prompt=append_system_prompt
+                )
+                
+                # Poll for status and events instead of streaming
+                last_event_count = 0
+                while True:
+                    # Get task status
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(f"{API_BASE_URL}/chat/{task_id}/status")
+                        response.raise_for_status()
+                        task_data = response.json()
+                    
+                    status = task_data["status"]
+                    events = task_data["events"]
+                    
+                    # Process new events
+                    if len(events) > last_event_count:
+                        new_events = events[last_event_count:]
+                        for event in new_events:
+                            result_queue.put(('event', event))
+                        last_event_count = len(events)
+                    
+                    # Check if task is done
+                    if status in ["completed", "failed", "cancelled"]:
+                        if status == "failed":
+                            error = task_data.get("error", "Unknown error")
+                            result_queue.put(('error', error))
+                        else:
+                            result_queue.put(('done', None))
+                        break
+                    
+                    # Wait before next poll
+                    await asyncio.sleep(0.5)
+                
+            except Exception as e:
+                logger.error(f"FastAPI chat error: {e}")
+                result_queue.put(('error', str(e)))
         
-        # Run the async collection
-        loop.run_until_complete(collect_events())
+        # Run the async processing
+        loop.run_until_complete(process_chat())
         loop.close()
     
     # Start the thread
-    thread = threading.Thread(target=run_claude_code_in_thread, daemon=True)
+    thread = threading.Thread(target=run_fastapi_chat_in_thread, daemon=True)
     thread.start()
     
     # Process events as they come from the queue
@@ -169,7 +241,7 @@ def chat_function_sync(message, history, session_id=None, mode="Scout", cwd="", 
         elif item_type == 'error':
             yield [
                 gr.ChatMessage(
-                    role="assistant", content=f"⚠️ Error: {str(item_data)}\n\nPlease check your claude-code setup."
+                    role="assistant", content=f"⚠️ Error: {str(item_data)}\n\nPlease check your API server connection."
                 )
             ], session_id
             break
