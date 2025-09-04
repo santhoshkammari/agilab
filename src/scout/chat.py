@@ -356,7 +356,7 @@ def create_demo():
                     
                     # Custom chatbot
                     chatbot = gr.Chatbot(
-                        height="63vh",
+                        height="62vh",
                         show_copy_button=False,
                         placeholder="START HERE",
                         type="messages",
