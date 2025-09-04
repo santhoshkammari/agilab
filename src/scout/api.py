@@ -30,6 +30,10 @@ logger = get_logger("api", level="DEBUG")
 # Global storage for task states and cancellation tokens
 task_store: Dict[str, Dict[str, Any]] = {}
 task_cancellation: Dict[str, bool] = {}
+# Map session_id to task_id for continuation
+session_to_task: Dict[str, str] = {}
+# Store pending messages for ongoing tasks
+task_message_queue: Dict[str, asyncio.Queue] = {}
 
 class ChatRequest(BaseModel):
     message: str
@@ -37,6 +41,9 @@ class ChatRequest(BaseModel):
     mode: str = "Scout"
     cwd: Optional[str] = None
     append_system_prompt: str = ""
+
+class ContinueChatRequest(BaseModel):
+    message: str
 
 class TaskResponse(BaseModel):
     task_id: str
@@ -117,7 +124,9 @@ async def start_chat(chat_request: ChatRequest, background_tasks: BackgroundTask
         "status": "pending",
         "events": [],
         "request": chat_request.dict(),
-        "error": None
+        "error": None,
+        "session_id": chat_request.session_id,
+        "original_message": chat_request.message
     }
     
     # Start background task
@@ -190,15 +199,54 @@ async def stream_chat_events(task_id: str):
 
 @app.get("/tasks")
 async def list_tasks():
-    """List all tasks and their statuses."""
-    return {
-        task_id: {
+    """List all tasks grouped by session."""
+    # Group tasks by session_id
+    sessions = {}
+    for task_id, data in task_store.items():
+        # Get the actual session_id from events if available
+        actual_session_id = data.get("session_id")
+        if data.get("events"):
+            for event in data["events"]:
+                if event.get("type") == "SystemMessage" and event.get("data", {}).get("session_id"):
+                    actual_session_id = event["data"]["session_id"]
+                    break
+        
+        # Use actual session_id or fall back to task_id for grouping
+        group_key = actual_session_id or task_id
+        
+        if group_key not in sessions:
+            sessions[group_key] = {
+                "session_id": actual_session_id,
+                "tasks": [],
+                "status": "pending",
+                "total_events": 0,
+                "latest_message": "",
+                "error": None
+            }
+        
+        sessions[group_key]["tasks"].append({
+            "task_id": task_id,
             "status": data["status"],
-            "error": data.get("error"),
-            "event_count": len(data["events"])
-        }
-        for task_id, data in task_store.items()
-    }
+            "event_count": len(data["events"]),
+            "original_message": data.get("original_message", "")
+        })
+        
+        sessions[group_key]["total_events"] += len(data["events"])
+        
+        # Use the most recent message as the session title
+        if data.get("original_message"):
+            sessions[group_key]["latest_message"] = data["original_message"]
+        
+        # Session status is running if any task is running, failed if any failed, else completed
+        if data["status"] == "running":
+            sessions[group_key]["status"] = "running"
+        elif data["status"] == "failed" and sessions[group_key]["status"] != "running":
+            sessions[group_key]["status"] = "failed"
+            sessions[group_key]["error"] = data.get("error")
+        elif sessions[group_key]["status"] not in ["running", "failed"]:
+            sessions[group_key]["status"] = data["status"]
+    
+    return sessions
 
 @app.post("/chat/{task_id}/stop")
 async def stop_task(task_id: str):
