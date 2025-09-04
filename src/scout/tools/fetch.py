@@ -378,11 +378,6 @@ def scrapling_bulk_stealthy_fetch_sync(urls: Tuple[str, ...], **kwargs) -> List[
 
 
 # Legacy functions for backward compatibility
-@mcp.tool
-def extract_markdown_from_url(url: str):
-    """Extract markdown content directly from URL using scrapling"""
-    result = scrapling_get(url, extraction_type="markdown")
-    return {"url": result["url"], "content": "".join(result["content"]) if result["content"] else None}
 
 
 @mcp.tool
@@ -439,7 +434,6 @@ tool_functions = {
     "scrapling_bulk_fetch": scrapling_bulk_fetch_sync,
     "scrapling_stealthy_fetch": scrapling_stealthy_fetch,
     "scrapling_bulk_stealthy_fetch": scrapling_bulk_stealthy_fetch_sync,
-    "extract_markdown_from_url": extract_markdown_from_url,
     "web_fetch": web_fetch,
 }
 
