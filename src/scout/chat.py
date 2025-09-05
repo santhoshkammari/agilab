@@ -352,7 +352,7 @@ def create_demo():
                     refresh_tasks_btn = gr.Button("🔄 Refresh Tasks", variant="primary", size="sm")
                     auto_refresh_checkbox = gr.Checkbox(label="Auto-refresh every 2s", value=True)
                 
-                # Three-column layout for task management
+                # Three-column layout with iOS-style task cards
                 with gr.Row(equal_height=True):
                     # Left column - Completed Tasks
                     with gr.Column(scale=1):
@@ -360,13 +360,14 @@ def create_demo():
                         completed_tasks_radio = gr.Radio(
                             choices=[],
                             value=None,
-                            label="",
+                            interactive=True,
                             show_label=False,
-                            elem_classes=["task-radio-group"]
+                            elem_classes=["ios-task-cards", "completed-tasks"]
                         )
-                        with gr.Row():
-                            completed_view_btn = gr.Button("👁️ View", size="sm", visible=False)
-                            completed_delete_btn = gr.Button("🗑️ Delete", size="sm", visible=False)
+                        # Action buttons for completed tasks
+                        with gr.Row(visible=False) as completed_actions:
+                            completed_view_btn = gr.Button("👁️ View Events", size="sm", elem_classes=["ios-action-btn"])
+                            completed_delete_btn = gr.Button("🗑️ Delete", size="sm", variant="secondary", elem_classes=["ios-action-btn"])
                     
                     # Middle column - Ongoing Tasks  
                     with gr.Column(scale=1):
@@ -374,24 +375,25 @@ def create_demo():
                         ongoing_tasks_radio = gr.Radio(
                             choices=[],
                             value=None,
-                            label="",
+                            interactive=True,
                             show_label=False,
-                            elem_classes=["task-radio-group"]
+                            elem_classes=["ios-task-cards", "ongoing-tasks"]
                         )
-                        with gr.Row():
-                            ongoing_view_btn = gr.Button("👁️ View", size="sm", visible=False)
-                            ongoing_stop_btn = gr.Button("⏹️ Stop", size="sm", visible=False)
-                            ongoing_delete_btn = gr.Button("🗑️ Delete", size="sm", visible=False)
+                        # Action buttons for ongoing tasks
+                        with gr.Row(visible=False) as ongoing_actions:
+                            ongoing_view_btn = gr.Button("👁️ View Events", size="sm", elem_classes=["ios-action-btn"])
+                            ongoing_stop_btn = gr.Button("⏹️ Stop", size="sm", variant="secondary", elem_classes=["ios-action-btn"])
+                            ongoing_delete_btn = gr.Button("🗑️ Delete", size="sm", variant="secondary", elem_classes=["ios-action-btn"])
                     
                     # Right column - Task Results/Events
                     with gr.Column(scale=1):
-                        gr.Markdown("### 📊 TaskResults")
+                        gr.Markdown("### 📊 Task Results")
                         
                         # Event viewer header
                         event_header = gr.Markdown("*Select a task to view its events and results*", visible=True)
                         
-                        # Event container with scrollable view
-                        with gr.Column(elem_classes=["event-viewer-container"]):
+                        # Event container 
+                        with gr.Column():
                             # Live events display
                             events_display = gr.Markdown("", visible=False, elem_classes=["events-content"])
                             
@@ -916,6 +918,121 @@ def create_demo():
                 
                 button[data-testid*="select"]:hover {{
                     background: #0056CC !important;
+                }}
+                
+                /* iOS-style Task Radio Cards */
+                .ios-task-cards {{
+                    padding: 8px 0 !important;
+                }}
+                
+                /* Hide default radio buttons and style as iOS cards */
+                .ios-task-cards .wrap,
+                .ios-task-cards fieldset {{
+                    border: none !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    background: transparent !important;
+                }}
+                
+                .ios-task-cards label {{
+                    display: block !important;
+                    background: rgba(255, 255, 255, 0.95) !important;
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+                    border-radius: 12px !important;
+                    padding: 16px !important;
+                    margin: 8px 0 !important;
+                    cursor: pointer !important;
+                    transition: all 0.2s ease !important;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 
+                                0 1px 3px rgba(0, 0, 0, 0.06) !important;
+                    position: relative !important;
+                    overflow: hidden !important;
+                }}
+                
+                .ios-task-cards label:hover {{
+                    transform: translateY(-1px) !important;
+                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 
+                                0 2px 6px rgba(0, 0, 0, 0.1) !important;
+                    border-color: rgba(0, 122, 255, 0.2) !important;
+                }}
+                
+                /* Selected state - iOS blue accent */
+                .ios-task-cards input[type="radio"]:checked + label,
+                .ios-task-cards label:has(input[type="radio"]:checked) {{
+                    background: rgba(0, 122, 255, 0.08) !important;
+                    border-color: rgba(0, 122, 255, 0.3) !important;
+                    transform: translateY(-1px) !important;
+                    box-shadow: 0 4px 16px rgba(0, 122, 255, 0.15), 
+                                0 2px 6px rgba(0, 122, 255, 0.1) !important;
+                }}
+                
+                /* Hide default radio button circles */
+                .ios-task-cards input[type="radio"] {{
+                    display: none !important;
+                    opacity: 0 !important;
+                    position: absolute !important;
+                    width: 0 !important;
+                    height: 0 !important;
+                }}
+                
+                /* Style radio button text content */
+                .ios-task-cards label span,
+                .ios-task-cards .radio-option-text {{
+                    font-size: 15px !important;
+                    line-height: 1.4 !important;
+                    color: #1D1D1F !important;
+                    font-weight: 400 !important;
+                    white-space: pre-line !important;
+                    display: block !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                }}
+                
+                /* Completed tasks - green accent */
+                .completed-tasks label:hover {{
+                    border-color: rgba(52, 199, 89, 0.2) !important;
+                }}
+                
+                .completed-tasks input[type="radio"]:checked + label,
+                .completed-tasks label:has(input[type="radio"]:checked) {{
+                    background: rgba(52, 199, 89, 0.08) !important;
+                    border-color: rgba(52, 199, 89, 0.3) !important;
+                    box-shadow: 0 4px 16px rgba(52, 199, 89, 0.15), 
+                                0 2px 6px rgba(52, 199, 89, 0.1) !important;
+                }}
+                
+                /* Ongoing tasks - orange accent */
+                .ongoing-tasks label:hover {{
+                    border-color: rgba(255, 149, 0, 0.2) !important;
+                }}
+                
+                .ongoing-tasks input[type="radio"]:checked + label,
+                .ongoing-tasks label:has(input[type="radio"]:checked) {{
+                    background: rgba(255, 149, 0, 0.08) !important;
+                    border-color: rgba(255, 149, 0, 0.3) !important;
+                    box-shadow: 0 4px 16px rgba(255, 149, 0, 0.15), 
+                                0 2px 6px rgba(255, 149, 0, 0.1) !important;
+                }}
+                
+                /* iOS action buttons */
+                .ios-action-btn {{
+                    background: rgba(0, 122, 255, 0.1) !important;
+                    border: 1px solid rgba(0, 122, 255, 0.2) !important;
+                    border-radius: 8px !important;
+                    padding: 8px 16px !important;
+                    font-size: 14px !important;
+                    font-weight: 500 !important;
+                    color: #007AFF !important;
+                    transition: all 0.2s ease !important;
+                    backdrop-filter: blur(10px) !important;
+                    -webkit-backdrop-filter: blur(10px) !important;
+                }}
+                
+                .ios-action-btn:hover {{
+                    background: rgba(0, 122, 255, 0.15) !important;
+                    border-color: rgba(0, 122, 255, 0.3) !important;
+                    transform: translateY(-0.5px) !important;
                 }}`;
                 document.head.appendChild(style);
                 
@@ -1193,11 +1310,11 @@ def create_demo():
             except Exception as e:
                 return f"<div class='task-cards-container'><div class='error-message'>Failed to load tasks: {str(e)}</div></div>"
         
-        def update_task_lists():
-            """Update task radio lists with proper Gradio components."""
+        def update_task_radios():
+            """Update task radio buttons with rich iOS card-style choices."""
+            import datetime
             try:
                 import requests
-                import datetime
                 response = requests.get(f"{API_BASE_URL}/tasks", timeout=5)
                 response.raise_for_status()
                 sessions_data = response.json()
@@ -1211,12 +1328,26 @@ def create_demo():
                     total_events = session_data["total_events"]
                     latest_message = session_data.get("latest_message", "")
                     
-                    # Create display text for radio button
-                    display_message = latest_message[:40] + "..." if len(latest_message) > 40 else latest_message
+                    # Create iOS card-style display text
+                    display_message = latest_message[:45] + "..." if len(latest_message) > 45 else latest_message
                     if not display_message:
                         display_message = f"Session #{session_id[:8]}"
                     
-                    choice_text = f"📝 {total_events} events | {display_message}"
+                    # Mock timing data for iOS-style display
+                    start_time = datetime.datetime.now() - datetime.timedelta(minutes=30)
+                    date_str = start_time.strftime("%b %d")
+                    time_str = start_time.strftime("%I:%M %p")
+                    
+                    if status in ["completed", "failed"]:
+                        end_time = datetime.datetime.now() - datetime.timedelta(minutes=10)
+                        duration_mins = 20
+                        status_line = f"✅ Completed • {duration_mins}m"
+                    else:
+                        duration_mins = (datetime.datetime.now() - start_time).seconds // 60
+                        status_line = f"🔄 Running • {duration_mins}m"
+                    
+                    # Create iOS-style multi-line card text
+                    choice_text = f"{display_message}\n{date_str} • {time_str} • {total_events} events\n{status_line}"
                     choice_value = session_id
                     
                     if status == "completed":
@@ -1224,55 +1355,41 @@ def create_demo():
                     elif status in ["running", "pending"]:
                         ongoing_choices.append((choice_text, choice_value))
                 
-                # Prepare updates for radio components
-                completed_update = gr.update(
-                    choices=completed_choices,
-                    value=None
-                )
-                ongoing_update = gr.update(
-                    choices=ongoing_choices, 
-                    value=None
-                )
+                # Update dropdowns
+                completed_update = gr.update(choices=completed_choices, value=None)
+                ongoing_update = gr.update(choices=ongoing_choices, value=None)
                 
                 return completed_update, ongoing_update
                 
             except Exception as e:
-                error_msg = f"Failed to load tasks: {str(e)}"
-                empty_update = gr.update(choices=[(error_msg, None)], value=None)
-                return empty_update, empty_update
+                error_msg = f"❌ Failed to load: {str(e)}"
+                error_update = gr.update(choices=[(error_msg, None)], value=None)
+                return error_update, error_update
         
-        def handle_completed_task_selection(selected_task):
-            """Handle selection of a completed task."""
-            if selected_task:
-                # Show View and Delete buttons for completed tasks
+        def handle_completed_task_selection(selected_task_id):
+            """Handle selection of a completed task - show action buttons."""
+            if selected_task_id:
                 return (
-                    gr.update(visible=True),  # view button
-                    gr.update(visible=True),  # delete button
-                    selected_task             # update selected_task_id state
+                    gr.update(visible=True),    # show action buttons
+                    selected_task_id            # update selected task state
                 )
             else:
                 return (
-                    gr.update(visible=False), # view button  
-                    gr.update(visible=False), # delete button
-                    None                      # clear selected_task_id state
+                    gr.update(visible=False),   # hide action buttons
+                    None                        # clear selected task state
                 )
         
-        def handle_ongoing_task_selection(selected_task):
-            """Handle selection of an ongoing task."""
-            if selected_task:
-                # Show View, Stop, and Delete buttons for ongoing tasks
+        def handle_ongoing_task_selection(selected_task_id):
+            """Handle selection of an ongoing task - show action buttons."""
+            if selected_task_id:
                 return (
-                    gr.update(visible=True),  # view button
-                    gr.update(visible=True),  # stop button
-                    gr.update(visible=True),  # delete button
-                    selected_task             # update selected_task_id state
+                    gr.update(visible=True),    # show action buttons  
+                    selected_task_id            # update selected task state
                 )
             else:
                 return (
-                    gr.update(visible=False), # view button
-                    gr.update(visible=False), # stop button  
-                    gr.update(visible=False), # delete button
-                    None                      # clear selected_task_id state
+                    gr.update(visible=False),   # hide action buttons
+                    None                        # clear selected task state
                 )
         
         def view_task_events(session_id):
@@ -1828,22 +1945,22 @@ def create_demo():
         
         # Connect task management buttons
         refresh_tasks_btn.click(
-            fn=update_task_lists,
+            fn=update_task_radios,
             inputs=[],
             outputs=[completed_tasks_radio, ongoing_tasks_radio]
         )
         
-        # Connect task selection handlers
+        # Connect radio selection handlers
         completed_tasks_radio.change(
             fn=handle_completed_task_selection,
             inputs=[completed_tasks_radio],
-            outputs=[completed_view_btn, completed_delete_btn, selected_task_id]
+            outputs=[completed_actions, selected_task_id]
         )
         
         ongoing_tasks_radio.change(
             fn=handle_ongoing_task_selection,
             inputs=[ongoing_tasks_radio],
-            outputs=[ongoing_view_btn, ongoing_stop_btn, ongoing_delete_btn, selected_task_id]
+            outputs=[ongoing_actions, selected_task_id]
         )
         
         # Connect action buttons to their functions
@@ -1880,7 +1997,7 @@ def create_demo():
         # Set up auto-refresh timer (every 2 seconds when enabled)
         auto_refresh_timer = gr.Timer(value=2, active=True)
         auto_refresh_timer.tick(
-            fn=lambda checkbox_value: update_task_lists() if checkbox_value else (gr.update(), gr.update()),
+            fn=lambda checkbox_value: update_task_radios() if checkbox_value else (gr.update(), gr.update()),
             inputs=[auto_refresh_checkbox],
             outputs=[completed_tasks_radio, ongoing_tasks_radio]
         )
@@ -1902,7 +2019,7 @@ def create_demo():
         def initialize_ui_with_tasks():
             chat_list = load_chat_list()
             combined_update = update_info_cards("")
-            completed_update, ongoing_update = update_task_lists()
+            completed_update, ongoing_update = update_task_radios()
             return chat_list, combined_update, completed_update, ongoing_update
         
         demo.load(
