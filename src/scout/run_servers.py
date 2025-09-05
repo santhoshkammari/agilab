@@ -28,7 +28,7 @@ def main():
     fastapi_proc = run_fastapi()
     
     # Wait a moment for FastAPI to start
-    time.sleep(3)
+    time.sleep(5)
     
     # Start Gradio server
     print("🎯 Starting Gradio interface on port 7860...")

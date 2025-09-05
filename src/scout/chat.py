@@ -352,43 +352,70 @@ def create_demo():
                     refresh_tasks_btn = gr.Button("🔄 Refresh Tasks", variant="primary", size="sm")
                     auto_refresh_checkbox = gr.Checkbox(label="Auto-refresh every 2s", value=True)
                 
-                # Tasks container using pure Gradio components  
-                with gr.Column():
-                    task_cards_state = gr.State({})
-                    
-                    # No tasks message
-                    no_tasks_msg = gr.Markdown("🎯 **No tasks yet.** Start a chat to see background tasks here!", visible=True)
-                    
-                    # Pre-create task card slots (iOS-styled with Groups)
-                    task_cards = []
-                    for i in range(10):
-                        with gr.Group(visible=False) as task_card_group:
-                            with gr.Row():
-                                # Task status and ID
-                                task_status_md = gr.Markdown("", visible=False)
-                                task_id_md = gr.Markdown("", visible=False)
+                # Two-column layout for tasks and events
+                with gr.Row(equal_height=True):
+                    # Left column - Task list
+                    with gr.Column(scale=1):
+                        gr.Markdown("### 📋 Active Tasks")
+                        # Tasks container using pure Gradio components  
+                        with gr.Column():
+                            task_cards_state = gr.State({})
+                            selected_task_id = gr.State(None)
                             
-                            # Task description
-                            task_desc_md = gr.Markdown("", visible=False)
+                            # No tasks message
+                            no_tasks_msg = gr.Markdown("🎯 **No tasks yet.** Start a chat to see background tasks here!", visible=True)
                             
-                            # Task stats and actions row
-                            with gr.Row():
-                                task_stats_md = gr.Markdown("", visible=False)
-                                with gr.Column(scale=1):
+                            # Pre-create task card slots (iOS-styled with Groups)
+                            task_cards = []
+                            for i in range(10):
+                                with gr.Group(visible=False) as task_card_group:
                                     with gr.Row():
-                                        stop_btn = gr.Button("⏹️", size="sm", visible=False, variant="stop")
-                                        delete_btn = gr.Button("🗑️", size="sm", visible=False, variant="secondary")
+                                        # Task status and ID
+                                        task_status_md = gr.Markdown("", visible=False)
+                                        task_id_md = gr.Markdown("", visible=False)
+                                    
+                                    # Task description
+                                    task_desc_md = gr.Markdown("", visible=False)
+                                    
+                                    # Task stats and actions row
+                                    with gr.Row():
+                                        task_stats_md = gr.Markdown("", visible=False)
+                                        with gr.Column(scale=1):
+                                            with gr.Row():
+                                                stop_btn = gr.Button("⏹️", size="sm", visible=False, variant="stop")
+                                                delete_btn = gr.Button("🗑️", size="sm", visible=False, variant="secondary")
+                                                # Add select button for viewing events
+                                                select_btn = gr.Button("👁️", size="sm", visible=False, variant="primary")
+                                
+                                task_cards.append({
+                                    "group": task_card_group,
+                                    "status": task_status_md,
+                                    "task_id": task_id_md,
+                                    "description": task_desc_md,
+                                    "stats": task_stats_md,
+                                    "stop_btn": stop_btn,
+                                    "delete_btn": delete_btn,
+                                    "select_btn": select_btn,
+                                    "stored_task_id": gr.State("")
+                                })
+                    
+                    # Right column - Event viewer
+                    with gr.Column(scale=1):
+                        gr.Markdown("### 🔍 Task Events")
                         
-                        task_cards.append({
-                            "group": task_card_group,
-                            "status": task_status_md,
-                            "task_id": task_id_md,
-                            "description": task_desc_md,
-                            "stats": task_stats_md,
-                            "stop_btn": stop_btn,
-                            "delete_btn": delete_btn,
-                            "stored_task_id": gr.State("")
-                        })
+                        # Event viewer header
+                        event_header = gr.Markdown("*Select a task to view its events*", visible=True)
+                        
+                        # Event container with scrollable view
+                        with gr.Column(elem_classes=["event-viewer-container"]):
+                            # Live events display
+                            events_display = gr.Markdown("", visible=False, elem_classes=["events-content"])
+                            
+                            # Event statistics
+                            event_stats = gr.Markdown("", visible=False, elem_classes=["event-stats"])
+                            
+                            # Auto-refresh events toggle
+                            auto_refresh_events = gr.Checkbox(label="Auto-refresh events", value=True, visible=False)
         
         # Apply Scout CSS and hide footer
         demo.load(lambda: None, js=f"""
@@ -834,6 +861,74 @@ def create_demo():
                 .tab-container * {{
                     border-bottom: none !important;
                     text-decoration: none !important;
+                }}
+                
+                /* Event Viewer Styling */
+                .event-viewer-container {{
+                    background: #FAFBFC !important;
+                    border: 1px solid #E1E4E8 !important;
+                    border-radius: 12px !important;
+                    padding: 16px !important;
+                    margin-top: 12px !important;
+                    min-height: 400px !important;
+                    max-height: 600px !important;
+                }}
+                
+                .events-content {{
+                    background: white !important;
+                    border: 1px solid #E1E4E8 !important;
+                    border-radius: 8px !important;
+                    padding: 16px !important;
+                    font-family: 'SF Mono', Monaco, monospace !important;
+                    font-size: 13px !important;
+                    line-height: 1.5 !important;
+                    overflow-y: auto !important;
+                    max-height: 450px !important;
+                    white-space: pre-wrap !important;
+                    word-wrap: break-word !important;
+                }}
+                
+                .event-stats {{
+                    background: #F6F8FA !important;
+                    border: 1px solid #D1D9E0 !important;
+                    border-radius: 6px !important;
+                    padding: 12px 16px !important;
+                    margin-top: 8px !important;
+                    font-size: 14px !important;
+                    color: #586069 !important;
+                    text-align: center !important;
+                }}
+                
+                /* Workspace two-column layout */
+                .workspace-columns {{
+                    display: flex !important;
+                    gap: 24px !important;
+                    align-items: flex-start !important;
+                }}
+                
+                .workspace-left-column {{
+                    flex: 1 !important;
+                    min-width: 0 !important;
+                }}
+                
+                .workspace-right-column {{
+                    flex: 1 !important;
+                    min-width: 0 !important;
+                }}
+                
+                /* Task card select button styling */
+                button[data-testid*="select"] {{
+                    background: #007AFF !important;
+                    color: white !important;
+                    border: none !important;
+                    border-radius: 4px !important;
+                    padding: 4px 8px !important;
+                    font-size: 12px !important;
+                    min-width: 24px !important;
+                }}
+                
+                button[data-testid*="select"]:hover {{
+                    background: #0056CC !important;
                 }}`;
                 document.head.appendChild(style);
                 
@@ -1172,7 +1267,8 @@ def create_demo():
                             gr.update(value=message_text, visible=True),  # description
                             gr.update(value=stats_text, visible=True),  # stats
                             gr.update(visible=status in ["running", "pending"]),  # stop_btn
-                            gr.update(visible=True)  # delete_btn
+                            gr.update(visible=True),  # delete_btn
+                            gr.update(visible=True)   # select_btn
                         ])
                     else:
                         # Hide unused task card slots
@@ -1183,7 +1279,8 @@ def create_demo():
                             gr.update(visible=False),  # description
                             gr.update(visible=False),  # stats
                             gr.update(visible=False),  # stop_btn
-                            gr.update(visible=False)   # delete_btn
+                            gr.update(visible=False),  # delete_btn
+                            gr.update(visible=False)   # select_btn
                         ])
                 
                 return updates
@@ -1194,7 +1291,7 @@ def create_demo():
                 updates = [gr.update(visible=True, value=f"Failed to load tasks: {str(e)}")] # no_tasks_msg
                 # Hide all task cards
                 for i in range(10):
-                    updates.extend([gr.update(visible=False)] * 7)
+                    updates.extend([gr.update(visible=False)] * 8)
                 return updates
         
         def stop_task_action(task_id):
@@ -1226,6 +1323,149 @@ def create_demo():
                 gr.Warning(f"Failed to delete task: {str(e)}")
             
             return update_task_display()
+        
+        # Event streaming functions
+        def get_task_events(session_id):
+            """Get events for a specific session from API."""
+            if not session_id:
+                return gr.update(value="*No task selected*", visible=True), gr.update(value="", visible=False), gr.update(visible=False)
+            
+            try:
+                import requests
+                # Get all tasks to find the ones for this session
+                response = requests.get(f"{API_BASE_URL}/tasks", timeout=5)
+                response.raise_for_status()
+                sessions_data = response.json()
+                
+                if session_id not in sessions_data:
+                    return gr.update(value=f"*Session {session_id[:8]}... not found*", visible=True), gr.update(value="", visible=False), gr.update(visible=False)
+                
+                session_info = sessions_data[session_id]
+                tasks = session_info.get("tasks", [])
+                
+                # Collect all events from all tasks in this session
+                all_events = []
+                combined_status = session_info.get("status", "unknown")
+                
+                for task_info in tasks:
+                    task_id = task_info["task_id"]
+                    try:
+                        task_response = requests.get(f"{API_BASE_URL}/chat/{task_id}/status", timeout=3)
+                        task_response.raise_for_status()
+                        task_data = task_response.json()
+                        
+                        events = task_data.get("events", [])
+                        for event in events:
+                            event["_task_id"] = task_id[:8]  # Add task reference
+                            all_events.append(event)
+                    except Exception as e:
+                        logger.debug(f"Failed to get events for task {task_id}: {e}")
+                        continue
+                
+                session_id_short = session_id[:8]
+                
+                # Build event display
+                if not all_events:
+                    events_content = f"**Session {session_id_short}** ({combined_status})\n\n*No events yet...*"
+                    stats_content = ""
+                else:
+                    # Header with session info
+                    events_content = f"**Session {session_id_short}** ({combined_status})\n\n"
+                    
+                    # Process each event
+                    for i, event in enumerate(all_events, 1):
+                        event_type = event.get('type', 'Unknown')
+                        task_ref = event.get('_task_id', 'unknown')
+                        
+                        events_content += f"**{i}.** `{event_type}` *[{task_ref}]*\n"
+                        
+                        # Handle different event types
+                        if event_type == 'SystemMessage':
+                            data = event.get('data', {})
+                            if data.get('session_id'):
+                                events_content += f"   📝 Session: `{data['session_id'][:8]}...`\n"
+                            if data.get('original_message'):
+                                msg = data['original_message'][:100] + "..." if len(data['original_message']) > 100 else data['original_message']
+                                events_content += f"   💬 Message: *{msg}*\n"
+                                
+                        elif event_type == 'AssistantMessage':
+                            content = event.get('content', [])
+                            if content and len(content) > 0:
+                                if content[0].get('text'):
+                                    text = content[0]['text'][:150] + "..." if len(content[0]['text']) > 150 else content[0]['text']
+                                    events_content += f"   💭 Response: *{text}*\n"
+                                elif content[0].get('name'):
+                                    tool_name = content[0]['name']
+                                    events_content += f"   🔧 Tool: `{tool_name}`\n"
+                                    
+                        elif event_type == 'ToolResultMessage':
+                            tool_result = event.get('content', [])
+                            if tool_result and len(tool_result) > 0:
+                                result_text = str(tool_result[0]).get('text', '')[:100] if tool_result[0] else ''
+                                if result_text:
+                                    events_content += f"   ✅ Result: *{result_text}...*\n"
+                                else:
+                                    events_content += f"   ✅ Tool completed\n"
+                                    
+                        elif event_type == 'ResultMessage':
+                            result = event.get('result', '')[:150]
+                            if result:
+                                events_content += f"   🎯 Final: *{result}...*\n"
+                        
+                        events_content += "\n"
+                
+                # Build stats
+                total_tasks = len(tasks)
+                stats_content = f"📊 **{len(all_events)} events** from **{total_tasks} tasks** • Status: **{combined_status}**"
+                if session_info.get('error'):
+                    stats_content += f" • ⚠️ Error: {session_info['error'][:50]}..."
+                
+                return (
+                    gr.update(value="", visible=False), # Hide header
+                    gr.update(value=events_content, visible=True), # Show events
+                    gr.update(value=stats_content, visible=True)   # Show stats
+                )
+                
+            except Exception as e:
+                error_msg = f"❌ Failed to load events: {str(e)}"
+                return (
+                    gr.update(value=error_msg, visible=True),
+                    gr.update(value="", visible=False),
+                    gr.update(value="", visible=False)
+                )
+        
+        def select_task_for_events(task_index, selected_task_state):
+            """Select a session to view its events."""
+            try:
+                import requests
+                response = requests.get(f"{API_BASE_URL}/tasks", timeout=3)
+                response.raise_for_status()
+                sessions_data = response.json()
+                session_list = list(sessions_data.items())
+                
+                if task_index < len(session_list):
+                    session_id = session_list[task_index][0]  # This is actually session_id
+                    return get_task_events(session_id) + (session_id,)  # Add session_id to state
+                    
+            except Exception as e:
+                error_msg = f"❌ Failed to select task: {str(e)}"
+                return (
+                    gr.update(value=error_msg, visible=True),
+                    gr.update(value="", visible=False), 
+                    gr.update(value="", visible=False),
+                    None
+                )
+            
+            return (
+                gr.update(value="*No task found*", visible=True),
+                gr.update(value="", visible=False),
+                gr.update(value="", visible=False), 
+                None
+            )
+        
+        def refresh_selected_task_events(selected_session_id):
+            """Refresh events for the currently selected session."""
+            return get_task_events(selected_session_id)
         
         # Chat management functions
         def load_chat_list():
@@ -1605,7 +1845,7 @@ def create_demo():
         refresh_tasks_btn.click(
             fn=update_task_display,
             inputs=[],
-            outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"]]]
+            outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
         )
         
         # Connect stop and delete buttons for each task card
@@ -1648,17 +1888,28 @@ def create_demo():
                     
                     return update_task_display()
                 return delete_handler
+                
+            def make_select_handler(card_index):
+                def select_handler():
+                    return select_task_for_events(card_index, None)
+                return select_handler
             
             card["stop_btn"].click(
                 fn=make_stop_handler(i),
                 inputs=[],
-                outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"]]]
+                outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
             )
             
             card["delete_btn"].click(
                 fn=make_delete_handler(i),
                 inputs=[],
-                outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"]]]
+                outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
+            )
+            
+            card["select_btn"].click(
+                fn=make_select_handler(i),
+                inputs=[],
+                outputs=[event_header, events_display, event_stats, selected_task_id]
             )
         
         # Auto-refresh functionality
@@ -1668,9 +1919,17 @@ def create_demo():
         # Set up auto-refresh timer (every 2 seconds when enabled)
         auto_refresh_timer = gr.Timer(value=2, active=True)
         auto_refresh_timer.tick(
-            fn=lambda checkbox_value: update_task_display() if checkbox_value else [gr.update()] * (1 + len(task_cards) * 7),
+            fn=lambda checkbox_value: update_task_display() if checkbox_value else [gr.update()] * (1 + len(task_cards) * 8),
             inputs=[auto_refresh_checkbox],
-            outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"]]]
+            outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
+        )
+        
+        # Set up auto-refresh timer for events (every 3 seconds when enabled and task selected)
+        events_refresh_timer = gr.Timer(value=3, active=True)
+        events_refresh_timer.tick(
+            fn=lambda events_checkbox, task_id: refresh_selected_task_events(task_id) if (events_checkbox and task_id) else (gr.update(), gr.update(), gr.update()),
+            inputs=[auto_refresh_events, selected_task_id],
+            outputs=[event_header, events_display, event_stats]
         )
         
         # Load chat list and info cards on startup
@@ -1688,7 +1947,7 @@ def create_demo():
         demo.load(
             fn=initialize_ui_with_tasks,
             inputs=[],
-            outputs=[chat_dropdown, combined_info, no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"]]]
+            outputs=[chat_dropdown, combined_info, no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
         )
 
         # Connect context button (placeholder functionality)
