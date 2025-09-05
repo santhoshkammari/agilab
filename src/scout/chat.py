@@ -226,6 +226,8 @@ def create_demo():
         current_mode = gr.State("Scout")
         current_cwd = gr.State("")
         current_append_system_prompt = gr.State("")
+        current_active_task_id = gr.State(None)  # Track the currently active/running task
+        current_active_session_id = gr.State(None)  # Track the session ID of the currently active task
         
         # Create main tabs
         with gr.Tabs() as main_tabs:
@@ -291,53 +293,70 @@ def create_demo():
                         placeholder="Create a website based on my vibes"
                     )
                 
-                # Create right sidebar using Gradio's native Sidebar
+                # Create right sidebar using Gradio's native Sidebar with tabs
                 with gr.Sidebar(position="right", open=False) as right_sidebar:
-                    # Directory and Branch Info
-                    gr.Markdown("## 📁 Current Context")
-                    combined_info = gr.Markdown(
-                        value=f"📂 **{get_directory_name()}**\n🌿 **{get_current_branch()}**",
-                        elem_classes=["sidebar-info-card"]
-                    )
-                    
-                    gr.Markdown("## ⚙️ Settings")
-                    
-                    # Add Claude Code configuration settings
-                    with gr.Group():
-                        gr.Markdown("### Claude Code Settings")
-                        cwd_textbox = gr.Dropdown(
-                            label="Set Directory",
-                            choices=search_directories(""),
-                            value="",
-                            allow_custom_value=True,
-                            interactive=True,
-                            filterable=True
-                        )
-                        append_system_prompt_textbox = gr.Textbox(
-                            label="Additional System Prompt",
-                            placeholder="Additional instructions for Claude...",
-                            value="",
-                            interactive=True,
-                            lines=3
-                        )
-                    
-                    # Add some placeholder settings
-                    with gr.Group():
-                        gr.Markdown("### Chat Settings")
-                        model_dropdown = gr.Dropdown(
-                            label="Model",
-                            choices=["Claude-3", "Claude-2", "GPT-4"],
-                            value="Claude-3",
-                            interactive=True
-                        )
-                        temperature_slider = gr.Slider(
-                            label="Temperature",
-                            minimum=0.0,
-                            maximum=1.0,
-                            value=0.7,
-                            step=0.1,
-                            interactive=True
-                        )
+                    with gr.Tabs(elem_classes=["sidebar-tabs"]):
+                        # Settings Tab - contains all previous sidebar content
+                        with gr.Tab("⚙️ Settings"):
+                            # Directory and Branch Info
+                            gr.Markdown("## 📁 Current Context")
+                            combined_info = gr.Markdown(
+                                value=f"📂 **{get_directory_name()}**\n🌿 **{get_current_branch()}**",
+                                elem_classes=["sidebar-info-card"]
+                            )
+                            
+                            gr.Markdown("## ⚙️ Settings")
+                            
+                            # Add Claude Code configuration settings
+                            with gr.Group():
+                                gr.Markdown("### Claude Code Settings")
+                                cwd_textbox = gr.Dropdown(
+                                    label="Set Directory",
+                                    choices=search_directories(""),
+                                    value="",
+                                    allow_custom_value=True,
+                                    interactive=True,
+                                    filterable=True
+                                )
+                                append_system_prompt_textbox = gr.Textbox(
+                                    label="Additional System Prompt",
+                                    placeholder="Additional instructions for Claude...",
+                                    value="",
+                                    interactive=True,
+                                    lines=3
+                                )
+                            
+                            # Add some placeholder settings
+                            with gr.Group():
+                                gr.Markdown("### Chat Settings")
+                                model_dropdown = gr.Dropdown(
+                                    label="Model",
+                                    choices=["Claude-3", "Claude-2", "GPT-4"],
+                                    value="Claude-3",
+                                    interactive=True
+                                )
+                                temperature_slider = gr.Slider(
+                                    label="Temperature",
+                                    minimum=0.0,
+                                    maximum=1.0,
+                                    value=0.7,
+                                    step=0.1,
+                                    interactive=True
+                                )
+                        
+                        # Live Tasks Tab - contains task events stream
+                        with gr.Tab("📊 Live Tasks"):
+                            # iOS-style event viewer for sidebar - clean and borderless
+                            sidebar_event_header = gr.Markdown("*Select a task to view its live events*", visible=True, elem_classes=["ios-task-viewer-header"])
+                            
+                            # Clean event display for sidebar - no heavy containers
+                            sidebar_events_display = gr.Markdown("", visible=False, elem_classes=["ios-events-display"])
+                            
+                            # Minimal event statistics for sidebar
+                            sidebar_event_stats = gr.Markdown("", visible=False, elem_classes=["ios-event-stats"])
+                            
+                            # Auto-refresh toggle with iOS styling for sidebar
+                            sidebar_auto_refresh_events = gr.Checkbox(label="Auto-refresh events", value=True, visible=False, elem_classes=["ios-toggle"])
             
             # Workspace tab with task management
             with gr.Tab("Workspace"):
@@ -937,6 +956,41 @@ def create_demo():
                     color: #6B7280 !important;
                     font-style: normal !important;
                     font-weight: 400 !important;
+                }}
+                
+                /* iOS Premium Sidebar Tabs Styling */
+                .sidebar-tabs .tab-nav {{
+                    background: rgba(255, 255, 255, 0.9) !important;
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    border: none !important;
+                    border-radius: 12px !important;
+                    padding: 4px !important;
+                    margin-bottom: 16px !important;
+                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05) !important;
+                }}
+                
+                .sidebar-tabs .tab-nav button {{
+                    background: transparent !important;
+                    border: none !important;
+                    border-radius: 8px !important;
+                    padding: 8px 12px !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                    font-size: 14px !important;
+                    font-weight: 500 !important;
+                    color: #8E8E93 !important;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                }}
+                
+                .sidebar-tabs .tab-nav button.selected {{
+                    background: rgba(0, 122, 255, 0.1) !important;
+                    color: #007AFF !important;
+                    font-weight: 600 !important;
+                }}
+                
+                .sidebar-tabs .tab-nav button:hover {{
+                    background: rgba(0, 122, 255, 0.05) !important;
+                    color: #007AFF !important;
                 }}
                 
                 /* Workspace two-column layout */
@@ -1836,9 +1890,9 @@ def create_demo():
                 return gr.update(), task_map
         
         # Custom chat function wrapper  
-        def handle_chat(message, history, chat_id_state, session_id_state, selected_mode, cwd_value, append_prompt_value, task_map):
+        def handle_chat(message, history, chat_id_state, session_id_state, selected_mode, cwd_value, append_prompt_value, task_map, active_task_id, active_session_id):
             if not message.strip():
-                return history, "", gr.update(), gr.update(), gr.update(), chat_id_state, session_id_state, task_map
+                return history, "", gr.update(), gr.update(), gr.update(), chat_id_state, session_id_state, task_map, active_task_id, active_session_id
             
             # Add user message to history
             new_history = history + [{"role": "user", "content": message}]
@@ -1890,19 +1944,19 @@ def create_demo():
                 chat_manager.update_session_id(current_chat_id, current_session_id)
             
             # Return immediately - no more blocking!
-            return complete_history, "", chatbot_update, placeholder_update, flexible_spacer_update, current_chat_id, current_session_id, updated_task_map
+            return complete_history, "", chatbot_update, placeholder_update, flexible_spacer_update, current_chat_id, current_session_id, updated_task_map, task_id, current_session_id
         
         # Connect send button and textbox submit
         send_button.click(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox, chat_task_map],
-            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map],
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox, chat_task_map, current_active_task_id, current_active_session_id],
+            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map, current_active_task_id, current_active_session_id],
         )
         
         scout_textbox.submit(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox, chat_task_map],
-            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map],
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox, chat_task_map, current_active_task_id, current_active_session_id],
+            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map, current_active_task_id, current_active_session_id],
         )
         
         # Connect chat dropdown to load selected chat
@@ -2059,6 +2113,45 @@ def create_demo():
             fn=lambda events_checkbox, task_id: refresh_selected_task_events(task_id) if (events_checkbox and task_id) else (gr.update(), gr.update(), gr.update()),
             inputs=[auto_refresh_events, selected_task_id],
             outputs=[event_header, events_display, event_stats]
+        )
+        
+        # Connect sidebar event handlers to share the same task selection and event display
+        # When a task is selected in workspace, update sidebar as well
+        selected_task_id.change(
+            fn=lambda task_id: refresh_selected_task_events(task_id) if task_id else (gr.update(value="*Select a task to view its live events*", visible=True), gr.update(value="", visible=False), gr.update(value="", visible=False)),
+            inputs=[selected_task_id],
+            outputs=[sidebar_event_header, sidebar_events_display, sidebar_event_stats]
+        )
+        
+        # Set up auto-refresh timer for sidebar events (same as workspace, using shared task_id)
+        sidebar_events_refresh_timer = gr.Timer(value=3, active=True)
+        sidebar_events_refresh_timer.tick(
+            fn=lambda sidebar_events_checkbox, task_id: refresh_selected_task_events(task_id) if (sidebar_events_checkbox and task_id) else (gr.update(), gr.update(), gr.update()),
+            inputs=[sidebar_auto_refresh_events, selected_task_id],
+            outputs=[sidebar_event_header, sidebar_events_display, sidebar_event_stats]
+        )
+        
+        # Connect current active session to both workspace and sidebar Live Tasks
+        # When a new chat task is created, automatically show it in Live Tasks using session_id
+        def update_live_tasks_from_active_session(session_id):
+            """Update both workspace and sidebar Live Tasks when active session changes."""
+            if session_id:
+                # Get task events and update sidebar
+                sidebar_updates = refresh_selected_task_events(session_id)
+                return (session_id, *sidebar_updates)
+            else:
+                # Clear displays if no session
+                return (
+                    session_id,
+                    gr.update(value="*Select a task to view its live events*", visible=True), 
+                    gr.update(value="", visible=False), 
+                    gr.update(value="", visible=False)
+                )
+        
+        current_active_session_id.change(
+            fn=update_live_tasks_from_active_session,
+            inputs=[current_active_session_id],
+            outputs=[selected_task_id, sidebar_event_header, sidebar_events_display, sidebar_event_stats]
         )
         
         # Set up auto-refresh timer for chat (every 3 seconds when enabled)
