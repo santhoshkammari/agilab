@@ -357,19 +357,38 @@ def create_demo():
                     # Left column - Completed Tasks
                     with gr.Column(scale=1):
                         gr.Markdown("### ✅ Completed")
-                        completed_tasks_container = gr.HTML("", elem_classes=["task-column"])
+                        completed_tasks_radio = gr.Radio(
+                            choices=[],
+                            value=None,
+                            label="",
+                            show_label=False,
+                            elem_classes=["task-radio-group"]
+                        )
+                        with gr.Row():
+                            completed_view_btn = gr.Button("👁️ View", size="sm", visible=False)
+                            completed_delete_btn = gr.Button("🗑️ Delete", size="sm", visible=False)
                     
-                    # Middle column - Ongoing Tasks
+                    # Middle column - Ongoing Tasks  
                     with gr.Column(scale=1):
                         gr.Markdown("### 🔄 Ongoing")
-                        ongoing_tasks_container = gr.HTML("", elem_classes=["task-column"])
+                        ongoing_tasks_radio = gr.Radio(
+                            choices=[],
+                            value=None,
+                            label="",
+                            show_label=False,
+                            elem_classes=["task-radio-group"]
+                        )
+                        with gr.Row():
+                            ongoing_view_btn = gr.Button("👁️ View", size="sm", visible=False)
+                            ongoing_stop_btn = gr.Button("⏹️ Stop", size="sm", visible=False)
+                            ongoing_delete_btn = gr.Button("🗑️ Delete", size="sm", visible=False)
                     
                     # Right column - Task Results/Events
                     with gr.Column(scale=1):
                         gr.Markdown("### 📊 TaskResults")
                         
                         # Event viewer header
-                        event_header = gr.Markdown("*Click a task card to view its events and results*", visible=True)
+                        event_header = gr.Markdown("*Select a task to view its events and results*", visible=True)
                         
                         # Event container with scrollable view
                         with gr.Column(elem_classes=["event-viewer-container"]):
@@ -1064,28 +1083,7 @@ def create_demo():
                     }}
                 }}, 500);
                 
-                // Add global handlers for task card actions
-                window.stopTask = function(sessionId) {{
-                    fetch(window.location.origin.replace('7860', '8000') + '/chat/' + sessionId + '/stop', {{
-                        method: 'POST',
-                        headers: {{'Content-Type': 'application/json'}}
-                    }}).then(response => {{
-                        if (response.ok) {{
-                            console.log('Task ' + sessionId + ' stop requested');
-                        }} else {{
-                            console.error('Failed to stop task ' + sessionId);
-                        }}
-                    }}).catch(error => {{
-                        console.error('Error stopping task:', error);
-                    }});
-                }};
-                
-                window.viewTaskResults = function(sessionId) {{
-                    console.log('Viewing results for session: ' + sessionId);
-                    // This will be handled by the event viewer system
-                    // For now, just show an alert
-                    alert('Viewing results for session ' + sessionId.substring(0,8) + '...');
-                }};
+                // Removed JavaScript task management functions - now using proper Gradio components
             }}
         """)
         
@@ -1195,8 +1193,8 @@ def create_demo():
             except Exception as e:
                 return f"<div class='task-cards-container'><div class='error-message'>Failed to load tasks: {str(e)}</div></div>"
         
-        def update_three_column_tasks():
-            """Update three-column task display with sessions categorized by status."""
+        def update_task_lists():
+            """Update task radio lists with proper Gradio components."""
             try:
                 import requests
                 import datetime
@@ -1205,91 +1203,81 @@ def create_demo():
                 sessions_data = response.json()
                 
                 # Separate sessions by status
-                completed_sessions = []
-                ongoing_sessions = []
+                completed_choices = []
+                ongoing_choices = []
                 
                 for session_id, session_data in sessions_data.items():
                     status = session_data["status"]
-                    if status == "completed":
-                        completed_sessions.append((session_id, session_data))
-                    elif status in ["running", "pending"]:
-                        ongoing_sessions.append((session_id, session_data))
-                
-                # Generate HTML for completed tasks with glass design
-                def create_task_card_html(session_id, session_data, is_completed=False):
-                    status = session_data["status"]
                     total_events = session_data["total_events"]
                     latest_message = session_data.get("latest_message", "")
-                    task_count = len(session_data.get("tasks", []))
                     
-                    # Mock dates for demo - in real implementation, get from session data
-                    current_date = datetime.datetime.now()
-                    date_str = current_date.strftime("%a %b %d")
-                    start_time = "12:30pm"
-                    end_time = "12:50pm"
-                    duration = "20 mins"
-                    
-                    # Truncate message for display
-                    display_message = latest_message[:60] + "..." if len(latest_message) > 60 else latest_message
+                    # Create display text for radio button
+                    display_message = latest_message[:40] + "..." if len(latest_message) > 40 else latest_message
                     if not display_message:
                         display_message = f"Session #{session_id[:8]}"
                     
-                    # Status styling
-                    if is_completed:
-                        status_class = "completed"
-                        status_icon = "✅"
-                        actions_html = f'<button class="task-card-action view-btn" onclick="viewTaskResults(\'{session_id}\')">👁️ View</button>'
-                    else:
-                        status_class = "ongoing"
-                        status_icon = "🔄"
-                        actions_html = f'''
-                            <button class="task-card-action stop-btn" onclick="stopTask(\'{session_id}\')">⏹️ Stop</button>
-                            <button class="task-card-action view-btn" onclick="viewTaskResults(\'{session_id}\')">👁️ View</button>
-                        '''
+                    choice_text = f"📝 {total_events} events | {display_message}"
+                    choice_value = session_id
                     
-                    return f'''
-                    <div class="task-card glass-card {status_class}" data-session-id="{session_id}">
-                        <div class="task-card-header">
-                            <span class="task-status-icon">{status_icon}</span>
-                            <span class="task-session-id">#{session_id[:8]}</span>
-                        </div>
-                        <div class="task-card-content">
-                            <div class="task-message">{display_message}</div>
-                            <div class="task-details">
-                                <div class="task-date">📅 {date_str}</div>
-                                <div class="task-time">🕐 {start_time} - {end_time}</div>
-                                <div class="task-duration">⏱️ {duration}</div>
-                                <div class="task-events">📝 {total_events} events</div>
-                                <div class="session-id-detail">🆔 {session_id[:12]}</div>
-                            </div>
-                        </div>
-                        <div class="task-card-actions">
-                            {actions_html}
-                        </div>
-                    </div>
-                    '''
+                    if status == "completed":
+                        completed_choices.append((choice_text, choice_value))
+                    elif status in ["running", "pending"]:
+                        ongoing_choices.append((choice_text, choice_value))
                 
-                # Build completed tasks HTML
-                completed_html = ""
-                if completed_sessions:
-                    for session_id, session_data in completed_sessions:
-                        completed_html += create_task_card_html(session_id, session_data, True)
-                else:
-                    completed_html = '<div class="empty-column">No completed tasks yet</div>'
+                # Prepare updates for radio components
+                completed_update = gr.update(
+                    choices=completed_choices,
+                    value=None
+                )
+                ongoing_update = gr.update(
+                    choices=ongoing_choices, 
+                    value=None
+                )
                 
-                # Build ongoing tasks HTML
-                ongoing_html = ""
-                if ongoing_sessions:
-                    for session_id, session_data in ongoing_sessions:
-                        ongoing_html += create_task_card_html(session_id, session_data, False)
-                else:
-                    ongoing_html = '<div class="empty-column">No ongoing tasks</div>'
-                
-                return completed_html, ongoing_html
+                return completed_update, ongoing_update
                 
             except Exception as e:
                 error_msg = f"Failed to load tasks: {str(e)}"
-                return f'<div class="error-column">{error_msg}</div>', f'<div class="error-column">{error_msg}</div>'
+                empty_update = gr.update(choices=[(error_msg, None)], value=None)
+                return empty_update, empty_update
+        
+        def handle_completed_task_selection(selected_task):
+            """Handle selection of a completed task."""
+            if selected_task:
+                # Show View and Delete buttons for completed tasks
+                return (
+                    gr.update(visible=True),  # view button
+                    gr.update(visible=True),  # delete button
+                    selected_task             # update selected_task_id state
+                )
+            else:
+                return (
+                    gr.update(visible=False), # view button  
+                    gr.update(visible=False), # delete button
+                    None                      # clear selected_task_id state
+                )
+        
+        def handle_ongoing_task_selection(selected_task):
+            """Handle selection of an ongoing task."""
+            if selected_task:
+                # Show View, Stop, and Delete buttons for ongoing tasks
+                return (
+                    gr.update(visible=True),  # view button
+                    gr.update(visible=True),  # stop button
+                    gr.update(visible=True),  # delete button
+                    selected_task             # update selected_task_id state
+                )
+            else:
+                return (
+                    gr.update(visible=False), # view button
+                    gr.update(visible=False), # stop button  
+                    gr.update(visible=False), # delete button
+                    None                      # clear selected_task_id state
+                )
+        
+        def view_task_events(session_id):
+            """View events for selected task - connects to existing get_task_events function."""
+            return get_task_events(session_id)
         
         def stop_task_action(task_id):
             """Stop a specific task."""
@@ -1840,21 +1828,61 @@ def create_demo():
         
         # Connect task management buttons
         refresh_tasks_btn.click(
-            fn=update_three_column_tasks,
+            fn=update_task_lists,
             inputs=[],
-            outputs=[completed_tasks_container, ongoing_tasks_container]
+            outputs=[completed_tasks_radio, ongoing_tasks_radio]
         )
         
-        # Auto-refresh functionality
-        def auto_refresh_handler():
-            return update_task_display()
+        # Connect task selection handlers
+        completed_tasks_radio.change(
+            fn=handle_completed_task_selection,
+            inputs=[completed_tasks_radio],
+            outputs=[completed_view_btn, completed_delete_btn, selected_task_id]
+        )
+        
+        ongoing_tasks_radio.change(
+            fn=handle_ongoing_task_selection,
+            inputs=[ongoing_tasks_radio],
+            outputs=[ongoing_view_btn, ongoing_stop_btn, ongoing_delete_btn, selected_task_id]
+        )
+        
+        # Connect action buttons to their functions
+        completed_view_btn.click(
+            fn=view_task_events,
+            inputs=[selected_task_id],
+            outputs=[event_header, events_display, event_stats]
+        )
+        
+        ongoing_view_btn.click(
+            fn=view_task_events,
+            inputs=[selected_task_id], 
+            outputs=[event_header, events_display, event_stats]
+        )
+        
+        completed_delete_btn.click(
+            fn=delete_task_action,
+            inputs=[selected_task_id],
+            outputs=[]  # Will refresh via auto-refresh
+        )
+        
+        ongoing_delete_btn.click(
+            fn=delete_task_action,
+            inputs=[selected_task_id],
+            outputs=[]  # Will refresh via auto-refresh  
+        )
+        
+        ongoing_stop_btn.click(
+            fn=stop_task_action,
+            inputs=[selected_task_id],
+            outputs=[]  # Will refresh via auto-refresh
+        )
         
         # Set up auto-refresh timer (every 2 seconds when enabled)
         auto_refresh_timer = gr.Timer(value=2, active=True)
         auto_refresh_timer.tick(
-            fn=lambda checkbox_value: update_three_column_tasks() if checkbox_value else (gr.update(), gr.update()),
+            fn=lambda checkbox_value: update_task_lists() if checkbox_value else (gr.update(), gr.update()),
             inputs=[auto_refresh_checkbox],
-            outputs=[completed_tasks_container, ongoing_tasks_container]
+            outputs=[completed_tasks_radio, ongoing_tasks_radio]
         )
         
         # Set up auto-refresh timer for events (every 3 seconds when enabled and task selected)
@@ -1874,13 +1902,13 @@ def create_demo():
         def initialize_ui_with_tasks():
             chat_list = load_chat_list()
             combined_update = update_info_cards("")
-            completed_html, ongoing_html = update_three_column_tasks()
-            return chat_list, combined_update, completed_html, ongoing_html
+            completed_update, ongoing_update = update_task_lists()
+            return chat_list, combined_update, completed_update, ongoing_update
         
         demo.load(
             fn=initialize_ui_with_tasks,
             inputs=[],
-            outputs=[chat_dropdown, combined_info, completed_tasks_container, ongoing_tasks_container]
+            outputs=[chat_dropdown, combined_info, completed_tasks_radio, ongoing_tasks_radio]
         )
 
         # Connect context button (placeholder functionality)
