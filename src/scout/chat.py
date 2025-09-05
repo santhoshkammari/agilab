@@ -249,8 +249,10 @@ def create_demo():
                     # Delete chat button
                     delete_chat_btn = gr.Button("🗑️ Delete Chat", variant="secondary", size="sm")
                     
-                    # Refresh chat results button
-                    refresh_chat_btn = gr.Button("🔄 Refresh Results", variant="secondary", size="sm")
+                    # Refresh chat results button and auto-refresh toggle
+                    with gr.Row():
+                        refresh_chat_btn = gr.Button("🔄 Refresh Results", variant="secondary", size="sm")
+                        auto_refresh_chat_checkbox = gr.Checkbox(label="Auto-refresh every 3s", value=True)
 
                 # Create main content area with tight spacing
                 with gr.Column():
@@ -272,7 +274,7 @@ def create_demo():
                     
                     # Custom chatbot
                     chatbot = gr.Chatbot(
-                        height="64vh",
+                        height="66vh",
                         show_copy_button=False,
                         placeholder="START HERE",
                         type="messages",
@@ -2003,6 +2005,14 @@ def create_demo():
             fn=lambda events_checkbox, task_id: refresh_selected_task_events(task_id) if (events_checkbox and task_id) else (gr.update(), gr.update(), gr.update()),
             inputs=[auto_refresh_events, selected_task_id],
             outputs=[event_header, events_display, event_stats]
+        )
+        
+        # Set up auto-refresh timer for chat (every 3 seconds when enabled)
+        chat_refresh_timer = gr.Timer(value=3, active=True)
+        chat_refresh_timer.tick(
+            fn=lambda checkbox_value, chat_id, task_map: refresh_current_chat(chat_id, task_map) if (checkbox_value and chat_id) else (gr.update(), task_map),
+            inputs=[auto_refresh_chat_checkbox, current_chat_id, chat_task_map],
+            outputs=[chatbot, chat_task_map]
         )
         
         # Load chat list and info cards on startup
