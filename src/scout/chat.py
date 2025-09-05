@@ -151,7 +151,37 @@ def chat_function_sync(message, history, session_id=None, mode="Scout", cwd="", 
                 cwd=cwd,
                 append_system_prompt=append_system_prompt
             )
-            return task_id, session_id
+            
+            # Wait for task to start and extract the real session_id
+            # Poll until we get the session_id from events
+            real_session_id = session_id  # fallback
+            
+            for attempt in range(8):  # Increased attempts
+                await asyncio.sleep(0.8)  # Longer wait
+                
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(f"{API_BASE_URL}/chat/{task_id}/status")
+                    response.raise_for_status()
+                    task_data = response.json()
+                    
+                    logger.info(f"🔍 Attempt {attempt + 1}: task {task_id} status={task_data['status']}, events={len(task_data.get('events', []))}")
+                    
+                    # Extract session_id from SystemMessage events
+                    for event in task_data.get("events", []):
+                        if (event.get('type') == 'SystemMessage' and 
+                            event.get('data', {}).get('session_id')):
+                            real_session_id = event['data']['session_id']
+                            logger.info(f"✅ Extracted real session_id: {real_session_id} from task {task_id}")
+                            return task_id, real_session_id
+                    
+                    # If task is completed but no session_id found, something is wrong
+                    if task_data["status"] in ["completed", "failed"]:
+                        logger.error(f"❌ Task {task_id} completed but no session_id found in events!")
+                        break
+            
+            # Return with fallback session_id if we couldn't extract it
+            return task_id, real_session_id
+                
         except Exception as e:
             logger.error(f"Failed to send chat request: {e}")
             return None, session_id
@@ -1239,10 +1269,12 @@ def create_demo():
             if not chat_id:
                 return [], gr.update(visible=False), gr.update(visible=True), None, None, task_map
             
+            logger.info(f"📂 Loading chat {chat_id}")
             chat = chat_manager.get_chat(chat_id)
             if chat:
                 messages = chat['messages']
                 session_id = chat['session_id']
+                logger.info(f"📂 Loaded chat {chat_id} with session_id: {session_id}")
                 
                 # Check for completed tasks and update messages
                 updated_chatbot, updated_task_map = update_chat_with_results(chat_id, task_map)
@@ -1431,12 +1463,15 @@ def create_demo():
                 current_chat_id = chat_manager.create_chat()
             
             # Call the non-blocking chat function
+            logger.info(f"🔄 Sending message with session_id: {current_session_id}")
             response_messages, updated_session_id, task_id = chat_function_sync(
                 message, history, current_session_id, selected_mode, cwd_value, append_prompt_value
             )
             
             # Update session_id if we got a new one
+            logger.info(f"📨 Got back session_id: {updated_session_id}, task_id: {task_id}")
             if updated_session_id and updated_session_id != current_session_id:
+                logger.info(f"🔄 Session ID changed: {current_session_id} → {updated_session_id}")
                 current_session_id = updated_session_id
             
             # Store task_id for this chat
@@ -1455,6 +1490,11 @@ def create_demo():
                 chat_manager.update_chat(current_chat_id, complete_history, title)
             else:
                 chat_manager.update_chat(current_chat_id, complete_history)
+            
+            # Always update the database with the real session_id when we have it
+            if current_session_id:
+                logger.info(f"💾 Saving session_id {current_session_id} to chat {current_chat_id}")
+                chat_manager.update_session_id(current_chat_id, current_session_id)
             
             # Return immediately - no more blocking!
             return complete_history, "", chatbot_update, placeholder_update, flexible_spacer_update, current_chat_id, current_session_id, updated_task_map

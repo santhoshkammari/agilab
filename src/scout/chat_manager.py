@@ -27,13 +27,13 @@ class ChatManager:
     def create_chat(self, session_id: Optional[str] = None) -> str:
         """Create a new chat and return its ID."""
         chat_id = str(uuid.uuid4())
-        if not session_id:
-            session_id = str(uuid.uuid4())
+        # Don't create our own session_id - let backend handle it
+        # We'll update it later when we get the real one from backend
         
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO chats (id, session_id, title, messages) VALUES (?, ?, ?, ?)",
-                (chat_id, session_id, "New Chat", "[]")
+                (chat_id, session_id, "New Chat", "[]")  # session_id will be None initially
             )
             conn.commit()
         return chat_id
@@ -108,3 +108,12 @@ class ChatManager:
             cursor = conn.execute("SELECT session_id FROM chats WHERE id = ?", (chat_id,))
             row = cursor.fetchone()
             return row[0] if row else None
+    
+    def update_session_id(self, chat_id: str, session_id: str):
+        """Update the session_id for a chat."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "UPDATE chats SET session_id = ? WHERE id = ?",
+                (session_id, chat_id)
+            )
+            conn.commit()

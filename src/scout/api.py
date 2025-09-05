@@ -132,7 +132,8 @@ async def start_chat(chat_request: ChatRequest, background_tasks: BackgroundTask
     # Start background task
     background_tasks.add_task(process_chat_task, task_id, chat_request)
     
-    logger.info(f"Started chat task {task_id}")
+    logger.info(f"🚀 Started chat task {task_id} with session_id: {chat_request.session_id}")
+    logger.info(f"📝 Message: {chat_request.message[:50]}...")
     return TaskResponse(task_id=task_id, status="pending")
 
 @app.get("/chat/{task_id}/status", response_model=TaskStatusResponse)
