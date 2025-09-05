@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import os
 import re
 import requests
 from typing import Any, Optional, List, Dict
@@ -9,8 +10,11 @@ from .basellm import BaseLLM
 
 class LLM(BaseLLM):
     """HTTP client for FlowGen API server that inherits from BaseLLM."""
-    
-    def __init__(self, base_url="http://0.0.0.0:8000", **kwargs):
+
+    def __init__(self, base_url: str | None = None, **kwargs):
+        # priority: arg > env > default
+        if base_url is None:
+            base_url = os.getenv("BASE_URL", "http://0.0.0.0:8000")
         self._base_url = base_url.rstrip('/')
         super().__init__(**kwargs)
 
