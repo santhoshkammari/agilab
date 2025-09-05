@@ -137,243 +137,48 @@ async def stream_chat_events(task_id):
 
 def chat_function_sync(message, history, session_id=None, mode="Scout", cwd="", append_system_prompt=""):
     """
-    Sync chat function using FastAPI backend for processing.
+    Non-blocking chat function - sends request and returns immediately with task info.
     """
-    import concurrent.futures
-    import threading
-    import queue
+    import asyncio
     
-    # Create a queue to pass results between threads
-    result_queue = queue.Queue()
-    
-    def run_fastapi_chat_in_thread():
-        """Start chat task and stream events in a separate thread."""
-        # Create new event loop for this thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        async def process_chat():
-            try:
-                # Start chat task
-                task_id = await start_chat_task(
-                    message=message,
-                    session_id=session_id,
-                    mode=mode,
-                    cwd=cwd,
-                    append_system_prompt=append_system_prompt
-                )
-                
-                # Poll for status and events instead of streaming
-                last_event_count = 0
-                while True:
-                    # Get task status
-                    async with httpx.AsyncClient() as client:
-                        response = await client.get(f"{API_BASE_URL}/chat/{task_id}/status")
-                        response.raise_for_status()
-                        task_data = response.json()
-                    
-                    status = task_data["status"]
-                    events = task_data["events"]
-                    
-                    # Process new events
-                    if len(events) > last_event_count:
-                        new_events = events[last_event_count:]
-                        for event in new_events:
-                            result_queue.put(('event', event))
-                        last_event_count = len(events)
-                    
-                    # Check if task is done
-                    if status in ["completed", "failed", "cancelled"]:
-                        if status == "failed":
-                            error = task_data.get("error", "Unknown error")
-                            result_queue.put(('error', error))
-                        else:
-                            result_queue.put(('done', None))
-                        break
-                    
-                    # Wait before next poll
-                    await asyncio.sleep(0.5)
-                
-            except Exception as e:
-                logger.error(f"FastAPI chat error: {e}")
-                result_queue.put(('error', str(e)))
-        
-        # Run the async processing
-        loop.run_until_complete(process_chat())
-        loop.close()
-    
-    # Start the thread
-    thread = threading.Thread(target=run_fastapi_chat_in_thread, daemon=True)
-    thread.start()
-    
-    # Process events as they come from the queue
-    result = []
-    current_content = ""
-    extracted_session_id = session_id
-    
-    status_index = 0
-    
-    while True:
-        # Get next item from queue with timeout for heartbeat
+    async def send_chat_request():
         try:
-            item_type, item_data = result_queue.get(timeout=1.0)
-        except queue.Empty:
-            # No event in 1 second, yield heartbeat with rotating fun message
-            if not result:
-                # Show rotating status message
-                heartbeat_result = [
-                    gr.ChatMessage(
-                        role="assistant", 
-                        content=status_messages[status_index % len(status_messages)]
-                    )
-                ]
-                status_index += 1
-                yield heartbeat_result, extracted_session_id
-            else:
-                # Update last message if it's just a status message (no real content yet)
-                if (len(result) == 1 and 
-                    any(status in result[-1].content for status in ["🍳", "🤔", "⚡", "🔍", "🧠", "⚙️", "🎯", "📚", "🚀", "🔮"])):
-                    # Update with next rotating message
-                    result[-1] = gr.ChatMessage(
-                        role="assistant", 
-                        content=status_messages[status_index % len(status_messages)]
-                    )
-                    status_index += 1
-                yield result, extracted_session_id
-            continue
-            
-        if item_type == 'done':
-            break
-        elif item_type == 'error':
-            yield [
-                gr.ChatMessage(
-                    role="assistant", content=f"⚠️ Error: {str(item_data)}\n\nPlease check your API server connection."
-                )
-            ], session_id
-            break
-        elif item_type == 'event':
-            event = item_data
-            event_type = event.get('type', 'unknown')
-            
-            # Extract session_id from SystemMessage
-            if event_type == 'SystemMessage' and not extracted_session_id:
-                data = event.get('data', {})
-                if data.get('session_id'):
-                    extracted_session_id = data['session_id']
-            
-            elif event_type == 'AssistantMessage':
-                content = event.get('content', [])
-                if content and len(content) > 0:
-                    # Handle text content
-                    if content[0].get('text'):
-                        text_content = content[0]['text']
-                        current_content += text_content
-                        
-                        # Update or add main response
-                        main_msg_exists = any(msg.metadata is None or msg.metadata.get('title') is None for msg in result)
-                        if main_msg_exists:
-                            for i, msg in enumerate(result):
-                                if msg.metadata is None or msg.metadata.get('title') is None:
-                                    result[i] = gr.ChatMessage(role="assistant", content=current_content)
-                                    break
-                        else:
-                            result.append(gr.ChatMessage(role="assistant", content=current_content))
-                    
-                    # Handle tool use
-                    elif content[0].get('name'):
-                        tool_name = content[0]['name']
-                        tool_input = content[0].get('input', {})
-                        
-                        result.append(
-                            gr.ChatMessage(
-                                role="assistant",
-                                content=f"Using {tool_name}...\n```json\n{json.dumps(tool_input, indent=2)}\n```",
-                                metadata={"title": f"🔧 {tool_name}", "status": "pending"},
-                            )
-                        )
-            
-            elif event_type == 'UserMessage':
-                # Handle tool results
-                user_content = event.get('content', [])
-                if user_content and len(user_content) > 0:
-                    tool_use_id = user_content[0].get('tool_use_id')
-                    if tool_use_id:
-                        tool_result_content = user_content[0].get('content', [])
-                        logger.debug(f'=== TOOL RESULT DEBUG START ===')
-                        logger.debug(f'tool_use_id: {tool_use_id}')
-                        logger.debug(f'user_content[0]: {user_content[0]}')
-                        logger.debug(f'tool_result_content type: {type(tool_result_content)}')
-                        logger.debug(f'tool_result_content: {tool_result_content}')
-                        if tool_result_content and len(tool_result_content) > 0:
-                            logger.debug(f'tool_result_content[0] type: {type(tool_result_content[0])}')
-                            logger.debug(f'tool_result_content[0]: {repr(tool_result_content[0])}')
-                        logger.debug(f'=== TOOL RESULT DEBUG END ===\n')
-                        if tool_result_content:
-                            if isinstance(tool_result_content, str):
-                                # Direct string content (Write, Read, etc.)
-                                result_text = tool_result_content
-                            elif isinstance(tool_result_content, list) and len(tool_result_content) > 0:
-                                # List format (WebSearch, etc.)
-                                if isinstance(tool_result_content[0], dict):
-                                    result_text = tool_result_content[0].get('text', '')
-                                else:
-                                    result_text = str(tool_result_content[0])
-                            elif isinstance(tool_result_content, dict):
-                                # Direct dict format
-                                result_text = tool_result_content.get('text', '')
-                            else:
-                                result_text = str(tool_result_content)
-                            
-                            # Skip empty or whitespace-only results
-                            if not result_text or not result_text.strip():
-                                continue
-                            
-                            # Find and update the corresponding pending tool message
-                            for i, msg in enumerate(result):
-                                if (msg.metadata and 
-                                    msg.metadata.get('status') == 'pending' and
-                                    msg.metadata.get('title', '').startswith('🔧')):
-                                    
-                                    tool_name = msg.metadata['title'].replace('🔧 ', '')
-                                    
-                                    # Format tool result based on content type
-                                    if result_text.startswith('<tool_use_error>') and result_text.endswith('</tool_use_error>'):
-                                        # Extract error message
-                                        error_msg = result_text[16:-17]  # Remove <tool_use_error> tags
-                                        tool_content = f"**Tool:** {tool_name}\n**Error:** {error_msg}"
-                                    elif len(result_text) > 1000:
-                                        # Show first part and indicate truncation
-                                        tool_content = f"**Tool:** {tool_name}\n**Result:** {result_text[:1000]}...\n\n*[Result truncated for display]*"
-                                    else:
-                                        # Show full result
-                                        tool_content = f"**Tool:** {tool_name}\n**Result:** {result_text}"
-                                    
-                                    result[i] = gr.ChatMessage(
-                                        role="assistant", 
-                                        content=tool_content, 
-                                        metadata={"title": f"🔧 {tool_name}", "status": "done"}
-                                    )
-                                    break
-            
-            elif event_type == 'ResultMessage':
-                # Final result - ensure we have a clean main response
-                final_result = event.get('result', '')
-                if final_result and final_result.strip():
-                    # Remove any pending tool messages and ensure clean final response
-                    result = [msg for msg in result if not (msg.metadata and msg.metadata.get('status') == 'pending')]
-                    
-                    # Update or add final response
-                    main_msg_exists = any(msg.metadata is None or msg.metadata.get('title') is None for msg in result)
-                    if main_msg_exists:
-                        for i, msg in enumerate(result):
-                            if msg.metadata is None or msg.metadata.get('title') is None:
-                                result[i] = gr.ChatMessage(role="assistant", content=final_result)
-                                break
-                    else:
-                        result.append(gr.ChatMessage(role="assistant", content=final_result))
-            
-            # Yield after processing each event
-            yield result, extracted_session_id
+            # Start chat task
+            task_id = await start_chat_task(
+                message=message,
+                session_id=session_id,
+                mode=mode,
+                cwd=cwd,
+                append_system_prompt=append_system_prompt
+            )
+            return task_id, session_id
+        except Exception as e:
+            logger.error(f"Failed to send chat request: {e}")
+            return None, session_id
+    
+    # Run the async request - use asyncio.run for simplicity
+    try:
+        task_id, extracted_session_id = asyncio.run(send_chat_request())
+    except Exception as e:
+        logger.error(f"Failed to send chat request: {e}")
+        task_id, extracted_session_id = None, session_id
+    
+    if task_id:
+        # Return immediately with a "sent" indicator
+        return [
+            gr.ChatMessage(
+                role="assistant", 
+                content=f"💭 Message sent to background processing...\n*Task ID: {task_id[:8]}*"
+            )
+        ], extracted_session_id, task_id
+    else:
+        # Return error message
+        return [
+            gr.ChatMessage(
+                role="assistant", 
+                content="⚠️ Failed to send message. Please check your API server connection."
+            )
+        ], session_id, None
         
         
 
@@ -413,6 +218,9 @@ def create_demo():
                     
                     # Delete chat button
                     delete_chat_btn = gr.Button("🗑️ Delete Chat", variant="secondary", size="sm")
+                    
+                    # Refresh chat results button
+                    refresh_chat_btn = gr.Button("🔄 Refresh Results", variant="secondary", size="sm")
 
                 # Create main content area with tight spacing
                 with gr.Column():
@@ -1403,65 +1211,212 @@ def create_demo():
             
             return gr.update(choices=choices, value=None)
         
-        def create_new_chat():
+        def create_new_chat(task_map):
             """Create a new chat and update the UI."""
             chat_id = chat_manager.create_chat()
-            updated_dropdown = load_chat_list()
+            chats = chat_manager.get_chats()
+            if not chats:
+                updated_dropdown = gr.update(choices=[], value=None)
+            else:
+                choices = []
+                for chat in chats:
+                    title = chat['title'][:50] + "..." if len(chat['title']) > 50 else chat['title']
+                    choices.append((title, chat['id']))
+                updated_dropdown = gr.update(choices=choices, value=None)
+            
             return (
-                updated_dropdown,  # Update chat dropdown
+                updated_dropdown,  # Update chat dropdown with None value
                 [],  # Clear chatbot
                 gr.update(visible=False),  # Hide chatbot
                 gr.update(visible=True),   # Show placeholder
-                chat_id,  # Update current_chat_id
-                None      # Reset current_session_id
+                None,  # Reset current_chat_id to start fresh
+                None,  # Reset current_session_id
+                task_map  # Keep existing task map
             )
         
-        def load_selected_chat(chat_id):
-            """Load a selected chat."""
+        def load_selected_chat(chat_id, task_map):
+            """Load a selected chat and check for completed tasks."""
             if not chat_id:
-                return [], gr.update(visible=False), gr.update(visible=True), None, None
+                return [], gr.update(visible=False), gr.update(visible=True), None, None, task_map
             
             chat = chat_manager.get_chat(chat_id)
             if chat:
                 messages = chat['messages']
                 session_id = chat['session_id']
+                
+                # Check for completed tasks and update messages
+                updated_chatbot, updated_task_map = update_chat_with_results(chat_id, task_map)
+                if updated_chatbot.get('value') is not None:
+                    messages = updated_chatbot['value']
+                
                 if messages:
                     return (
-                        messages,  # Load chat history
+                        messages,  # Load chat history (potentially updated)
                         gr.update(visible=True),   # Show chatbot
                         gr.update(visible=False),  # Hide placeholder
                         session_id,  # Update session_id
-                        chat_id  # Update current_chat_id
+                        chat_id,  # Update current_chat_id
+                        updated_task_map  # Updated task map
                     )
-            return [], gr.update(visible=False), gr.update(visible=True), None, None
+            return [], gr.update(visible=False), gr.update(visible=True), None, None, task_map
         
-        def delete_selected_chat(chat_id):
+        def delete_selected_chat(chat_id, task_map):
             """Delete the selected chat."""
             if chat_id:
                 chat_manager.delete_chat(chat_id)
-            updated_dropdown = load_chat_list()
+                # Also remove task map entries for this chat
+                if task_map and chat_id in task_map:
+                    updated_task_map = task_map.copy()
+                    del updated_task_map[chat_id]
+                else:
+                    updated_task_map = task_map
+            else:
+                updated_task_map = task_map
+                
+            chats = chat_manager.get_chats()
+            if not chats:
+                updated_dropdown = gr.update(choices=[], value=None)
+            else:
+                choices = []
+                for chat in chats:
+                    title = chat['title'][:50] + "..." if len(chat['title']) > 50 else chat['title']
+                    choices.append((title, chat['id']))
+                updated_dropdown = gr.update(choices=choices, value=None)
+                
             return (
                 updated_dropdown,  # Update chat dropdown
                 [],  # Clear chatbot
                 gr.update(visible=False),  # Hide chatbot
                 gr.update(visible=True),   # Show placeholder
                 None,  # Reset current_chat_id
-                None   # Reset current_session_id
+                None,  # Reset current_session_id
+                updated_task_map  # Updated task map
             )
         
         # Store ongoing task IDs per session to avoid creating multiple tasks
         session_task_map = gr.State({})
         
+        # Store active task IDs for each chat
+        chat_task_map = gr.State({})
+        
+        # Function to fetch and update chat with completed task results
+        def update_chat_with_results(chat_id, task_map):
+            """Check if any tasks for this chat are completed and update the chat history."""
+            if not chat_id or not task_map or chat_id not in task_map:
+                return gr.update(), task_map
+            
+            try:
+                import requests
+                chat = chat_manager.get_chat(chat_id)
+                if not chat:
+                    return gr.update(), task_map
+                
+                current_history = chat['messages']
+                updated_history = current_history.copy()
+                updated_task_map = task_map.copy()
+                
+                # Check each task for this chat
+                tasks_to_remove = []
+                for i, task_id in enumerate(task_map[chat_id]):
+                    try:
+                        response = requests.get(f"{API_BASE_URL}/chat/{task_id}/status", timeout=5)
+                        response.raise_for_status()
+                        task_data = response.json()
+                        
+                        if task_data["status"] in ["completed", "failed", "cancelled"]:
+                            # Task is done, update chat history with results
+                            if task_data["status"] == "completed" and task_data.get("events"):
+                                # Process events to build response messages
+                                response_messages = []
+                                current_content = ""
+                                
+                                for event in task_data["events"]:
+                                    event_type = event.get('type', 'unknown')
+                                    
+                                    if event_type == 'AssistantMessage':
+                                        content = event.get('content', [])
+                                        if content and len(content) > 0:
+                                            if content[0].get('text'):
+                                                current_content += content[0]['text']
+                                            elif content[0].get('name'):
+                                                tool_name = content[0]['name']
+                                                tool_input = content[0].get('input', {})
+                                                response_messages.append(
+                                                    gr.ChatMessage(
+                                                        role="assistant",
+                                                        content=f"Using {tool_name}...\n```json\n{json.dumps(tool_input, indent=2)}\n```",
+                                                        metadata={"title": f"🔧 {tool_name}", "status": "done"},
+                                                    )
+                                                )
+                                    
+                                    elif event_type == 'ResultMessage':
+                                        final_result = event.get('result', '')
+                                        if final_result and final_result.strip():
+                                            current_content = final_result
+                                
+                                # Add main response if we have content
+                                if current_content:
+                                    response_messages.append(gr.ChatMessage(role="assistant", content=current_content))
+                                
+                                # Replace the "processing" message with actual results
+                                # Find and replace the last assistant message that contains "background processing"
+                                for j in range(len(updated_history) - 1, -1, -1):
+                                    if (updated_history[j].get("role") == "assistant" and 
+                                        "background processing" in updated_history[j].get("content", "")):
+                                        # Replace with actual results
+                                        if response_messages:
+                                            # Replace the processing message with the first real message
+                                            updated_history[j] = response_messages[0]
+                                            # Add any additional messages
+                                            for k, msg in enumerate(response_messages[1:], 1):
+                                                updated_history.insert(j + k, msg)
+                                        break
+                            
+                            elif task_data["status"] == "failed":
+                                error_msg = task_data.get("error", "Unknown error")
+                                # Replace processing message with error
+                                for j in range(len(updated_history) - 1, -1, -1):
+                                    if (updated_history[j].get("role") == "assistant" and 
+                                        "background processing" in updated_history[j].get("content", "")):
+                                        updated_history[j] = gr.ChatMessage(
+                                            role="assistant", 
+                                            content=f"⚠️ Task failed: {error_msg}"
+                                        )
+                                        break
+                            
+                            # Mark task for removal
+                            tasks_to_remove.append(i)
+                    
+                    except Exception as e:
+                        logger.debug(f"Error checking task {task_id}: {e}")
+                        continue
+                
+                # Remove completed tasks
+                for i in reversed(tasks_to_remove):
+                    updated_task_map[chat_id].pop(i)
+                
+                # Clean up empty task lists
+                if not updated_task_map[chat_id]:
+                    del updated_task_map[chat_id]
+                
+                # Update chat if history changed
+                if updated_history != current_history:
+                    chat_manager.update_chat(chat_id, updated_history)
+                    return gr.update(value=updated_history), updated_task_map
+                
+                return gr.update(), updated_task_map
+                
+            except Exception as e:
+                logger.error(f"Error updating chat results: {e}")
+                return gr.update(), task_map
+        
         # Custom chat function wrapper  
-        def handle_chat(message, history, chat_id_state, session_id_state, selected_mode, cwd_value, append_prompt_value):
+        def handle_chat(message, history, chat_id_state, session_id_state, selected_mode, cwd_value, append_prompt_value, task_map):
             if not message.strip():
-                return history, "", gr.update(), gr.update(), gr.update(), chat_id_state, session_id_state
+                return history, "", gr.update(), gr.update(), gr.update(), chat_id_state, session_id_state, task_map
             
             # Add user message to history
             new_history = history + [{"role": "user", "content": message}]
-            
-            # Add initial thinking indicator  
-            thinking_history = new_history + [{"role": "assistant", "content": "🍳 Cooking up something good..."}]
             
             # Make chatbot visible and hide placeholder when first message is sent
             chatbot_update = gr.update(visible=True)
@@ -1475,57 +1430,60 @@ def create_demo():
             if not current_chat_id:
                 current_chat_id = chat_manager.create_chat()
             
-            # Show thinking indicator first
-            yield thinking_history, "", chatbot_update, placeholder_update, flexible_spacer_update, current_chat_id, current_session_id
+            # Call the non-blocking chat function
+            response_messages, updated_session_id, task_id = chat_function_sync(
+                message, history, current_session_id, selected_mode, cwd_value, append_prompt_value
+            )
             
-            # Call the sync chat function with streaming, passing the selected mode and settings
-            response_gen = chat_function_sync(message, history, current_session_id, selected_mode, cwd_value, append_prompt_value)
+            # Update session_id if we got a new one
+            if updated_session_id and updated_session_id != current_session_id:
+                current_session_id = updated_session_id
             
-            # Stream the response and build complete conversation history
-            for response_messages, updated_session_id in response_gen:
-                # Update session_id if we got a new one
-                if updated_session_id and updated_session_id != current_session_id:
-                    current_session_id = updated_session_id
-                
-                # Build complete history: previous conversation + user message + current responses
-                complete_history = new_history + response_messages
-                
-                # Save to database (generate title from first message if new chat)
-                if len(new_history) == 1:  # First message
-                    title = message[:50] + "..." if len(message) > 50 else message
-                    chat_manager.update_chat(current_chat_id, complete_history, title)
-                else:
-                    chat_manager.update_chat(current_chat_id, complete_history)
-                
-                yield complete_history, "", chatbot_update, placeholder_update, flexible_spacer_update, current_chat_id, current_session_id
+            # Store task_id for this chat
+            updated_task_map = task_map.copy() if task_map else {}
+            if task_id:
+                if current_chat_id not in updated_task_map:
+                    updated_task_map[current_chat_id] = []
+                updated_task_map[current_chat_id].append(task_id)
+            
+            # Build complete history: previous conversation + user message + response
+            complete_history = new_history + response_messages
+            
+            # Save to database (generate title from first message if new chat)
+            if len(new_history) == 1:  # First message
+                title = message[:50] + "..." if len(message) > 50 else message
+                chat_manager.update_chat(current_chat_id, complete_history, title)
+            else:
+                chat_manager.update_chat(current_chat_id, complete_history)
+            
+            # Return immediately - no more blocking!
+            return complete_history, "", chatbot_update, placeholder_update, flexible_spacer_update, current_chat_id, current_session_id, updated_task_map
         
         # Connect send button and textbox submit
         send_button.click(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox],
-            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id],
-            queue=True,
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox, chat_task_map],
+            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map],
         )
         
         scout_textbox.submit(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox],
-            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id],
-            queue=True,
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox, chat_task_map],
+            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map],
         )
         
         # Connect chat dropdown to load selected chat
         chat_dropdown.change(
             fn=load_selected_chat,
-            inputs=[chat_dropdown],
-            outputs=[chatbot, chatbot, placeholder_md, current_session_id, current_chat_id]
+            inputs=[chat_dropdown, chat_task_map],
+            outputs=[chatbot, chatbot, placeholder_md, current_session_id, current_chat_id, chat_task_map]
         )
         
         # Connect sidebar buttons
         new_chat_btn.click(
             fn=create_new_chat,
-            inputs=[],
-            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id],
+            inputs=[chat_task_map],
+            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id, chat_task_map],
             js="""
             function() {
                 // Re-apply placeholder styling when new chat is created
@@ -1578,8 +1536,22 @@ def create_demo():
         
         delete_chat_btn.click(
             fn=delete_selected_chat,
-            inputs=[current_chat_id],
-            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id]
+            inputs=[current_chat_id, chat_task_map],
+            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id, chat_task_map]
+        )
+        
+        # Connect refresh chat results button
+        def refresh_current_chat(chat_id, task_map):
+            """Refresh the current chat with completed task results."""
+            if not chat_id:
+                return gr.update(), task_map
+            updated_chatbot, updated_task_map = update_chat_with_results(chat_id, task_map)
+            return updated_chatbot, updated_task_map
+        
+        refresh_chat_btn.click(
+            fn=refresh_current_chat,
+            inputs=[current_chat_id, chat_task_map],
+            outputs=[chatbot, chat_task_map]
         )
         
         # Connect directory search functionality
