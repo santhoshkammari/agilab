@@ -272,7 +272,7 @@ def create_demo():
                     
                     # Custom chatbot
                     chatbot = gr.Chatbot(
-                        height="62vh",
+                        height="64vh",
                         show_copy_button=False,
                         placeholder="START HERE",
                         type="messages",
@@ -282,19 +282,7 @@ def create_demo():
                         visible=False,
                     )
                     
-                    # Info cards positioned close to chat input
-                    with gr.Row(elem_classes=["scout-info-cards"]):
-                        gr.Markdown()
-                        gr.Markdown()
-                        gr.Markdown()
-                        gr.Markdown()
-                        gr.Markdown()
-                        with gr.Column(scale=2):
-                            combined_info = gr.Markdown(
-                                value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
-                                elem_classes=["scout-info-card", "scout-combined-card"]
-                            )
-                        gr.Markdown()
+                    # Info cards removed from here - moved to right sidebar
                     
                     # Create Scout-style textbox
                     scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
@@ -303,6 +291,13 @@ def create_demo():
                 
                 # Create right sidebar using Gradio's native Sidebar
                 with gr.Sidebar(position="right", open=False) as right_sidebar:
+                    # Directory and Branch Info
+                    gr.Markdown("## 📁 Current Context")
+                    combined_info = gr.Markdown(
+                        value=f"📂 **{get_directory_name()}**\n🌿 **{get_current_branch()}**",
+                        elem_classes=["sidebar-info-card"]
+                    )
+                    
                     gr.Markdown("## ⚙️ Settings")
                     
                     # Add Claude Code configuration settings
