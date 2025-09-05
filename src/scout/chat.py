@@ -274,7 +274,7 @@ def create_demo():
                     
                     # Custom chatbot
                     chatbot = gr.Chatbot(
-                        height="66vh",
+                        height="69vh",
                         show_copy_button=False,
                         placeholder="START HERE",
                         type="messages",
@@ -382,26 +382,23 @@ def create_demo():
                             ongoing_stop_btn = gr.Button("⏹️ Stop", size="sm", variant="secondary", elem_classes=["ios-action-btn"])
                             ongoing_delete_btn = gr.Button("🗑️ Delete", size="sm", variant="secondary", elem_classes=["ios-action-btn"])
                     
-                    # Right column - Task Results/Events
+                    # Right column - Task Results/Events  
                     with gr.Column(scale=1):
-                        gr.Markdown("### 📊 Task Results")
                         
-                        # Event viewer header
-                        event_header = gr.Markdown("*Select a task to view its events and results*", visible=True)
+                        # iOS-style event viewer - clean and borderless
+                        event_header = gr.Markdown("*Select a task to view its events and results*", visible=True, elem_classes=["ios-task-viewer-header"])
                         
-                        # Event container 
-                        with gr.Column():
-                            # Live events display
-                            events_display = gr.Markdown("", visible=False, elem_classes=["events-content"])
-                            
-                            # Event statistics
-                            event_stats = gr.Markdown("", visible=False, elem_classes=["event-stats"])
-                            
-                            # Selected task ID state
-                            selected_task_id = gr.State(None)
-                            
-                            # Auto-refresh events toggle
-                            auto_refresh_events = gr.Checkbox(label="Auto-refresh events", value=True, visible=False)
+                        # Clean event display - no heavy containers
+                        events_display = gr.Markdown("", visible=False, elem_classes=["ios-events-display"])
+                        
+                        # Minimal event statistics
+                        event_stats = gr.Markdown("", visible=False, elem_classes=["ios-event-stats"])
+                        
+                        # Auto-refresh toggle with iOS styling
+                        auto_refresh_events = gr.Checkbox(label="Auto-refresh events", value=True, visible=False, elem_classes=["ios-toggle"])
+                        
+                        # Selected task ID state
+                        selected_task_id = gr.State(None)
         
         # Apply Scout CSS and hide footer
         demo.load(lambda: None, js=f"""
@@ -849,40 +846,97 @@ def create_demo():
                     text-decoration: none !important;
                 }}
                 
-                /* Event Viewer Styling */
-                .event-viewer-container {{
-                    background: #FAFBFC !important;
-                    border: 1px solid #E1E4E8 !important;
-                    border-radius: 12px !important;
-                    padding: 16px !important;
-                    margin-top: 12px !important;
-                    min-height: 400px !important;
-                    max-height: 600px !important;
+                /* iOS Premium Task Viewer Styling - Glass Morphism & Clean Design */
+                .ios-task-viewer-header {{
+                    color: #8E8E93 !important;
+                    font-size: 15px !important;
+                    font-weight: 400 !important;
+                    text-align: center !important;
+                    margin: 24px 0 32px 0 !important;
+                    padding: 0 16px !important;
+                    line-height: 1.4 !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                    background: transparent !important;
+                    border: none !important;
                 }}
                 
-                .events-content {{
-                    background: white !important;
-                    border: 1px solid #E1E4E8 !important;
-                    border-radius: 8px !important;
-                    padding: 16px !important;
-                    font-family: 'SF Mono', Monaco, monospace !important;
-                    font-size: 13px !important;
+                .ios-events-display {{
+                    background: rgba(255, 255, 255, 0.85) !important;
+                    backdrop-filter: blur(40px) saturate(180%) !important;
+                    -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
+                    border: none !important;
+                    border-radius: 20px !important;
+                    padding: 24px !important;
+                    margin: 8px 0 16px 0 !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                    font-size: 15px !important;
                     line-height: 1.5 !important;
+                    color: #1D1D1F !important;
                     overflow-y: auto !important;
-                    max-height: 450px !important;
+                    max-height: 500px !important;
                     white-space: pre-wrap !important;
                     word-wrap: break-word !important;
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), 
+                                0 4px 16px rgba(0, 0, 0, 0.04),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
                 }}
                 
-                .event-stats {{
-                    background: #F6F8FA !important;
-                    border: 1px solid #D1D9E0 !important;
-                    border-radius: 6px !important;
-                    padding: 12px 16px !important;
-                    margin-top: 8px !important;
+                .ios-events-display:hover {{
+                    background: rgba(255, 255, 255, 0.92) !important;
+                    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08), 
+                                0 6px 20px rgba(0, 0, 0, 0.06),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+                    transform: translateY(-2px) !important;
+                }}
+                
+                .ios-event-stats {{
+                    background: rgba(248, 249, 250, 0.8) !important;
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    border: none !important;
+                    border-radius: 16px !important;
+                    padding: 16px 20px !important;
+                    margin-top: 16px !important;
                     font-size: 14px !important;
-                    color: #586069 !important;
+                    font-weight: 500 !important;
+                    color: #6B7280 !important;
                     text-align: center !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+                }}
+                
+                .ios-toggle {{
+                    background: transparent !important;
+                    border: none !important;
+                    padding: 12px 0 !important;
+                    margin-top: 20px !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                    font-size: 15px !important;
+                    color: #1D1D1F !important;
+                }}
+                
+                /* Enhanced code blocks within events */
+                .ios-events-display code {{
+                    background: rgba(0, 122, 255, 0.08) !important;
+                    color: #007AFF !important;
+                    padding: 2px 6px !important;
+                    border-radius: 6px !important;
+                    font-size: 14px !important;
+                    font-family: 'SF Mono', Monaco, monospace !important;
+                    border: none !important;
+                }}
+                
+                .ios-events-display strong {{
+                    color: #1D1D1F !important;
+                    font-weight: 600 !important;
+                }}
+                
+                .ios-events-display em {{
+                    color: #6B7280 !important;
+                    font-style: normal !important;
+                    font-weight: 400 !important;
                 }}
                 
                 /* Workspace two-column layout */
