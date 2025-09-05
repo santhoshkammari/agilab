@@ -39,6 +39,7 @@
 
 
 RoadMAP:
+- Fix background task features and UI elements
 - Enhanced session management and UI
 - Introduced FastAPI backend for async tasks and workspace UI.
 - Implemented glassmorphism UI for tabs and refined layout.
@@ -47,5 +48,4 @@ RoadMAP:
 - Refactored Agent for simpler creation and added new examples.
 - Implemented universal logger and improved chat UI/tool handling.
 - Introduced Plan mode and advanced web fetching tools.
-- Major project refactoring and removal of spotlight/STS apps.
 
