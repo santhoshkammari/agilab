@@ -11,6 +11,8 @@ os.environ['BASE_URL'] = 'http://192.168.170.76:8000'
 
 agent = Agent(system_prompt="/no_think",tools = list(tool_functions.values()))
 
+while True:
+   agent(input(">"))
 
 while(True):
     for x in agent(input(">"),stream=True):

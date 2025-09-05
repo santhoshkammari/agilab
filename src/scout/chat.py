@@ -29,7 +29,7 @@ from chat_manager import ChatManager
 from utils import status_messages
 
 # FastAPI configuration
-API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = "http://0.0.0.0:8000"
 
 
 def get_current_branch():
@@ -272,7 +272,7 @@ def create_demo():
                     
                     # Custom chatbot
                     chatbot = gr.Chatbot(
-                        height="64vh",
+                        height="62vh",
                         show_copy_button=False,
                         placeholder="START HERE",
                         type="messages",
@@ -352,59 +352,24 @@ def create_demo():
                     refresh_tasks_btn = gr.Button("🔄 Refresh Tasks", variant="primary", size="sm")
                     auto_refresh_checkbox = gr.Checkbox(label="Auto-refresh every 2s", value=True)
                 
-                # Two-column layout for tasks and events
+                # Three-column layout for task management
                 with gr.Row(equal_height=True):
-                    # Left column - Task list
+                    # Left column - Completed Tasks
                     with gr.Column(scale=1):
-                        gr.Markdown("### 📋 Active Tasks")
-                        # Tasks container using pure Gradio components  
-                        with gr.Column():
-                            task_cards_state = gr.State({})
-                            selected_task_id = gr.State(None)
-                            
-                            # No tasks message
-                            no_tasks_msg = gr.Markdown("🎯 **No tasks yet.** Start a chat to see background tasks here!", visible=True)
-                            
-                            # Pre-create task card slots (iOS-styled with Groups)
-                            task_cards = []
-                            for i in range(10):
-                                with gr.Group(visible=False) as task_card_group:
-                                    with gr.Row():
-                                        # Task status and ID
-                                        task_status_md = gr.Markdown("", visible=False)
-                                        task_id_md = gr.Markdown("", visible=False)
-                                    
-                                    # Task description
-                                    task_desc_md = gr.Markdown("", visible=False)
-                                    
-                                    # Task stats and actions row
-                                    with gr.Row():
-                                        task_stats_md = gr.Markdown("", visible=False)
-                                        with gr.Column(scale=1):
-                                            with gr.Row():
-                                                stop_btn = gr.Button("⏹️", size="sm", visible=False, variant="stop")
-                                                delete_btn = gr.Button("🗑️", size="sm", visible=False, variant="secondary")
-                                                # Add select button for viewing events
-                                                select_btn = gr.Button("👁️", size="sm", visible=False, variant="primary")
-                                
-                                task_cards.append({
-                                    "group": task_card_group,
-                                    "status": task_status_md,
-                                    "task_id": task_id_md,
-                                    "description": task_desc_md,
-                                    "stats": task_stats_md,
-                                    "stop_btn": stop_btn,
-                                    "delete_btn": delete_btn,
-                                    "select_btn": select_btn,
-                                    "stored_task_id": gr.State("")
-                                })
+                        gr.Markdown("### ✅ Completed")
+                        completed_tasks_container = gr.HTML("", elem_classes=["task-column"])
                     
-                    # Right column - Event viewer
+                    # Middle column - Ongoing Tasks
                     with gr.Column(scale=1):
-                        gr.Markdown("### 🔍 Task Events")
+                        gr.Markdown("### 🔄 Ongoing")
+                        ongoing_tasks_container = gr.HTML("", elem_classes=["task-column"])
+                    
+                    # Right column - Task Results/Events
+                    with gr.Column(scale=1):
+                        gr.Markdown("### 📊 TaskResults")
                         
                         # Event viewer header
-                        event_header = gr.Markdown("*Select a task to view its events*", visible=True)
+                        event_header = gr.Markdown("*Click a task card to view its events and results*", visible=True)
                         
                         # Event container with scrollable view
                         with gr.Column(elem_classes=["event-viewer-container"]):
@@ -413,6 +378,9 @@ def create_demo():
                             
                             # Event statistics
                             event_stats = gr.Markdown("", visible=False, elem_classes=["event-stats"])
+                            
+                            # Selected task ID state
+                            selected_task_id = gr.State(None)
                             
                             # Auto-refresh events toggle
                             auto_refresh_events = gr.Checkbox(label="Auto-refresh events", value=True, visible=False)
@@ -1095,6 +1063,29 @@ def create_demo():
                         }}
                     }}
                 }}, 500);
+                
+                // Add global handlers for task card actions
+                window.stopTask = function(sessionId) {{
+                    fetch(window.location.origin.replace('7860', '8000') + '/chat/' + sessionId + '/stop', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}}
+                    }}).then(response => {{
+                        if (response.ok) {{
+                            console.log('Task ' + sessionId + ' stop requested');
+                        }} else {{
+                            console.error('Failed to stop task ' + sessionId);
+                        }}
+                    }}).catch(error => {{
+                        console.error('Error stopping task:', error);
+                    }});
+                }};
+                
+                window.viewTaskResults = function(sessionId) {{
+                    console.log('Viewing results for session: ' + sessionId);
+                    // This will be handled by the event viewer system
+                    // For now, just show an alert
+                    alert('Viewing results for session ' + sessionId.substring(0,8) + '...');
+                }};
             }}
         """)
         
@@ -1204,95 +1195,101 @@ def create_demo():
             except Exception as e:
                 return f"<div class='task-cards-container'><div class='error-message'>Failed to load tasks: {str(e)}</div></div>"
         
-        def update_task_display():
-            """Update task display with current sessions from API."""
+        def update_three_column_tasks():
+            """Update three-column task display with sessions categorized by status."""
             try:
                 import requests
+                import datetime
                 response = requests.get(f"{API_BASE_URL}/tasks", timeout=5)
                 response.raise_for_status()
                 sessions_data = response.json()
                 
-                # Prepare updates for all task cards (now showing sessions)
-                updates = []
-                session_list = list(sessions_data.items())
+                # Separate sessions by status
+                completed_sessions = []
+                ongoing_sessions = []
                 
-                # Show/hide no tasks message
-                no_tasks_visible = len(session_list) == 0
-                updates.append(gr.update(visible=no_tasks_visible))  # no_tasks_msg
+                for session_id, session_data in sessions_data.items():
+                    status = session_data["status"]
+                    if status == "completed":
+                        completed_sessions.append((session_id, session_data))
+                    elif status in ["running", "pending"]:
+                        ongoing_sessions.append((session_id, session_data))
                 
-                # Update each task card slot (now represents sessions)
-                for i in range(10):
-                    if i < len(session_list):
-                        session_id, session_data = session_list[i]
-                        status = session_data["status"]
-                        total_events = session_data["total_events"]
-                        error = session_data.get("error", "")
-                        latest_message = session_data.get("latest_message", "")
-                        task_count = len(session_data.get("tasks", []))
-                        
-                        # Status emoji and styling
-                        if status == "completed":
-                            status_emoji = "✅"
-                            status_text = f"{status_emoji} **Conversation Complete**"
-                        elif status == "running":
-                            status_emoji = "🔄"
-                            status_text = f"{status_emoji} **Active Conversation**"
-                        elif status == "failed":
-                            status_emoji = "❌"
-                            status_text = f"{status_emoji} **Failed**"
-                        elif status == "cancelled":
-                            status_emoji = "⏹️"
-                            status_text = f"{status_emoji} **Cancelled**"
-                        else:
-                            status_emoji = "⏳"
-                            status_text = f"{status_emoji} **Starting...**"
-                        
-                        # Show session ID or first part of it
-                        session_display = f"`#{session_id[:8] if session_id else 'no-session'}`"
-                        
-                        # Use latest message as description
-                        message_text = latest_message[:80] + "..." if len(latest_message) > 80 else latest_message
-                        if not message_text:
-                            message_text = f"Conversation #{session_id[:8] if session_id else 'unknown'}"
-                        
-                        stats_text = f"💬 **{task_count} messages** • 📝 **{total_events} events**"
-                        if error:
-                            stats_text += f"\n⚠️ *{error[:50]}...*"
-                        
-                        # Card visibility and content updates
-                        updates.extend([
-                            gr.update(visible=True),  # group
-                            gr.update(value=status_text, visible=True),  # status
-                            gr.update(value=session_display, visible=True),  # task_id (now session_id)
-                            gr.update(value=message_text, visible=True),  # description
-                            gr.update(value=stats_text, visible=True),  # stats
-                            gr.update(visible=status in ["running", "pending"]),  # stop_btn
-                            gr.update(visible=True),  # delete_btn
-                            gr.update(visible=True)   # select_btn
-                        ])
+                # Generate HTML for completed tasks with glass design
+                def create_task_card_html(session_id, session_data, is_completed=False):
+                    status = session_data["status"]
+                    total_events = session_data["total_events"]
+                    latest_message = session_data.get("latest_message", "")
+                    task_count = len(session_data.get("tasks", []))
+                    
+                    # Mock dates for demo - in real implementation, get from session data
+                    current_date = datetime.datetime.now()
+                    date_str = current_date.strftime("%a %b %d")
+                    start_time = "12:30pm"
+                    end_time = "12:50pm"
+                    duration = "20 mins"
+                    
+                    # Truncate message for display
+                    display_message = latest_message[:60] + "..." if len(latest_message) > 60 else latest_message
+                    if not display_message:
+                        display_message = f"Session #{session_id[:8]}"
+                    
+                    # Status styling
+                    if is_completed:
+                        status_class = "completed"
+                        status_icon = "✅"
+                        actions_html = f'<button class="task-card-action view-btn" onclick="viewTaskResults(\'{session_id}\')">👁️ View</button>'
                     else:
-                        # Hide unused task card slots
-                        updates.extend([
-                            gr.update(visible=False),  # group
-                            gr.update(visible=False),  # status
-                            gr.update(visible=False),  # task_id
-                            gr.update(visible=False),  # description
-                            gr.update(visible=False),  # stats
-                            gr.update(visible=False),  # stop_btn
-                            gr.update(visible=False),  # delete_btn
-                            gr.update(visible=False)   # select_btn
-                        ])
+                        status_class = "ongoing"
+                        status_icon = "🔄"
+                        actions_html = f'''
+                            <button class="task-card-action stop-btn" onclick="stopTask(\'{session_id}\')">⏹️ Stop</button>
+                            <button class="task-card-action view-btn" onclick="viewTaskResults(\'{session_id}\')">👁️ View</button>
+                        '''
+                    
+                    return f'''
+                    <div class="task-card glass-card {status_class}" data-session-id="{session_id}">
+                        <div class="task-card-header">
+                            <span class="task-status-icon">{status_icon}</span>
+                            <span class="task-session-id">#{session_id[:8]}</span>
+                        </div>
+                        <div class="task-card-content">
+                            <div class="task-message">{display_message}</div>
+                            <div class="task-details">
+                                <div class="task-date">📅 {date_str}</div>
+                                <div class="task-time">🕐 {start_time} - {end_time}</div>
+                                <div class="task-duration">⏱️ {duration}</div>
+                                <div class="task-events">📝 {total_events} events</div>
+                                <div class="session-id-detail">🆔 {session_id[:12]}</div>
+                            </div>
+                        </div>
+                        <div class="task-card-actions">
+                            {actions_html}
+                        </div>
+                    </div>
+                    '''
                 
-                return updates
+                # Build completed tasks HTML
+                completed_html = ""
+                if completed_sessions:
+                    for session_id, session_data in completed_sessions:
+                        completed_html += create_task_card_html(session_id, session_data, True)
+                else:
+                    completed_html = '<div class="empty-column">No completed tasks yet</div>'
+                
+                # Build ongoing tasks HTML
+                ongoing_html = ""
+                if ongoing_sessions:
+                    for session_id, session_data in ongoing_sessions:
+                        ongoing_html += create_task_card_html(session_id, session_data, False)
+                else:
+                    ongoing_html = '<div class="empty-column">No ongoing tasks</div>'
+                
+                return completed_html, ongoing_html
                 
             except Exception as e:
-                logger.error(f"Failed to update tasks: {e}")
-                # Return updates to show error state
-                updates = [gr.update(visible=True, value=f"Failed to load tasks: {str(e)}")] # no_tasks_msg
-                # Hide all task cards
-                for i in range(10):
-                    updates.extend([gr.update(visible=False)] * 8)
-                return updates
+                error_msg = f"Failed to load tasks: {str(e)}"
+                return f'<div class="error-column">{error_msg}</div>', f'<div class="error-column">{error_msg}</div>'
         
         def stop_task_action(task_id):
             """Stop a specific task."""
@@ -1843,74 +1840,10 @@ def create_demo():
         
         # Connect task management buttons
         refresh_tasks_btn.click(
-            fn=update_task_display,
+            fn=update_three_column_tasks,
             inputs=[],
-            outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
+            outputs=[completed_tasks_container, ongoing_tasks_container]
         )
-        
-        # Connect stop and delete buttons for each task card
-        for i, card in enumerate(task_cards):
-            # Stop button - need to capture task_id from the API call
-            def make_stop_handler(card_index):
-                def stop_handler():
-                    # Get current tasks to find task_id for this card
-                    try:
-                        import requests
-                        response = requests.get(f"{API_BASE_URL}/tasks", timeout=3)
-                        response.raise_for_status()
-                        tasks_data = response.json()
-                        task_list = list(tasks_data.items())
-                        
-                        if card_index < len(task_list):
-                            task_id = task_list[card_index][0]
-                            return stop_task_action(task_id)
-                    except Exception as e:
-                        gr.Warning(f"Failed to get task info: {e}")
-                    
-                    return update_task_display()
-                return stop_handler
-            
-            def make_delete_handler(card_index):
-                def delete_handler():
-                    # Get current tasks to find task_id for this card
-                    try:
-                        import requests
-                        response = requests.get(f"{API_BASE_URL}/tasks", timeout=3)
-                        response.raise_for_status()
-                        tasks_data = response.json()
-                        task_list = list(tasks_data.items())
-                        
-                        if card_index < len(task_list):
-                            task_id = task_list[card_index][0]
-                            return delete_task_action(task_id)
-                    except Exception as e:
-                        gr.Warning(f"Failed to get task info: {e}")
-                    
-                    return update_task_display()
-                return delete_handler
-                
-            def make_select_handler(card_index):
-                def select_handler():
-                    return select_task_for_events(card_index, None)
-                return select_handler
-            
-            card["stop_btn"].click(
-                fn=make_stop_handler(i),
-                inputs=[],
-                outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
-            )
-            
-            card["delete_btn"].click(
-                fn=make_delete_handler(i),
-                inputs=[],
-                outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
-            )
-            
-            card["select_btn"].click(
-                fn=make_select_handler(i),
-                inputs=[],
-                outputs=[event_header, events_display, event_stats, selected_task_id]
-            )
         
         # Auto-refresh functionality
         def auto_refresh_handler():
@@ -1919,9 +1852,9 @@ def create_demo():
         # Set up auto-refresh timer (every 2 seconds when enabled)
         auto_refresh_timer = gr.Timer(value=2, active=True)
         auto_refresh_timer.tick(
-            fn=lambda checkbox_value: update_task_display() if checkbox_value else [gr.update()] * (1 + len(task_cards) * 8),
+            fn=lambda checkbox_value: update_three_column_tasks() if checkbox_value else (gr.update(), gr.update()),
             inputs=[auto_refresh_checkbox],
-            outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
+            outputs=[completed_tasks_container, ongoing_tasks_container]
         )
         
         # Set up auto-refresh timer for events (every 3 seconds when enabled and task selected)
@@ -1941,13 +1874,13 @@ def create_demo():
         def initialize_ui_with_tasks():
             chat_list = load_chat_list()
             combined_update = update_info_cards("")
-            task_updates = update_task_display()
-            return [chat_list, combined_update] + task_updates
+            completed_html, ongoing_html = update_three_column_tasks()
+            return chat_list, combined_update, completed_html, ongoing_html
         
         demo.load(
             fn=initialize_ui_with_tasks,
             inputs=[],
-            outputs=[chat_dropdown, combined_info, no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
+            outputs=[chat_dropdown, combined_info, completed_tasks_container, ongoing_tasks_container]
         )
 
         # Connect context button (placeholder functionality)
