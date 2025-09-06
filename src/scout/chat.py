@@ -22,6 +22,7 @@ from logger import get_logger
 # Set up logger
 logger = get_logger("chat", level="DEBUG")
 
+
 import gradio as gr
 from css import theme
 from scout_component import create_scout_textbox_ui
@@ -30,6 +31,7 @@ from utils import status_messages
 
 # FastAPI configuration
 API_BASE_URL = "http://0.0.0.0:8000"
+AI_BUDDY_EMOJI = "🔅"
 
 
 def get_current_branch():
