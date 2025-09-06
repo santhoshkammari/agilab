@@ -137,12 +137,13 @@ def create_scout_textbox_ui(
     placeholder: str = "Type your message here...",
     context_handler: Callable = None,
     send_handler: Callable = None,
-) -> tuple[gr.Textbox, gr.Button, gr.Button, gr.Button, gr.Button]:
+    mode: str = "Scout",
+) -> tuple[gr.Textbox, gr.Button, gr.Button, gr.Button, gr.Button, gr.Column]:
     """
     Create Scout-style textbox UI components using standard Gradio components.
     
     Returns:
-        tuple: (textbox, context_button, send_button, mode_toggle, settings_button)
+        tuple: (textbox, context_button, send_button, mode_toggle, settings_button, wrapper_column)
     """
     
     # CSS for Scout styling
@@ -308,6 +309,52 @@ def create_scout_textbox_ui(
             0 3px 12px rgba(0, 0, 0, 0.15),
             0 8px 25px rgba(0, 0, 0, 0.08),
             0 2px 6px rgba(0, 122, 255, 0.1),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    /* DeepResearch mode - very light warm hint */
+    .scout-textbox-wrapper.mode-deepresearch {
+        background: linear-gradient(135deg, 
+            rgba(255, 248, 245, 0.98), 
+            rgba(255, 245, 240, 0.98), 
+            rgba(255, 243, 238, 0.98)) !important;
+        border: 1px solid rgba(255, 154, 102, 0.05) !important;
+        box-shadow: 
+            0 2px 8px rgba(255, 154, 102, 0.02),
+            0 6px 20px rgba(255, 102, 102, 0.01),
+            0 1px 3px rgba(255, 204, 102, 0.03),
+            inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+    }
+    
+    .scout-textbox-wrapper.mode-deepresearch:focus-within {
+        border: 1px solid rgba(255, 154, 102, 0.08) !important;
+        box-shadow: 
+            0 3px 12px rgba(255, 154, 102, 0.03),
+            0 8px 25px rgba(255, 102, 102, 0.02),
+            0 2px 6px rgba(255, 204, 102, 0.04),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    /* AgenticSearch mode - very light violet hint */
+    .scout-textbox-wrapper.mode-agenticsearch {
+        background: linear-gradient(135deg, 
+            rgba(248, 245, 255, 0.98), 
+            rgba(245, 240, 255, 0.98), 
+            rgba(243, 238, 255, 0.98)) !important;
+        border: 1px solid rgba(138, 43, 226, 0.05) !important;
+        box-shadow: 
+            0 2px 8px rgba(138, 43, 226, 0.02),
+            0 6px 20px rgba(75, 0, 130, 0.01),
+            0 1px 3px rgba(147, 112, 219, 0.03),
+            inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+    }
+    
+    .scout-textbox-wrapper.mode-agenticsearch:focus-within {
+        border: 1px solid rgba(138, 43, 226, 0.08) !important;
+        box-shadow: 
+            0 3px 12px rgba(138, 43, 226, 0.03),
+            0 8px 25px rgba(75, 0, 130, 0.02),
+            0 2px 6px rgba(147, 112, 219, 0.04),
             inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
     }
     
@@ -558,9 +605,18 @@ def create_scout_textbox_ui(
         font-style: italic !important;
     }
     """
+    
+    # Determine CSS classes based on mode
+    wrapper_classes = ["scout-textbox-wrapper"]
+    if mode == "DeepResearch":
+        wrapper_classes.append("mode-deepresearch")
+    elif mode == "AgenticSearch":
+        wrapper_classes.append("mode-agenticsearch")
+    
     with gr.Row():
         gr.Markdown()
-        with gr.Column(elem_classes=["scout-textbox-wrapper"],scale=3):
+        wrapper_column = gr.Column(elem_classes=wrapper_classes, scale=3)
+        with wrapper_column:
             # Main textbox
             textbox = gr.Textbox(
                 placeholder=placeholder,
@@ -610,4 +666,4 @@ def create_scout_textbox_ui(
 
         gr.Markdown()
 
-    return textbox, context_button, send_button, mode_toggle, settings_button, scout_css
+    return textbox, context_button, send_button, mode_toggle, settings_button, wrapper_column, scout_css

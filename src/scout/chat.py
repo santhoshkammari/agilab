@@ -259,11 +259,11 @@ def create_demo():
                     
 
                     gr.Markdown("## 🪼 Modes")
-                    gr.Radio(
+                    mode_radio = gr.Radio(
                             ["Scout", "DeepResearch", "AgenticSearch"], 
                             label="Modes", show_label=False,
                             value='Scout'
-                            ),
+                            )
 
                     # Latest 10 chats radio buttons
                     gr.Markdown("## ✨ Threads")
@@ -310,7 +310,7 @@ def create_demo():
                     # Info cards removed from here - moved to right sidebar
                     
                     # Create Scout-style textbox
-                    scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
+                    scout_textbox, context_button, send_button, mode_toggle, settings_button, textbox_wrapper, scout_css = create_scout_textbox_ui(
                         placeholder="Create a website based on my vibes"
                     )
                 
@@ -1225,32 +1225,32 @@ def create_demo():
                 
                 .sidebar-quick-chats label {{
                     display: block !important;
-                    background: rgba(255, 255, 255, 0.9) !important;
+                    background: rgba(248, 250, 252, 0.95) !important;
                     backdrop-filter: blur(20px) !important;
                     -webkit-backdrop-filter: blur(20px) !important;
-                    border: 1px solid rgba(0, 0, 0, 0.04) !important;
+                    border: 1px solid rgba(0, 0, 0, 0.02) !important;
                     border-radius: 8px !important;
                     padding: 12px !important;
                     margin: 4px 0 !important;
                     cursor: pointer !important;
                     transition: all 0.2s ease !important;
-                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.01) !important;
                     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
                 }}
                 
                 .sidebar-quick-chats label:hover {{
-                    background: rgba(0, 122, 255, 0.05) !important;
-                    border-color: rgba(0, 122, 255, 0.1) !important;
+                    background: rgba(0, 122, 255, 0.02) !important;
+                    border-color: rgba(0, 122, 255, 0.03) !important;
                     transform: translateY(-0.5px) !important;
-                    box-shadow: 0 2px 6px rgba(0, 122, 255, 0.05) !important;
+                    box-shadow: 0 2px 6px rgba(0, 122, 255, 0.02) !important;
                 }}
                 
                 /* Selected state for sidebar radio */
                 .sidebar-quick-chats input[type="radio"]:checked + label,
                 .sidebar-quick-chats label:has(input[type="radio"]:checked) {{
-                    background: rgba(0, 122, 255, 0.08) !important;
-                    border-color: rgba(0, 122, 255, 0.2) !important;
-                    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.1) !important;
+                    background: rgba(0, 122, 255, 0.03) !important;
+                    border-color: rgba(0, 122, 255, 0.05) !important;
+                    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.03) !important;
                 }}
                 
                 /* Hide default radio circles */
@@ -1473,6 +1473,24 @@ def create_demo():
             choices_update = update_directory_choices(cwd_value)
             combined_update = update_info_cards(cwd_value)
             return choices_update, combined_update
+        
+        def handle_mode_change(selected_mode):
+            """Handle mode change and update textbox styling."""
+            if selected_mode == "DeepResearch":
+                # Return update to add DeepResearch mode class
+                return gr.update(
+                    elem_classes=["scout-textbox-wrapper", "mode-deepresearch"]
+                )
+            elif selected_mode == "AgenticSearch": 
+                # Return update to add AgenticSearch mode class
+                return gr.update(
+                    elem_classes=["scout-textbox-wrapper", "mode-agenticsearch"]
+                )
+            else:  # Scout mode (default)
+                # Return default styling
+                return gr.update(
+                    elem_classes=["scout-textbox-wrapper"]
+                )
         
         # Task management functions
         def get_task_cards():
@@ -2345,6 +2363,13 @@ def create_demo():
             fn=lambda checkbox_value, chat_id, task_map: refresh_current_chat(chat_id, task_map) if (checkbox_value and chat_id) else (gr.update(), task_map),
             inputs=[auto_refresh_chat_checkbox, current_chat_id, chat_task_map],
             outputs=[chatbot, chat_task_map]
+        )
+        
+        # Connect mode radio to current_mode state and update textbox styling
+        mode_radio.change(
+            fn=lambda mode: (mode, handle_mode_change(mode)),
+            inputs=[mode_radio],
+            outputs=[current_mode, textbox_wrapper]
         )
         
         # Load chat list and info cards on startup
