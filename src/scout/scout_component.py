@@ -154,8 +154,9 @@ def create_scout_textbox_ui(
         background: rgba(255, 255, 255, 0.95) !important;
         backdrop-filter: blur(20px) !important;
         box-shadow: 
-            0 1px 3px rgba(0, 0, 0, 0.05),
-            0 4px 12px rgba(0, 0, 0, 0.02),
+            0 2px 8px rgba(0, 0, 0, 0.12),
+            0 6px 20px rgba(0, 0, 0, 0.06),
+            0 1px 3px rgba(0, 0, 0, 0.08),
             inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
         margin: 0 !important;
         overflow: hidden !important;
@@ -302,8 +303,12 @@ def create_scout_textbox_ui(
     }
     
     .scout-textbox-wrapper:focus-within {
-        border: none;
-        box-shadow: none;
+        border: 1px solid rgba(0, 122, 255, 0.15) !important;
+        box-shadow: 
+            0 3px 12px rgba(0, 0, 0, 0.15),
+            0 8px 25px rgba(0, 0, 0, 0.08),
+            0 2px 6px rgba(0, 122, 255, 0.1),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
     }
     
     /* Plan mode textbox styling - iOS glass inactive */
@@ -311,8 +316,9 @@ def create_scout_textbox_ui(
         background: rgba(242, 242, 247, 0.7) !important;
         border: 1px solid rgba(0, 0, 0, 0.04) !important;
         box-shadow: 
+            0 2px 8px rgba(0, 0, 0, 0.1),
+            0 6px 20px rgba(0, 0, 0, 0.05),
             0 1px 3px rgba(0, 0, 0, 0.06),
-            0 4px 12px rgba(0, 0, 0, 0.02),
             inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
         backdrop-filter: blur(40px);
     }
@@ -320,8 +326,9 @@ def create_scout_textbox_ui(
     .scout-textbox-wrapper[data-mode="Plan"]:focus-within {
         background: rgba(242, 242, 247, 0.8) !important;
         box-shadow: 
+            0 3px 12px rgba(0, 0, 0, 0.15),
+            0 10px 30px rgba(0, 0, 0, 0.08),
             0 2px 6px rgba(0, 0, 0, 0.1),
-            0 8px 20px rgba(0, 0, 0, 0.04),
             inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
     }
     
