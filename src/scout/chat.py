@@ -22,6 +22,7 @@ from logger import get_logger
 # Set up logger
 logger = get_logger("chat", level="DEBUG")
 
+
 import gradio as gr
 from css import theme
 from scout_component import create_scout_textbox_ui
@@ -29,7 +30,8 @@ from chat_manager import ChatManager
 from utils import status_messages
 
 # FastAPI configuration
-API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = "http://0.0.0.0:8000"
+AI_BUDDY_EMOJI = "🔅"
 
 
 def get_current_branch():
@@ -226,16 +228,19 @@ def create_demo():
         current_mode = gr.State("Scout")
         current_cwd = gr.State("")
         current_append_system_prompt = gr.State("")
+        current_active_task_id = gr.State(None)  # Track the currently active/running task
+        current_active_session_id = gr.State(None)  # Track the session ID of the currently active task
         
         # Create main tabs
         with gr.Tabs() as main_tabs:
             # Scout tab with all existing functionality
             with gr.Tab("Scout"):
-                with gr.Sidebar(open=False):
-                    gr.Markdown("## 🔍 Scout Chats")
+                with gr.Sidebar(open=True):
+                    gr.Markdown("## 🪡 Scout Chats")
                     
                     # New chat button
                     new_chat_btn = gr.Button("➕ New Chat", variant="primary", size="sm")
+
                     
                     # Chat list using dropdown
                     chat_dropdown = gr.Dropdown(
@@ -249,8 +254,30 @@ def create_demo():
                     # Delete chat button
                     delete_chat_btn = gr.Button("🗑️ Delete Chat", variant="secondary", size="sm")
                     
-                    # Refresh chat results button
-                    refresh_chat_btn = gr.Button("🔄 Refresh Results", variant="secondary", size="sm")
+                    # Refresh chat results button and auto-refresh toggle
+                    with gr.Row():
+                        refresh_chat_btn = gr.Button("🔄 Refresh Results", variant="secondary", size="sm")
+                        auto_refresh_chat_checkbox = gr.Checkbox(label="Auto-refresh every 3s", value=True)
+                    
+
+                    gr.Markdown("## 🪼 Modes")
+                    mode_radio = gr.Radio(
+                            ["Scout", "DeepResearch", "AgenticSearch"], 
+                            label="Modes", show_label=False,
+                            value='Scout'
+                            )
+
+                    # Latest 10 chats radio buttons
+                    gr.Markdown("## ✨ Threads")
+                    latest_chats_radio = gr.Radio(
+                        label="Quick Access",
+                        choices=[],
+                        value=None,
+                        interactive=True,
+                        show_label=False,
+                        container=False,
+                        elem_classes=["sidebar-quick-chats"]
+                    )
 
                 # Create main content area with tight spacing
                 with gr.Column():
@@ -272,7 +299,7 @@ def create_demo():
                     
                     # Custom chatbot
                     chatbot = gr.Chatbot(
-                        height="64vh",
+                        height="73vh",
                         show_copy_button=False,
                         placeholder="START HERE",
                         type="messages",
@@ -282,65 +309,84 @@ def create_demo():
                         visible=False,
                     )
                     
-                    # Info cards positioned close to chat input
-                    with gr.Row(elem_classes=["scout-info-cards"]):
-                        gr.Markdown()
-                        gr.Markdown()
-                        gr.Markdown()
-                        gr.Markdown()
-                        gr.Markdown()
-                        with gr.Column(scale=2):
-                            combined_info = gr.Markdown(
-                                value=f"📂 **{get_directory_name()}**   **{get_current_branch()}🌿**",
-                                elem_classes=["scout-info-card", "scout-combined-card"]
-                            )
-                        gr.Markdown()
+                    # Info cards removed from here - moved to right sidebar
                     
                     # Create Scout-style textbox
-                    scout_textbox, context_button, send_button, mode_toggle, settings_button, scout_css = create_scout_textbox_ui(
+                    scout_textbox, context_button, send_button, mode_toggle, settings_button, textbox_wrapper, scout_css = create_scout_textbox_ui(
                         placeholder="Create a website based on my vibes"
                     )
                 
-                # Create right sidebar using Gradio's native Sidebar
+                # Create right sidebar using Gradio's native Sidebar with tabs
                 with gr.Sidebar(position="right", open=False) as right_sidebar:
-                    gr.Markdown("## ⚙️ Settings")
-                    
-                    # Add Claude Code configuration settings
-                    with gr.Group():
-                        gr.Markdown("### Claude Code Settings")
-                        cwd_textbox = gr.Dropdown(
-                            label="Set Directory",
-                            choices=search_directories(""),
-                            value="",
-                            allow_custom_value=True,
-                            interactive=True,
-                            filterable=True
-                        )
-                        append_system_prompt_textbox = gr.Textbox(
-                            label="Additional System Prompt",
-                            placeholder="Additional instructions for Claude...",
-                            value="",
-                            interactive=True,
-                            lines=3
-                        )
-                    
-                    # Add some placeholder settings
-                    with gr.Group():
-                        gr.Markdown("### Chat Settings")
-                        model_dropdown = gr.Dropdown(
-                            label="Model",
-                            choices=["Claude-3", "Claude-2", "GPT-4"],
-                            value="Claude-3",
-                            interactive=True
-                        )
-                        temperature_slider = gr.Slider(
-                            label="Temperature",
-                            minimum=0.0,
-                            maximum=1.0,
-                            value=0.7,
-                            step=0.1,
-                            interactive=True
-                        )
+                    with gr.Tabs(elem_classes=["sidebar-tabs"]):
+                        # Settings Tab - contains all previous sidebar content
+                        with gr.Tab("⚙️ Settings"):
+                            # Directory and Branch Info
+                            gr.Markdown("## 📁 Current Context")
+                            combined_info = gr.Markdown(
+                                value=f"📂 **{get_directory_name()}**\n🌿 **{get_current_branch()}**",
+                                elem_classes=["sidebar-info-card"]
+                            )
+                            
+                            gr.Markdown("## ⚙️ Settings")
+                            
+                            # Add Claude Code configuration settings
+                            with gr.Group():
+                                gr.Markdown("### Claude Code Settings")
+                                cwd_textbox = gr.Dropdown(
+                                    label="Set Directory",
+                                    choices=search_directories(""),
+                                    value="",
+                                    allow_custom_value=True,
+                                    interactive=True,
+                                    filterable=True
+                                )
+                                append_system_prompt_textbox = gr.Textbox(
+                                    label="Additional System Prompt",
+                                    placeholder="Additional instructions for Claude...",
+                                    value="",
+                                    interactive=True,
+                                    lines=3
+                                )
+                            
+                            # Add some placeholder settings
+                            with gr.Group():
+                                gr.Markdown("### Chat Settings")
+                                model_dropdown = gr.Dropdown(
+                                    label="Model",
+                                    choices=["Claude-3", "Claude-2", "GPT-4"],
+                                    value="Claude-3",
+                                    interactive=True
+                                )
+                                temperature_slider = gr.Slider(
+                                    label="Temperature",
+                                    minimum=0.0,
+                                    maximum=1.0,
+                                    value=0.7,
+                                    step=0.1,
+                                    interactive=True
+                                )
+                            work_flows = gr.Dropdown(
+                                    label="WorkFlow",
+                                    choices=["OneShot", "QuickEdit", "Sloth","UltraSloth"],
+                                    value="OneShot",
+                                    multiselect=True,
+                                    interactive=True
+                                    )
+                        
+                        # Live Tasks Tab - contains task events stream
+                        with gr.Tab("📊 Live Tasks"):
+                            # iOS-style event viewer for sidebar - clean and borderless
+                            sidebar_event_header = gr.Markdown("*Select a task to view its live events*", visible=True, elem_classes=["ios-task-viewer-header"])
+                            
+                            # Clean event display for sidebar - no heavy containers
+                            sidebar_events_display = gr.Markdown("", visible=False, elem_classes=["ios-events-display"])
+                            
+                            # Minimal event statistics for sidebar
+                            sidebar_event_stats = gr.Markdown("", visible=False, elem_classes=["ios-event-stats"])
+                            
+                            # Auto-refresh toggle with iOS styling for sidebar
+                            sidebar_auto_refresh_events = gr.Checkbox(label="Auto-refresh events", value=True, visible=False, elem_classes=["ios-toggle"])
             
             # Workspace tab with task management
             with gr.Tab("Workspace"):
@@ -352,70 +398,56 @@ def create_demo():
                     refresh_tasks_btn = gr.Button("🔄 Refresh Tasks", variant="primary", size="sm")
                     auto_refresh_checkbox = gr.Checkbox(label="Auto-refresh every 2s", value=True)
                 
-                # Two-column layout for tasks and events
+                # Three-column layout with iOS-style task cards
                 with gr.Row(equal_height=True):
-                    # Left column - Task list
+                    # Left column - Completed Tasks
                     with gr.Column(scale=1):
-                        gr.Markdown("### 📋 Active Tasks")
-                        # Tasks container using pure Gradio components  
-                        with gr.Column():
-                            task_cards_state = gr.State({})
-                            selected_task_id = gr.State(None)
-                            
-                            # No tasks message
-                            no_tasks_msg = gr.Markdown("🎯 **No tasks yet.** Start a chat to see background tasks here!", visible=True)
-                            
-                            # Pre-create task card slots (iOS-styled with Groups)
-                            task_cards = []
-                            for i in range(10):
-                                with gr.Group(visible=False) as task_card_group:
-                                    with gr.Row():
-                                        # Task status and ID
-                                        task_status_md = gr.Markdown("", visible=False)
-                                        task_id_md = gr.Markdown("", visible=False)
-                                    
-                                    # Task description
-                                    task_desc_md = gr.Markdown("", visible=False)
-                                    
-                                    # Task stats and actions row
-                                    with gr.Row():
-                                        task_stats_md = gr.Markdown("", visible=False)
-                                        with gr.Column(scale=1):
-                                            with gr.Row():
-                                                stop_btn = gr.Button("⏹️", size="sm", visible=False, variant="stop")
-                                                delete_btn = gr.Button("🗑️", size="sm", visible=False, variant="secondary")
-                                                # Add select button for viewing events
-                                                select_btn = gr.Button("👁️", size="sm", visible=False, variant="primary")
-                                
-                                task_cards.append({
-                                    "group": task_card_group,
-                                    "status": task_status_md,
-                                    "task_id": task_id_md,
-                                    "description": task_desc_md,
-                                    "stats": task_stats_md,
-                                    "stop_btn": stop_btn,
-                                    "delete_btn": delete_btn,
-                                    "select_btn": select_btn,
-                                    "stored_task_id": gr.State("")
-                                })
+                        gr.Markdown("### ✅ Completed")
+                        completed_tasks_radio = gr.Radio(
+                            choices=[],
+                            value=None,
+                            interactive=True,
+                            show_label=False,
+                            elem_classes=["ios-task-cards", "completed-tasks"]
+                        )
+                        # Action buttons for completed tasks
+                        with gr.Row(visible=False) as completed_actions:
+                            completed_view_btn = gr.Button("👁️ View Events", size="sm", elem_classes=["ios-action-btn"])
+                            completed_delete_btn = gr.Button("🗑️ Delete", size="sm", variant="secondary", elem_classes=["ios-action-btn"])
                     
-                    # Right column - Event viewer
+                    # Middle column - Ongoing Tasks  
                     with gr.Column(scale=1):
-                        gr.Markdown("### 🔍 Task Events")
+                        gr.Markdown("### 🔄 Ongoing")
+                        ongoing_tasks_radio = gr.Radio(
+                            choices=[],
+                            value=None,
+                            interactive=True,
+                            show_label=False,
+                            elem_classes=["ios-task-cards", "ongoing-tasks"]
+                        )
+                        # Action buttons for ongoing tasks
+                        with gr.Row(visible=False) as ongoing_actions:
+                            ongoing_view_btn = gr.Button("👁️ View Events", size="sm", elem_classes=["ios-action-btn"])
+                            ongoing_stop_btn = gr.Button("⏹️ Stop", size="sm", variant="secondary", elem_classes=["ios-action-btn"])
+                            ongoing_delete_btn = gr.Button("🗑️ Delete", size="sm", variant="secondary", elem_classes=["ios-action-btn"])
+                    
+                    # Right column - Task Results/Events  
+                    with gr.Column(scale=1):
                         
-                        # Event viewer header
-                        event_header = gr.Markdown("*Select a task to view its events*", visible=True)
+                        # iOS-style event viewer - clean and borderless
+                        event_header = gr.Markdown("*Select a task to view its events and results*", visible=True, elem_classes=["ios-task-viewer-header"])
                         
-                        # Event container with scrollable view
-                        with gr.Column(elem_classes=["event-viewer-container"]):
-                            # Live events display
-                            events_display = gr.Markdown("", visible=False, elem_classes=["events-content"])
-                            
-                            # Event statistics
-                            event_stats = gr.Markdown("", visible=False, elem_classes=["event-stats"])
-                            
-                            # Auto-refresh events toggle
-                            auto_refresh_events = gr.Checkbox(label="Auto-refresh events", value=True, visible=False)
+                        # Clean event display - no heavy containers
+                        events_display = gr.Markdown("", visible=False, elem_classes=["ios-events-display"])
+                        
+                        # Minimal event statistics
+                        event_stats = gr.Markdown("", visible=False, elem_classes=["ios-event-stats"])
+                        
+                        # Auto-refresh toggle with iOS styling
+                        auto_refresh_events = gr.Checkbox(label="Auto-refresh events", value=True, visible=False, elem_classes=["ios-toggle"])
+                        
+                        # Selected task ID state
+                        selected_task_id = gr.State(None)
         
         # Apply Scout CSS and hide footer
         demo.load(lambda: None, js=f"""
@@ -863,40 +895,132 @@ def create_demo():
                     text-decoration: none !important;
                 }}
                 
-                /* Event Viewer Styling */
-                .event-viewer-container {{
-                    background: #FAFBFC !important;
-                    border: 1px solid #E1E4E8 !important;
-                    border-radius: 12px !important;
-                    padding: 16px !important;
-                    margin-top: 12px !important;
-                    min-height: 400px !important;
-                    max-height: 600px !important;
+                /* iOS Premium Task Viewer Styling - Glass Morphism & Clean Design */
+                .ios-task-viewer-header {{
+                    color: #8E8E93 !important;
+                    font-size: 15px !important;
+                    font-weight: 400 !important;
+                    text-align: center !important;
+                    margin: 24px 0 32px 0 !important;
+                    padding: 0 16px !important;
+                    line-height: 1.4 !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                    background: transparent !important;
+                    border: none !important;
                 }}
                 
-                .events-content {{
-                    background: white !important;
-                    border: 1px solid #E1E4E8 !important;
-                    border-radius: 8px !important;
-                    padding: 16px !important;
-                    font-family: 'SF Mono', Monaco, monospace !important;
-                    font-size: 13px !important;
+                .ios-events-display {{
+                    background: rgba(255, 255, 255, 0.85) !important;
+                    backdrop-filter: blur(40px) saturate(180%) !important;
+                    -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
+                    border: none !important;
+                    border-radius: 20px !important;
+                    padding: 24px !important;
+                    margin: 8px 0 16px 0 !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                    font-size: 15px !important;
                     line-height: 1.5 !important;
+                    color: #1D1D1F !important;
                     overflow-y: auto !important;
-                    max-height: 450px !important;
+                    max-height: 500px !important;
                     white-space: pre-wrap !important;
                     word-wrap: break-word !important;
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), 
+                                0 4px 16px rgba(0, 0, 0, 0.04),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
                 }}
                 
-                .event-stats {{
-                    background: #F6F8FA !important;
-                    border: 1px solid #D1D9E0 !important;
-                    border-radius: 6px !important;
-                    padding: 12px 16px !important;
-                    margin-top: 8px !important;
+                .ios-events-display:hover {{
+                    background: rgba(255, 255, 255, 0.92) !important;
+                    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08), 
+                                0 6px 20px rgba(0, 0, 0, 0.06),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+                    transform: translateY(-2px) !important;
+                }}
+                
+                .ios-event-stats {{
+                    background: rgba(248, 249, 250, 0.8) !important;
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    border: none !important;
+                    border-radius: 16px !important;
+                    padding: 16px 20px !important;
+                    margin-top: 16px !important;
                     font-size: 14px !important;
-                    color: #586069 !important;
+                    font-weight: 500 !important;
+                    color: #6B7280 !important;
                     text-align: center !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+                }}
+                
+                .ios-toggle {{
+                    background: transparent !important;
+                    border: none !important;
+                    padding: 12px 0 !important;
+                    margin-top: 20px !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                    font-size: 15px !important;
+                    color: #1D1D1F !important;
+                }}
+                
+                /* Enhanced code blocks within events */
+                .ios-events-display code {{
+                    background: rgba(0, 122, 255, 0.08) !important;
+                    color: #007AFF !important;
+                    padding: 2px 6px !important;
+                    border-radius: 6px !important;
+                    font-size: 14px !important;
+                    font-family: 'SF Mono', Monaco, monospace !important;
+                    border: none !important;
+                }}
+                
+                .ios-events-display strong {{
+                    color: #1D1D1F !important;
+                    font-weight: 600 !important;
+                }}
+                
+                .ios-events-display em {{
+                    color: #6B7280 !important;
+                    font-style: normal !important;
+                    font-weight: 400 !important;
+                }}
+                
+                /* iOS Premium Sidebar Tabs Styling */
+                .sidebar-tabs .tab-nav {{
+                    background: rgba(255, 255, 255, 0.9) !important;
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    border: none !important;
+                    border-radius: 12px !important;
+                    padding: 4px !important;
+                    margin-bottom: 16px !important;
+                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05) !important;
+                }}
+                
+                .sidebar-tabs .tab-nav button {{
+                    background: transparent !important;
+                    border: none !important;
+                    border-radius: 8px !important;
+                    padding: 8px 12px !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                    font-size: 14px !important;
+                    font-weight: 500 !important;
+                    color: #8E8E93 !important;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                }}
+                
+                .sidebar-tabs .tab-nav button.selected {{
+                    background: rgba(0, 122, 255, 0.1) !important;
+                    color: #007AFF !important;
+                    font-weight: 600 !important;
+                }}
+                
+                .sidebar-tabs .tab-nav button:hover {{
+                    background: rgba(0, 122, 255, 0.05) !important;
+                    color: #007AFF !important;
                 }}
                 
                 /* Workspace two-column layout */
@@ -929,6 +1053,240 @@ def create_demo():
                 
                 button[data-testid*="select"]:hover {{
                     background: #0056CC !important;
+                }}
+                
+                /* iOS-style Task Radio Cards */
+                .ios-task-cards {{
+                    padding: 8px 0 !important;
+                }}
+                
+                /* Hide default radio buttons and style as iOS cards */
+                .ios-task-cards .wrap,
+                .ios-task-cards fieldset {{
+                    border: none !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    background: transparent !important;
+                }}
+                
+                .ios-task-cards label {{
+                    display: block !important;
+                    background: rgba(255, 255, 255, 0.95) !important;
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+                    border-radius: 12px !important;
+                    padding: 16px !important;
+                    margin: 8px 0 !important;
+                    cursor: pointer !important;
+                    transition: all 0.2s ease !important;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 
+                                0 1px 3px rgba(0, 0, 0, 0.06) !important;
+                    position: relative !important;
+                    overflow: hidden !important;
+                }}
+                
+                .ios-task-cards label:hover {{
+                    transform: translateY(-1px) !important;
+                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 
+                                0 2px 6px rgba(0, 0, 0, 0.1) !important;
+                    border-color: rgba(0, 122, 255, 0.2) !important;
+                }}
+                
+                /* Selected state - iOS blue accent */
+                .ios-task-cards input[type="radio"]:checked + label,
+                .ios-task-cards label:has(input[type="radio"]:checked) {{
+                    background: rgba(0, 122, 255, 0.08) !important;
+                    border-color: rgba(0, 122, 255, 0.3) !important;
+                    transform: translateY(-1px) !important;
+                    box-shadow: 0 4px 16px rgba(0, 122, 255, 0.15), 
+                                0 2px 6px rgba(0, 122, 255, 0.1) !important;
+                }}
+                
+                /* Hide default radio button circles */
+                .ios-task-cards input[type="radio"] {{
+                    display: none !important;
+                    opacity: 0 !important;
+                    position: absolute !important;
+                    width: 0 !important;
+                    height: 0 !important;
+                }}
+                
+                /* Style radio button text content */
+                .ios-task-cards label span,
+                .ios-task-cards .radio-option-text {{
+                    font-size: 15px !important;
+                    line-height: 1.4 !important;
+                    color: #1D1D1F !important;
+                    font-weight: 400 !important;
+                    white-space: pre-line !important;
+                    display: block !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                }}
+                
+                /* Completed tasks - green accent */
+                .completed-tasks label:hover {{
+                    border-color: rgba(52, 199, 89, 0.2) !important;
+                }}
+                
+                .completed-tasks input[type="radio"]:checked + label,
+                .completed-tasks label:has(input[type="radio"]:checked) {{
+                    background: rgba(52, 199, 89, 0.08) !important;
+                    border-color: rgba(52, 199, 89, 0.3) !important;
+                    box-shadow: 0 4px 16px rgba(52, 199, 89, 0.15), 
+                                0 2px 6px rgba(52, 199, 89, 0.1) !important;
+                }}
+                
+                /* Ongoing tasks - orange accent */
+                .ongoing-tasks label:hover {{
+                    border-color: rgba(255, 149, 0, 0.2) !important;
+                }}
+                
+                .ongoing-tasks input[type="radio"]:checked + label,
+                .ongoing-tasks label:has(input[type="radio"]:checked) {{
+                    background: rgba(255, 149, 0, 0.08) !important;
+                    border-color: rgba(255, 149, 0, 0.3) !important;
+                    box-shadow: 0 4px 16px rgba(255, 149, 0, 0.15), 
+                                0 2px 6px rgba(255, 149, 0, 0.1) !important;
+                }}
+                
+                /* iOS action buttons */
+                .ios-action-btn {{
+                    background: rgba(0, 122, 255, 0.1) !important;
+                    border: 1px solid rgba(0, 122, 255, 0.2) !important;
+                    border-radius: 8px !important;
+                    padding: 8px 16px !important;
+                    font-size: 14px !important;
+                    font-weight: 500 !important;
+                    color: #007AFF !important;
+                    transition: all 0.2s ease !important;
+                    backdrop-filter: blur(10px) !important;
+                    -webkit-backdrop-filter: blur(10px) !important;
+                }}
+                
+                .ios-action-btn:hover {{
+                    background: rgba(0, 122, 255, 0.15) !important;
+                    border-color: rgba(0, 122, 255, 0.3) !important;
+                    transform: translateY(-0.5px) !important;
+                }}
+                
+                /* Sidebar Quick Chats Radio Styling */
+                .sidebar-quick-chats {{
+                    padding: 8px 0 !important;
+                    overflow: visible !important;
+                    max-height: none !important;
+                    height: auto !important;
+                }}
+                
+                /* Hide scrollbar for sidebar quick chats - aggressive targeting */
+                .sidebar-quick-chats,
+                .sidebar-quick-chats *,
+                .sidebar-quick-chats .wrap,
+                .sidebar-quick-chats fieldset,
+                .gradio-sidebar .sidebar-quick-chats,
+                .gradio-sidebar .sidebar-quick-chats *,
+                div[class*="sidebar-quick-chats"],
+                div[class*="sidebar-quick-chats"] * {{
+                    overflow: hidden !important;
+                    scrollbar-width: none !important;
+                    -ms-overflow-style: none !important;
+                }}
+                
+                .sidebar-quick-chats::-webkit-scrollbar,
+                .sidebar-quick-chats *::-webkit-scrollbar,
+                .sidebar-quick-chats .wrap::-webkit-scrollbar,
+                .sidebar-quick-chats fieldset::-webkit-scrollbar,
+                .gradio-sidebar .sidebar-quick-chats::-webkit-scrollbar,
+                .gradio-sidebar .sidebar-quick-chats *::-webkit-scrollbar,
+                div[class*="sidebar-quick-chats"]::-webkit-scrollbar,
+                div[class*="sidebar-quick-chats"] *::-webkit-scrollbar {{
+                    display: none !important;
+                    width: 0px !important;
+                    height: 0px !important;
+                    background: transparent !important;
+                }}
+                
+                /* Force no scrollbar on any gradio radio component in sidebar */
+                .gradio-sidebar .gradio-radio,
+                .gradio-sidebar .gradio-radio *,
+                .gradio-sidebar fieldset {{
+                    overflow: hidden !important;
+                    scrollbar-width: none !important;
+                    -ms-overflow-style: none !important;
+                }}
+                
+                .gradio-sidebar .gradio-radio::-webkit-scrollbar,
+                .gradio-sidebar .gradio-radio *::-webkit-scrollbar,
+                .gradio-sidebar fieldset::-webkit-scrollbar {{
+                    display: none !important;
+                    width: 0px !important;
+                    height: 0px !important;
+                }}
+                
+                /* Style radio buttons as iOS-style cards */
+                .sidebar-quick-chats .wrap,
+                .sidebar-quick-chats fieldset {{
+                    border: none !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    background: transparent !important;
+                }}
+                
+                .sidebar-quick-chats label {{
+                    display: block !important;
+                    background: rgba(248, 250, 252, 0.95) !important;
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    border: 1px solid rgba(0, 0, 0, 0.02) !important;
+                    border-radius: 8px !important;
+                    padding: 12px !important;
+                    margin: 4px 0 !important;
+                    cursor: pointer !important;
+                    transition: all 0.2s ease !important;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.01) !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                }}
+                
+                .sidebar-quick-chats label:hover {{
+                    background: rgba(0, 122, 255, 0.02) !important;
+                    border-color: rgba(0, 122, 255, 0.03) !important;
+                    transform: translateY(-0.5px) !important;
+                    box-shadow: 0 2px 6px rgba(0, 122, 255, 0.02) !important;
+                }}
+                
+                /* Selected state for sidebar radio */
+                .sidebar-quick-chats input[type="radio"]:checked + label,
+                .sidebar-quick-chats label:has(input[type="radio"]:checked) {{
+                    background: rgba(0, 122, 255, 0.03) !important;
+                    border-color: rgba(0, 122, 255, 0.05) !important;
+                    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.03) !important;
+                }}
+                
+                /* Hide default radio circles */
+                .sidebar-quick-chats input[type="radio"] {{
+                    display: none !important;
+                    opacity: 0 !important;
+                }}
+                
+                /* Style radio text content */
+                .sidebar-quick-chats label span {{
+                    font-size: 13px !important;
+                    line-height: 1.3 !important;
+                    color: #1D1D1F !important;
+                    font-weight: 400 !important;
+                    display: block !important;
+                    overflow: hidden !important;
+                    text-overflow: ellipsis !important;
+                    white-space: nowrap !important;
+                }}
+                
+                /* Sidebar heading for Latest Chats */
+                .gradio-sidebar h2:has(+ .sidebar-quick-chats) {{
+                    font-size: 14px !important;
+                    font-weight: 600 !important;
+                    color: #6B7280 !important;
+                    margin: 16px 0 8px 0 !important;
+                    padding: 0 !important;
                 }}`;
                 document.head.appendChild(style);
                 
@@ -1095,6 +1453,8 @@ def create_demo():
                         }}
                     }}
                 }}, 500);
+                
+                // Removed JavaScript task management functions - now using proper Gradio components
             }}
         """)
         
@@ -1122,6 +1482,30 @@ def create_demo():
             choices_update = update_directory_choices(cwd_value)
             combined_update = update_info_cards(cwd_value)
             return choices_update, combined_update
+        
+        def handle_mode_change(selected_mode):
+            """Handle mode change and update textbox styling, placeholder, and markdown header."""
+            if selected_mode == "DeepResearch":
+                # Return updates for wrapper styling, textbox placeholder, and markdown header
+                return (
+                    gr.update(elem_classes=["scout-textbox-wrapper", "mode-deepresearch"]),
+                    gr.update(placeholder="Create a website based on my vibes"),
+                    gr.update(value="Drop Research Ideas")
+                )
+            elif selected_mode == "AgenticSearch": 
+                # Return updates for wrapper styling, textbox placeholder, and markdown header
+                return (
+                    gr.update(elem_classes=["scout-textbox-wrapper", "mode-agenticsearch"]),
+                    gr.update(placeholder="Create a website based on my vibes"),
+                    gr.update(value="Drop Agent Ideas")
+                )
+            else:  # Scout mode (default)
+                # Return default styling, placeholder, and markdown header
+                return (
+                    gr.update(elem_classes=["scout-textbox-wrapper"]),
+                    gr.update(placeholder="Create a website based on my vibes"),
+                    gr.update(value="Drop Ideas")
+                )
         
         # Task management functions
         def get_task_cards():
@@ -1204,95 +1588,91 @@ def create_demo():
             except Exception as e:
                 return f"<div class='task-cards-container'><div class='error-message'>Failed to load tasks: {str(e)}</div></div>"
         
-        def update_task_display():
-            """Update task display with current sessions from API."""
+        def update_task_radios():
+            """Update task radio buttons with rich iOS card-style choices."""
+            import datetime
             try:
                 import requests
                 response = requests.get(f"{API_BASE_URL}/tasks", timeout=5)
                 response.raise_for_status()
                 sessions_data = response.json()
                 
-                # Prepare updates for all task cards (now showing sessions)
-                updates = []
-                session_list = list(sessions_data.items())
+                # Separate sessions by status
+                completed_choices = []
+                ongoing_choices = []
                 
-                # Show/hide no tasks message
-                no_tasks_visible = len(session_list) == 0
-                updates.append(gr.update(visible=no_tasks_visible))  # no_tasks_msg
-                
-                # Update each task card slot (now represents sessions)
-                for i in range(10):
-                    if i < len(session_list):
-                        session_id, session_data = session_list[i]
-                        status = session_data["status"]
-                        total_events = session_data["total_events"]
-                        error = session_data.get("error", "")
-                        latest_message = session_data.get("latest_message", "")
-                        task_count = len(session_data.get("tasks", []))
-                        
-                        # Status emoji and styling
-                        if status == "completed":
-                            status_emoji = "✅"
-                            status_text = f"{status_emoji} **Conversation Complete**"
-                        elif status == "running":
-                            status_emoji = "🔄"
-                            status_text = f"{status_emoji} **Active Conversation**"
-                        elif status == "failed":
-                            status_emoji = "❌"
-                            status_text = f"{status_emoji} **Failed**"
-                        elif status == "cancelled":
-                            status_emoji = "⏹️"
-                            status_text = f"{status_emoji} **Cancelled**"
-                        else:
-                            status_emoji = "⏳"
-                            status_text = f"{status_emoji} **Starting...**"
-                        
-                        # Show session ID or first part of it
-                        session_display = f"`#{session_id[:8] if session_id else 'no-session'}`"
-                        
-                        # Use latest message as description
-                        message_text = latest_message[:80] + "..." if len(latest_message) > 80 else latest_message
-                        if not message_text:
-                            message_text = f"Conversation #{session_id[:8] if session_id else 'unknown'}"
-                        
-                        stats_text = f"💬 **{task_count} messages** • 📝 **{total_events} events**"
-                        if error:
-                            stats_text += f"\n⚠️ *{error[:50]}...*"
-                        
-                        # Card visibility and content updates
-                        updates.extend([
-                            gr.update(visible=True),  # group
-                            gr.update(value=status_text, visible=True),  # status
-                            gr.update(value=session_display, visible=True),  # task_id (now session_id)
-                            gr.update(value=message_text, visible=True),  # description
-                            gr.update(value=stats_text, visible=True),  # stats
-                            gr.update(visible=status in ["running", "pending"]),  # stop_btn
-                            gr.update(visible=True),  # delete_btn
-                            gr.update(visible=True)   # select_btn
-                        ])
+                for session_id, session_data in sessions_data.items():
+                    status = session_data["status"]
+                    total_events = session_data["total_events"]
+                    latest_message = session_data.get("latest_message", "")
+                    
+                    # Create iOS card-style display text
+                    display_message = latest_message[:45] + "..." if len(latest_message) > 45 else latest_message
+                    if not display_message:
+                        display_message = f"Session #{session_id[:8]}"
+                    
+                    # Mock timing data for iOS-style display
+                    start_time = datetime.datetime.now() - datetime.timedelta(minutes=30)
+                    date_str = start_time.strftime("%b %d")
+                    time_str = start_time.strftime("%I:%M %p")
+                    
+                    if status in ["completed", "failed"]:
+                        end_time = datetime.datetime.now() - datetime.timedelta(minutes=10)
+                        duration_mins = 20
+                        status_line = f"✅ Completed • {duration_mins}m"
                     else:
-                        # Hide unused task card slots
-                        updates.extend([
-                            gr.update(visible=False),  # group
-                            gr.update(visible=False),  # status
-                            gr.update(visible=False),  # task_id
-                            gr.update(visible=False),  # description
-                            gr.update(visible=False),  # stats
-                            gr.update(visible=False),  # stop_btn
-                            gr.update(visible=False),  # delete_btn
-                            gr.update(visible=False)   # select_btn
-                        ])
+                        duration_mins = (datetime.datetime.now() - start_time).seconds // 60
+                        status_line = f"🔄 Running • {duration_mins}m"
+                    
+                    # Create iOS-style multi-line card text
+                    choice_text = f"{display_message}\n{date_str} • {time_str} • {total_events} events\n{status_line}"
+                    choice_value = session_id
+                    
+                    if status == "completed":
+                        completed_choices.append((choice_text, choice_value))
+                    elif status in ["running", "pending"]:
+                        ongoing_choices.append((choice_text, choice_value))
                 
-                return updates
+                # Update dropdowns
+                completed_update = gr.update(choices=completed_choices, value=None)
+                ongoing_update = gr.update(choices=ongoing_choices, value=None)
+                
+                return completed_update, ongoing_update
                 
             except Exception as e:
-                logger.error(f"Failed to update tasks: {e}")
-                # Return updates to show error state
-                updates = [gr.update(visible=True, value=f"Failed to load tasks: {str(e)}")] # no_tasks_msg
-                # Hide all task cards
-                for i in range(10):
-                    updates.extend([gr.update(visible=False)] * 8)
-                return updates
+                error_msg = f"❌ Failed to load: {str(e)}"
+                error_update = gr.update(choices=[(error_msg, None)], value=None)
+                return error_update, error_update
+        
+        def handle_completed_task_selection(selected_task_id):
+            """Handle selection of a completed task - show action buttons."""
+            if selected_task_id:
+                return (
+                    gr.update(visible=True),    # show action buttons
+                    selected_task_id            # update selected task state
+                )
+            else:
+                return (
+                    gr.update(visible=False),   # hide action buttons
+                    None                        # clear selected task state
+                )
+        
+        def handle_ongoing_task_selection(selected_task_id):
+            """Handle selection of an ongoing task - show action buttons."""
+            if selected_task_id:
+                return (
+                    gr.update(visible=True),    # show action buttons  
+                    selected_task_id            # update selected task state
+                )
+            else:
+                return (
+                    gr.update(visible=False),   # hide action buttons
+                    None                        # clear selected task state
+                )
+        
+        def view_task_events(session_id):
+            """View events for selected task - connects to existing get_task_events function."""
+            return get_task_events(session_id)
         
         def stop_task_action(task_id):
             """Stop a specific task."""
@@ -1481,24 +1861,50 @@ def create_demo():
             
             return gr.update(choices=choices, value=None)
         
+        def load_latest_chats_radio():
+            """Load and format latest 10 chats for radio buttons."""
+            chats = chat_manager.get_chats()
+            if not chats:
+                return gr.update(choices=[], value=None)
+            
+            # Get latest 10 chats
+            latest_chats = chats[:10]
+            choices = []
+            for chat in latest_chats:
+                title = chat['title'][:40] + "..." if len(chat['title']) > 40 else chat['title']
+                choices.append((title, chat['id']))
+            
+            return gr.update(choices=choices, value=None)
+        
         def create_new_chat(task_map):
             """Create a new chat and update the UI."""
             chat_id = chat_manager.create_chat()
             chats = chat_manager.get_chats()
             if not chats:
                 updated_dropdown = gr.update(choices=[], value=None)
+                updated_radio = gr.update(choices=[], value=None)
             else:
                 choices = []
                 for chat in chats:
                     title = chat['title'][:50] + "..." if len(chat['title']) > 50 else chat['title']
                     choices.append((title, chat['id']))
                 updated_dropdown = gr.update(choices=choices, value=None)
+                
+                # Update radio with latest 10 chats
+                latest_chats = chats[:10]
+                radio_choices = []
+                for chat in latest_chats:
+                    title = chat['title'][:40] + "..." if len(chat['title']) > 40 else chat['title']
+                    radio_choices.append((title, chat['id']))
+                updated_radio = gr.update(choices=radio_choices, value=None)
             
             return (
                 updated_dropdown,  # Update chat dropdown with None value
+                updated_radio,     # Update radio buttons with latest chats
                 [],  # Clear chatbot
                 gr.update(visible=False),  # Hide chatbot
                 gr.update(visible=True),   # Show placeholder
+                gr.update(visible=True),   # Show flexible_spacer
                 None,  # Reset current_chat_id to start fresh
                 None,  # Reset current_session_id
                 task_map  # Keep existing task map
@@ -1507,7 +1913,7 @@ def create_demo():
         def load_selected_chat(chat_id, task_map):
             """Load a selected chat and check for completed tasks."""
             if not chat_id:
-                return [], gr.update(visible=False), gr.update(visible=True), None, None, task_map
+                return [], gr.update(visible=False), gr.update(visible=True), gr.update(visible=True), None, None, task_map
             
             logger.info(f"📂 Loading chat {chat_id}")
             chat = chat_manager.get_chat(chat_id)
@@ -1526,11 +1932,12 @@ def create_demo():
                         messages,  # Load chat history (potentially updated)
                         gr.update(visible=True),   # Show chatbot
                         gr.update(visible=False),  # Hide placeholder
+                        gr.update(visible=False),  # Hide flexible_spacer
                         session_id,  # Update session_id
                         chat_id,  # Update current_chat_id
                         updated_task_map  # Updated task map
                     )
-            return [], gr.update(visible=False), gr.update(visible=True), None, None, task_map
+            return [], gr.update(visible=False), gr.update(visible=True), gr.update(visible=True), None, None, task_map
         
         def delete_selected_chat(chat_id, task_map):
             """Delete the selected chat."""
@@ -1548,6 +1955,7 @@ def create_demo():
             chats = chat_manager.get_chats()
             if not chats:
                 updated_dropdown = gr.update(choices=[], value=None)
+                updated_radio = gr.update(choices=[], value=None)
             else:
                 choices = []
                 for chat in chats:
@@ -1555,11 +1963,21 @@ def create_demo():
                     choices.append((title, chat['id']))
                 updated_dropdown = gr.update(choices=choices, value=None)
                 
+                # Update radio with latest 10 chats
+                latest_chats = chats[:10]
+                radio_choices = []
+                for chat in latest_chats:
+                    title = chat['title'][:40] + "..." if len(chat['title']) > 40 else chat['title']
+                    radio_choices.append((title, chat['id']))
+                updated_radio = gr.update(choices=radio_choices, value=None)
+                
             return (
                 updated_dropdown,  # Update chat dropdown
+                updated_radio,     # Update radio buttons with latest chats
                 [],  # Clear chatbot
                 gr.update(visible=False),  # Hide chatbot
                 gr.update(visible=True),   # Show placeholder
+                gr.update(visible=True),   # Show flexible_spacer
                 None,  # Reset current_chat_id
                 None,  # Reset current_session_id
                 updated_task_map  # Updated task map
@@ -1683,9 +2101,9 @@ def create_demo():
                 return gr.update(), task_map
         
         # Custom chat function wrapper  
-        def handle_chat(message, history, chat_id_state, session_id_state, selected_mode, cwd_value, append_prompt_value, task_map):
+        def handle_chat(message, history, chat_id_state, session_id_state, selected_mode, cwd_value, append_prompt_value, task_map, active_task_id, active_session_id):
             if not message.strip():
-                return history, "", gr.update(), gr.update(), gr.update(), chat_id_state, session_id_state, task_map
+                return history, "", gr.update(), gr.update(), gr.update(), chat_id_state, session_id_state, task_map, active_task_id, active_session_id
             
             # Add user message to history
             new_history = history + [{"role": "user", "content": message}]
@@ -1737,33 +2155,40 @@ def create_demo():
                 chat_manager.update_session_id(current_chat_id, current_session_id)
             
             # Return immediately - no more blocking!
-            return complete_history, "", chatbot_update, placeholder_update, flexible_spacer_update, current_chat_id, current_session_id, updated_task_map
+            return complete_history, "", chatbot_update, placeholder_update, flexible_spacer_update, current_chat_id, current_session_id, updated_task_map, task_id, current_session_id
         
         # Connect send button and textbox submit
         send_button.click(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox, chat_task_map],
-            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map],
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox, chat_task_map, current_active_task_id, current_active_session_id],
+            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map, current_active_task_id, current_active_session_id],
         )
         
         scout_textbox.submit(
             fn=handle_chat,
-            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox, chat_task_map],
-            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map],
+            inputs=[scout_textbox, chatbot, current_chat_id, current_session_id, current_mode, cwd_textbox, append_system_prompt_textbox, chat_task_map, current_active_task_id, current_active_session_id],
+            outputs=[chatbot, scout_textbox, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map, current_active_task_id, current_active_session_id],
         )
         
         # Connect chat dropdown to load selected chat
         chat_dropdown.change(
             fn=load_selected_chat,
             inputs=[chat_dropdown, chat_task_map],
-            outputs=[chatbot, chatbot, placeholder_md, current_session_id, current_chat_id, chat_task_map]
+            outputs=[chatbot, chatbot, placeholder_md, flexible_spacer, current_session_id, current_chat_id, chat_task_map]
+        )
+        
+        # Connect latest chats radio to load selected chat
+        latest_chats_radio.change(
+            fn=load_selected_chat,
+            inputs=[latest_chats_radio, chat_task_map],
+            outputs=[chatbot, chatbot, placeholder_md, flexible_spacer, current_session_id, current_chat_id, chat_task_map]
         )
         
         # Connect sidebar buttons
         new_chat_btn.click(
             fn=create_new_chat,
             inputs=[chat_task_map],
-            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id, chat_task_map],
+            outputs=[chat_dropdown, latest_chats_radio, chatbot, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map],
             js="""
             function() {
                 // Re-apply placeholder styling when new chat is created
@@ -1817,7 +2242,7 @@ def create_demo():
         delete_chat_btn.click(
             fn=delete_selected_chat,
             inputs=[current_chat_id, chat_task_map],
-            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id, chat_task_map]
+            outputs=[chat_dropdown, latest_chats_radio, chatbot, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map]
         )
         
         # Connect refresh chat results button
@@ -1843,85 +2268,61 @@ def create_demo():
         
         # Connect task management buttons
         refresh_tasks_btn.click(
-            fn=update_task_display,
+            fn=update_task_radios,
             inputs=[],
-            outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
+            outputs=[completed_tasks_radio, ongoing_tasks_radio]
         )
         
-        # Connect stop and delete buttons for each task card
-        for i, card in enumerate(task_cards):
-            # Stop button - need to capture task_id from the API call
-            def make_stop_handler(card_index):
-                def stop_handler():
-                    # Get current tasks to find task_id for this card
-                    try:
-                        import requests
-                        response = requests.get(f"{API_BASE_URL}/tasks", timeout=3)
-                        response.raise_for_status()
-                        tasks_data = response.json()
-                        task_list = list(tasks_data.items())
-                        
-                        if card_index < len(task_list):
-                            task_id = task_list[card_index][0]
-                            return stop_task_action(task_id)
-                    except Exception as e:
-                        gr.Warning(f"Failed to get task info: {e}")
-                    
-                    return update_task_display()
-                return stop_handler
-            
-            def make_delete_handler(card_index):
-                def delete_handler():
-                    # Get current tasks to find task_id for this card
-                    try:
-                        import requests
-                        response = requests.get(f"{API_BASE_URL}/tasks", timeout=3)
-                        response.raise_for_status()
-                        tasks_data = response.json()
-                        task_list = list(tasks_data.items())
-                        
-                        if card_index < len(task_list):
-                            task_id = task_list[card_index][0]
-                            return delete_task_action(task_id)
-                    except Exception as e:
-                        gr.Warning(f"Failed to get task info: {e}")
-                    
-                    return update_task_display()
-                return delete_handler
-                
-            def make_select_handler(card_index):
-                def select_handler():
-                    return select_task_for_events(card_index, None)
-                return select_handler
-            
-            card["stop_btn"].click(
-                fn=make_stop_handler(i),
-                inputs=[],
-                outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
-            )
-            
-            card["delete_btn"].click(
-                fn=make_delete_handler(i),
-                inputs=[],
-                outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
-            )
-            
-            card["select_btn"].click(
-                fn=make_select_handler(i),
-                inputs=[],
-                outputs=[event_header, events_display, event_stats, selected_task_id]
-            )
+        # Connect radio selection handlers
+        completed_tasks_radio.change(
+            fn=handle_completed_task_selection,
+            inputs=[completed_tasks_radio],
+            outputs=[completed_actions, selected_task_id]
+        )
         
-        # Auto-refresh functionality
-        def auto_refresh_handler():
-            return update_task_display()
+        ongoing_tasks_radio.change(
+            fn=handle_ongoing_task_selection,
+            inputs=[ongoing_tasks_radio],
+            outputs=[ongoing_actions, selected_task_id]
+        )
+        
+        # Connect action buttons to their functions
+        completed_view_btn.click(
+            fn=view_task_events,
+            inputs=[selected_task_id],
+            outputs=[event_header, events_display, event_stats]
+        )
+        
+        ongoing_view_btn.click(
+            fn=view_task_events,
+            inputs=[selected_task_id], 
+            outputs=[event_header, events_display, event_stats]
+        )
+        
+        completed_delete_btn.click(
+            fn=delete_task_action,
+            inputs=[selected_task_id],
+            outputs=[]  # Will refresh via auto-refresh
+        )
+        
+        ongoing_delete_btn.click(
+            fn=delete_task_action,
+            inputs=[selected_task_id],
+            outputs=[]  # Will refresh via auto-refresh  
+        )
+        
+        ongoing_stop_btn.click(
+            fn=stop_task_action,
+            inputs=[selected_task_id],
+            outputs=[]  # Will refresh via auto-refresh
+        )
         
         # Set up auto-refresh timer (every 2 seconds when enabled)
         auto_refresh_timer = gr.Timer(value=2, active=True)
         auto_refresh_timer.tick(
-            fn=lambda checkbox_value: update_task_display() if checkbox_value else [gr.update()] * (1 + len(task_cards) * 8),
+            fn=lambda checkbox_value: update_task_radios() if checkbox_value else (gr.update(), gr.update()),
             inputs=[auto_refresh_checkbox],
-            outputs=[no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
+            outputs=[completed_tasks_radio, ongoing_tasks_radio]
         )
         
         # Set up auto-refresh timer for events (every 3 seconds when enabled and task selected)
@@ -1932,6 +2333,60 @@ def create_demo():
             outputs=[event_header, events_display, event_stats]
         )
         
+        # Connect sidebar event handlers to share the same task selection and event display
+        # When a task is selected in workspace, update sidebar as well
+        selected_task_id.change(
+            fn=lambda task_id: refresh_selected_task_events(task_id) if task_id else (gr.update(value="*Select a task to view its live events*", visible=True), gr.update(value="", visible=False), gr.update(value="", visible=False)),
+            inputs=[selected_task_id],
+            outputs=[sidebar_event_header, sidebar_events_display, sidebar_event_stats]
+        )
+        
+        # Set up auto-refresh timer for sidebar events (same as workspace, using shared task_id)
+        sidebar_events_refresh_timer = gr.Timer(value=3, active=True)
+        sidebar_events_refresh_timer.tick(
+            fn=lambda sidebar_events_checkbox, task_id: refresh_selected_task_events(task_id) if (sidebar_events_checkbox and task_id) else (gr.update(), gr.update(), gr.update()),
+            inputs=[sidebar_auto_refresh_events, selected_task_id],
+            outputs=[sidebar_event_header, sidebar_events_display, sidebar_event_stats]
+        )
+        
+        # Connect current active session to both workspace and sidebar Live Tasks
+        # When a new chat task is created, automatically show it in Live Tasks using session_id
+        def update_live_tasks_from_active_session(session_id):
+            """Update both workspace and sidebar Live Tasks when active session changes."""
+            if session_id:
+                # Get task events and update sidebar
+                sidebar_updates = refresh_selected_task_events(session_id)
+                return (session_id, *sidebar_updates)
+            else:
+                # Clear displays if no session
+                return (
+                    session_id,
+                    gr.update(value="*Select a task to view its live events*", visible=True), 
+                    gr.update(value="", visible=False), 
+                    gr.update(value="", visible=False)
+                )
+        
+        current_active_session_id.change(
+            fn=update_live_tasks_from_active_session,
+            inputs=[current_active_session_id],
+            outputs=[selected_task_id, sidebar_event_header, sidebar_events_display, sidebar_event_stats]
+        )
+        
+        # Set up auto-refresh timer for chat (every 3 seconds when enabled)
+        chat_refresh_timer = gr.Timer(value=3, active=True)
+        chat_refresh_timer.tick(
+            fn=lambda checkbox_value, chat_id, task_map: refresh_current_chat(chat_id, task_map) if (checkbox_value and chat_id) else (gr.update(), task_map),
+            inputs=[auto_refresh_chat_checkbox, current_chat_id, chat_task_map],
+            outputs=[chatbot, chat_task_map]
+        )
+        
+        # Connect mode radio to current_mode state and update textbox styling, placeholder, and markdown header
+        mode_radio.change(
+            fn=lambda mode: (mode, *handle_mode_change(mode)),
+            inputs=[mode_radio],
+            outputs=[current_mode, textbox_wrapper, scout_textbox, placeholder_md]
+        )
+        
         # Load chat list and info cards on startup
         def initialize_ui():
             chat_list = load_chat_list()
@@ -1940,14 +2395,15 @@ def create_demo():
         
         def initialize_ui_with_tasks():
             chat_list = load_chat_list()
+            latest_chats = load_latest_chats_radio()
             combined_update = update_info_cards("")
-            task_updates = update_task_display()
-            return [chat_list, combined_update] + task_updates
+            completed_update, ongoing_update = update_task_radios()
+            return chat_list, latest_chats, combined_update, completed_update, ongoing_update
         
         demo.load(
             fn=initialize_ui_with_tasks,
             inputs=[],
-            outputs=[chat_dropdown, combined_info, no_tasks_msg] + [item for card in task_cards for item in [card["group"], card["status"], card["task_id"], card["description"], card["stats"], card["stop_btn"], card["delete_btn"], card["select_btn"]]]
+            outputs=[chat_dropdown, latest_chats_radio, combined_info, completed_tasks_radio, ongoing_tasks_radio]
         )
 
         # Connect context button (placeholder functionality)

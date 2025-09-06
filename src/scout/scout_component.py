@@ -137,12 +137,13 @@ def create_scout_textbox_ui(
     placeholder: str = "Type your message here...",
     context_handler: Callable = None,
     send_handler: Callable = None,
-) -> tuple[gr.Textbox, gr.Button, gr.Button, gr.Button, gr.Button]:
+    mode: str = "Scout",
+) -> tuple[gr.Textbox, gr.Button, gr.Button, gr.Button, gr.Button, gr.Column]:
     """
     Create Scout-style textbox UI components using standard Gradio components.
     
     Returns:
-        tuple: (textbox, context_button, send_button, mode_toggle, settings_button)
+        tuple: (textbox, context_button, send_button, mode_toggle, settings_button, wrapper_column)
     """
     
     # CSS for Scout styling
@@ -154,8 +155,9 @@ def create_scout_textbox_ui(
         background: rgba(255, 255, 255, 0.95) !important;
         backdrop-filter: blur(20px) !important;
         box-shadow: 
-            0 1px 3px rgba(0, 0, 0, 0.05),
-            0 4px 12px rgba(0, 0, 0, 0.02),
+            0 2px 8px rgba(0, 0, 0, 0.12),
+            0 6px 20px rgba(0, 0, 0, 0.06),
+            0 1px 3px rgba(0, 0, 0, 0.08),
             inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
         margin: 0 !important;
         overflow: hidden !important;
@@ -302,8 +304,58 @@ def create_scout_textbox_ui(
     }
     
     .scout-textbox-wrapper:focus-within {
-        border: none;
-        box-shadow: none;
+        border: 1px solid rgba(0, 122, 255, 0.15) !important;
+        box-shadow: 
+            0 3px 12px rgba(0, 0, 0, 0.15),
+            0 8px 25px rgba(0, 0, 0, 0.08),
+            0 2px 6px rgba(0, 122, 255, 0.1),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    /* DeepResearch mode - very light warm hint */
+    .scout-textbox-wrapper.mode-deepresearch {
+        background: linear-gradient(135deg, 
+            rgba(255, 248, 245, 0.98), 
+            rgba(255, 245, 240, 0.98), 
+            rgba(255, 243, 238, 0.98)) !important;
+        border: 1px solid rgba(255, 154, 102, 0.05) !important;
+        box-shadow: 
+            0 2px 8px rgba(255, 154, 102, 0.02),
+            0 6px 20px rgba(255, 102, 102, 0.01),
+            0 1px 3px rgba(255, 204, 102, 0.03),
+            inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+    }
+    
+    .scout-textbox-wrapper.mode-deepresearch:focus-within {
+        border: 1px solid rgba(255, 154, 102, 0.08) !important;
+        box-shadow: 
+            0 3px 12px rgba(255, 154, 102, 0.03),
+            0 8px 25px rgba(255, 102, 102, 0.02),
+            0 2px 6px rgba(255, 204, 102, 0.04),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    /* AgenticSearch mode - very light violet hint (2% more visible) */
+    .scout-textbox-wrapper.mode-agenticsearch {
+        background: linear-gradient(135deg, 
+            rgba(248, 245, 255, 0.98), 
+            rgba(245, 240, 255, 0.98), 
+            rgba(243, 238, 255, 0.98)) !important;
+        border: 1px solid rgba(138, 43, 226, 0.07) !important;
+        box-shadow: 
+            0 2px 8px rgba(138, 43, 226, 0.04),
+            0 6px 20px rgba(75, 0, 130, 0.03),
+            0 1px 3px rgba(147, 112, 219, 0.05),
+            inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+    }
+    
+    .scout-textbox-wrapper.mode-agenticsearch:focus-within {
+        border: 1px solid rgba(138, 43, 226, 0.10) !important;
+        box-shadow: 
+            0 3px 12px rgba(138, 43, 226, 0.05),
+            0 8px 25px rgba(75, 0, 130, 0.04),
+            0 2px 6px rgba(147, 112, 219, 0.06),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
     }
     
     /* Plan mode textbox styling - iOS glass inactive */
@@ -311,8 +363,9 @@ def create_scout_textbox_ui(
         background: rgba(242, 242, 247, 0.7) !important;
         border: 1px solid rgba(0, 0, 0, 0.04) !important;
         box-shadow: 
+            0 2px 8px rgba(0, 0, 0, 0.1),
+            0 6px 20px rgba(0, 0, 0, 0.05),
             0 1px 3px rgba(0, 0, 0, 0.06),
-            0 4px 12px rgba(0, 0, 0, 0.02),
             inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
         backdrop-filter: blur(40px);
     }
@@ -320,8 +373,9 @@ def create_scout_textbox_ui(
     .scout-textbox-wrapper[data-mode="Plan"]:focus-within {
         background: rgba(242, 242, 247, 0.8) !important;
         box-shadow: 
+            0 3px 12px rgba(0, 0, 0, 0.15),
+            0 10px 30px rgba(0, 0, 0, 0.08),
             0 2px 6px rgba(0, 0, 0, 0.1),
-            0 8px 20px rgba(0, 0, 0, 0.04),
             inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
     }
     
@@ -417,10 +471,152 @@ def create_scout_textbox_ui(
         border: none !important;
         box-shadow: none !important;
     }
+    
+    /* Glass-style Task Cards for Workspace */
+    .task-column {
+        padding: 16px !important;
+        min-height: 400px !important;
+        max-height: 600px !important;
+        overflow-y: auto !important;
+    }
+    
+    .task-card.glass-card {
+        background: rgba(255, 255, 255, 0.85) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        border-radius: 16px !important;
+        padding: 16px !important;
+        margin-bottom: 12px !important;
+        box-shadow: 
+            0 8px 32px rgba(0, 0, 0, 0.08),
+            0 4px 16px rgba(0, 0, 0, 0.04),
+            inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        cursor: pointer !important;
+    }
+    
+    .task-card.glass-card:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 
+            0 12px 40px rgba(0, 0, 0, 0.12),
+            0 8px 24px rgba(0, 0, 0, 0.08),
+            inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+        background: rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    .task-card.completed {
+        border-left: 4px solid #34C759 !important;
+        background: rgba(52, 199, 89, 0.05) !important;
+    }
+    
+    .task-card.ongoing {
+        border-left: 4px solid #007AFF !important;
+        background: rgba(0, 122, 255, 0.05) !important;
+    }
+    
+    .task-card-header {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        margin-bottom: 12px !important;
+    }
+    
+    .task-status-icon {
+        font-size: 16px !important;
+        font-weight: 600 !important;
+    }
+    
+    .task-session-id {
+        font-family: 'SF Mono', Monaco, monospace !important;
+        font-size: 12px !important;
+        color: #8E8E93 !important;
+        background: rgba(142, 142, 147, 0.12) !important;
+        padding: 4px 8px !important;
+        border-radius: 6px !important;
+    }
+    
+    .task-card-content {
+        margin-bottom: 16px !important;
+    }
+    
+    .task-message {
+        font-size: 14px !important;
+        font-weight: 500 !important;
+        color: #1D1D1F !important;
+        margin-bottom: 12px !important;
+        line-height: 1.4 !important;
+    }
+    
+    .task-details {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 6px !important;
+    }
+    
+    .task-details > div {
+        font-size: 12px !important;
+        color: #8E8E93 !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+    }
+    
+    .task-card-actions {
+        display: flex !important;
+        gap: 8px !important;
+        justify-content: flex-end !important;
+    }
+    
+    .task-card-action {
+        background: rgba(0, 122, 255, 0.1) !important;
+        border: 1px solid rgba(0, 122, 255, 0.2) !important;
+        color: #007AFF !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        padding: 6px 12px !important;
+        border-radius: 8px !important;
+        transition: all 0.2s ease !important;
+        cursor: pointer !important;
+    }
+    
+    .task-card-action:hover {
+        background: rgba(0, 122, 255, 0.15) !important;
+        border-color: rgba(0, 122, 255, 0.3) !important;
+        transform: translateY(-1px) !important;
+    }
+    
+    .task-card-action.stop-btn {
+        background: rgba(255, 59, 48, 0.1) !important;
+        border-color: rgba(255, 59, 48, 0.2) !important;
+        color: #FF3B30 !important;
+    }
+    
+    .task-card-action.stop-btn:hover {
+        background: rgba(255, 59, 48, 0.15) !important;
+        border-color: rgba(255, 59, 48, 0.3) !important;
+    }
+    
+    .empty-column, .error-column {
+        text-align: center !important;
+        padding: 32px 16px !important;
+        color: #8E8E93 !important;
+        font-size: 14px !important;
+        font-style: italic !important;
+    }
     """
+    
+    # Determine CSS classes based on mode
+    wrapper_classes = ["scout-textbox-wrapper"]
+    if mode == "DeepResearch":
+        wrapper_classes.append("mode-deepresearch")
+    elif mode == "AgenticSearch":
+        wrapper_classes.append("mode-agenticsearch")
+    
     with gr.Row():
         gr.Markdown()
-        with gr.Column(elem_classes=["scout-textbox-wrapper"],scale=3):
+        wrapper_column = gr.Column(elem_classes=wrapper_classes, scale=3)
+        with wrapper_column:
             # Main textbox
             textbox = gr.Textbox(
                 placeholder=placeholder,
@@ -470,4 +666,4 @@ def create_scout_textbox_ui(
 
         gr.Markdown()
 
-    return textbox, context_button, send_button, mode_toggle, settings_button, scout_css
+    return textbox, context_button, send_button, mode_toggle, settings_button, wrapper_column, scout_css

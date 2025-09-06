@@ -211,11 +211,12 @@ class Agent:
             kwargs['tools'] = self.tools
         
         for iteration in range(self.max_iterations):
-            # Yield iteration start
+            # Yield iteration start - always include current messages
             yield {
                 'type': 'iteration_start',
                 'iteration': iteration + 1,
-                'messages_count': len(messages)
+                'messages_count': len(messages),
+                'messages': messages.copy()
             }
             
             # Try streaming first, fallback to regular if it fails
@@ -249,7 +250,8 @@ class Agent:
                                         'type': 'token',
                                         'content': token,
                                         'accumulated_content': accumulated_content,
-                                        'iteration': iteration + 1
+                                        'iteration': iteration + 1,
+                                        'messages': messages.copy()
                                     }
                                 
                                 # Tool calls streaming - handle both vLLM and Gemini patterns
@@ -492,13 +494,14 @@ class Agent:
                     # If both fail, raise the original streaming error
                     raise e
             
-            # Yield LLM response (final accumulated or regular)
+            # Yield LLM response - always include current messages
             yield {
                 'type': 'llm_response',
                 'content': response.get('content', ''),
                 'think': response.get('think', ''),
                 'tool_calls': response.get('tool_calls', []),
-                'iteration': iteration + 1
+                'iteration': iteration + 1,
+                'messages': messages.copy()
             }
             
             # No tool calls - add assistant response and yield final result
@@ -517,7 +520,7 @@ class Agent:
                     'content': response.get('content', ''),
                     'think': response.get('think', ''),
                     'iterations': iteration + 1,
-                    'messages': messages
+                    'messages': messages.copy()
                 }
                 return
             
@@ -535,7 +538,8 @@ class Agent:
                         'type': 'tool_start',
                         'tool_name': tool_func['name'],
                         'tool_args': tool_func['arguments'],
-                        'iteration': iteration + 1
+                        'iteration': iteration + 1,
+                        'messages': messages.copy()
                     }
                     
                     tool_result = self._execute_tool_sync(tool_func)
@@ -545,7 +549,8 @@ class Agent:
                         'tool_name': tool_func['name'], 
                         'tool_args': tool_func['arguments'],
                         'result': str(tool_result),
-                        'iteration': iteration + 1
+                        'iteration': iteration + 1,
+                        'messages': messages.copy()
                     }
                     
                     # Add tool result to messages
@@ -577,7 +582,7 @@ class Agent:
             'type': 'final',
             'content': 'Max iterations reached',
             'iterations': self.max_iterations,
-            'messages': messages,
+            'messages': messages.copy(),
             'truncated': True
         }
     
@@ -614,6 +619,7 @@ class Agent:
             return self._tool_functions[tool_name](**tool_args)
         except Exception as e:
             return f"Error executing {tool_name}: {str(e)}"
+    
     
     
     def add_tool(self, tool: Callable) -> None:
