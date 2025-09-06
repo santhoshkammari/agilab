@@ -221,7 +221,7 @@ def create_demo():
     # Initialize chat manager
     chat_manager = ChatManager()
 
-    with gr.Blocks(title="Scout - AI Code Assistant", theme=theme) as demo:
+    with gr.Blocks(title="Scout", theme=theme) as demo:
         # State variables
         current_chat_id = gr.State(None)
         current_session_id = gr.State(None)
