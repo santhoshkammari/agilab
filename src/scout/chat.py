@@ -1706,6 +1706,7 @@ def create_demo():
                 [],  # Clear chatbot
                 gr.update(visible=False),  # Hide chatbot
                 gr.update(visible=True),   # Show placeholder
+                gr.update(visible=True),   # Show flexible_spacer
                 None,  # Reset current_chat_id to start fresh
                 None,  # Reset current_session_id
                 task_map  # Keep existing task map
@@ -1714,7 +1715,7 @@ def create_demo():
         def load_selected_chat(chat_id, task_map):
             """Load a selected chat and check for completed tasks."""
             if not chat_id:
-                return [], gr.update(visible=False), gr.update(visible=True), None, None, task_map
+                return [], gr.update(visible=False), gr.update(visible=True), gr.update(visible=True), None, None, task_map
             
             logger.info(f"📂 Loading chat {chat_id}")
             chat = chat_manager.get_chat(chat_id)
@@ -1733,11 +1734,12 @@ def create_demo():
                         messages,  # Load chat history (potentially updated)
                         gr.update(visible=True),   # Show chatbot
                         gr.update(visible=False),  # Hide placeholder
+                        gr.update(visible=False),  # Hide flexible_spacer
                         session_id,  # Update session_id
                         chat_id,  # Update current_chat_id
                         updated_task_map  # Updated task map
                     )
-            return [], gr.update(visible=False), gr.update(visible=True), None, None, task_map
+            return [], gr.update(visible=False), gr.update(visible=True), gr.update(visible=True), None, None, task_map
         
         def delete_selected_chat(chat_id, task_map):
             """Delete the selected chat."""
@@ -1767,6 +1769,7 @@ def create_demo():
                 [],  # Clear chatbot
                 gr.update(visible=False),  # Hide chatbot
                 gr.update(visible=True),   # Show placeholder
+                gr.update(visible=True),   # Show flexible_spacer
                 None,  # Reset current_chat_id
                 None,  # Reset current_session_id
                 updated_task_map  # Updated task map
@@ -1963,14 +1966,14 @@ def create_demo():
         chat_dropdown.change(
             fn=load_selected_chat,
             inputs=[chat_dropdown, chat_task_map],
-            outputs=[chatbot, chatbot, placeholder_md, current_session_id, current_chat_id, chat_task_map]
+            outputs=[chatbot, chatbot, placeholder_md, flexible_spacer, current_session_id, current_chat_id, chat_task_map]
         )
         
         # Connect sidebar buttons
         new_chat_btn.click(
             fn=create_new_chat,
             inputs=[chat_task_map],
-            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id, chat_task_map],
+            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map],
             js="""
             function() {
                 // Re-apply placeholder styling when new chat is created
@@ -2024,7 +2027,7 @@ def create_demo():
         delete_chat_btn.click(
             fn=delete_selected_chat,
             inputs=[current_chat_id, chat_task_map],
-            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, current_chat_id, current_session_id, chat_task_map]
+            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map]
         )
         
         # Connect refresh chat results button
