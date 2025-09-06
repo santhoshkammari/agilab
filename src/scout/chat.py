@@ -234,7 +234,7 @@ def create_demo():
             # Scout tab with all existing functionality
             with gr.Tab("Scout"):
                 with gr.Sidebar(open=False):
-                    gr.Markdown("## 🔍 Scout Chats")
+                    gr.Markdown("## 🪡 Scout Chats")
                     
                     # New chat button
                     new_chat_btn = gr.Button("➕ New Chat", variant="primary", size="sm")
@@ -256,14 +256,15 @@ def create_demo():
                         refresh_chat_btn = gr.Button("🔄 Refresh Results", variant="secondary", size="sm")
                         auto_refresh_chat_checkbox = gr.Checkbox(label="Auto-refresh every 3s", value=True)
                     
-                    # Latest 5 chats radio buttons
-                    gr.Markdown("## 📋 Latest Chats")
+                    # Latest 10 chats radio buttons
+                    gr.Markdown("## ✨ Threads")
                     latest_chats_radio = gr.Radio(
                         label="Quick Access",
                         choices=[],
                         value=None,
                         interactive=True,
                         show_label=False,
+                        container=False,
                         elem_classes=["sidebar-quick-chats"]
                     )
 
@@ -1154,6 +1155,54 @@ def create_demo():
                 /* Sidebar Quick Chats Radio Styling */
                 .sidebar-quick-chats {{
                     padding: 8px 0 !important;
+                    overflow: visible !important;
+                    max-height: none !important;
+                    height: auto !important;
+                }}
+                
+                /* Hide scrollbar for sidebar quick chats - aggressive targeting */
+                .sidebar-quick-chats,
+                .sidebar-quick-chats *,
+                .sidebar-quick-chats .wrap,
+                .sidebar-quick-chats fieldset,
+                .gradio-sidebar .sidebar-quick-chats,
+                .gradio-sidebar .sidebar-quick-chats *,
+                div[class*="sidebar-quick-chats"],
+                div[class*="sidebar-quick-chats"] * {{
+                    overflow: hidden !important;
+                    scrollbar-width: none !important;
+                    -ms-overflow-style: none !important;
+                }}
+                
+                .sidebar-quick-chats::-webkit-scrollbar,
+                .sidebar-quick-chats *::-webkit-scrollbar,
+                .sidebar-quick-chats .wrap::-webkit-scrollbar,
+                .sidebar-quick-chats fieldset::-webkit-scrollbar,
+                .gradio-sidebar .sidebar-quick-chats::-webkit-scrollbar,
+                .gradio-sidebar .sidebar-quick-chats *::-webkit-scrollbar,
+                div[class*="sidebar-quick-chats"]::-webkit-scrollbar,
+                div[class*="sidebar-quick-chats"] *::-webkit-scrollbar {{
+                    display: none !important;
+                    width: 0px !important;
+                    height: 0px !important;
+                    background: transparent !important;
+                }}
+                
+                /* Force no scrollbar on any gradio radio component in sidebar */
+                .gradio-sidebar .gradio-radio,
+                .gradio-sidebar .gradio-radio *,
+                .gradio-sidebar fieldset {{
+                    overflow: hidden !important;
+                    scrollbar-width: none !important;
+                    -ms-overflow-style: none !important;
+                }}
+                
+                .gradio-sidebar .gradio-radio::-webkit-scrollbar,
+                .gradio-sidebar .gradio-radio *::-webkit-scrollbar,
+                .gradio-sidebar fieldset::-webkit-scrollbar {{
+                    display: none !important;
+                    width: 0px !important;
+                    height: 0px !important;
                 }}
                 
                 /* Style radio buttons as iOS-style cards */
@@ -1771,13 +1820,13 @@ def create_demo():
             return gr.update(choices=choices, value=None)
         
         def load_latest_chats_radio():
-            """Load and format latest 5 chats for radio buttons."""
+            """Load and format latest 10 chats for radio buttons."""
             chats = chat_manager.get_chats()
             if not chats:
                 return gr.update(choices=[], value=None)
             
-            # Get latest 5 chats
-            latest_chats = chats[:5]
+            # Get latest 10 chats
+            latest_chats = chats[:10]
             choices = []
             for chat in latest_chats:
                 title = chat['title'][:40] + "..." if len(chat['title']) > 40 else chat['title']
@@ -1799,8 +1848,8 @@ def create_demo():
                     choices.append((title, chat['id']))
                 updated_dropdown = gr.update(choices=choices, value=None)
                 
-                # Update radio with latest 5 chats
-                latest_chats = chats[:5]
+                # Update radio with latest 10 chats
+                latest_chats = chats[:10]
                 radio_choices = []
                 for chat in latest_chats:
                     title = chat['title'][:40] + "..." if len(chat['title']) > 40 else chat['title']
@@ -1872,8 +1921,8 @@ def create_demo():
                     choices.append((title, chat['id']))
                 updated_dropdown = gr.update(choices=choices, value=None)
                 
-                # Update radio with latest 5 chats
-                latest_chats = chats[:5]
+                # Update radio with latest 10 chats
+                latest_chats = chats[:10]
                 radio_choices = []
                 for chat in latest_chats:
                     title = chat['title'][:40] + "..." if len(chat['title']) > 40 else chat['title']
