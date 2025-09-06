@@ -366,6 +366,13 @@ def create_demo():
                                     step=0.1,
                                     interactive=True
                                 )
+                            work_flows = gr.Dropdown(
+                                    label="WorkFlow",
+                                    choices=["OneShot", "QuickEdit", "Sloth","UltraSloth"],
+                                    value="OneShot",
+                                    multiselect=True,
+                                    interactive=True
+                                    )
                         
                         # Live Tasks Tab - contains task events stream
                         with gr.Tab("📊 Live Tasks"):
