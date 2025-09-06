@@ -235,7 +235,7 @@ def create_demo():
         with gr.Tabs() as main_tabs:
             # Scout tab with all existing functionality
             with gr.Tab("Scout"):
-                with gr.Sidebar(open=True):
+                with gr.Sidebar(open=False):
                     gr.Markdown("## 🪡 Scout Chats")
                     
                     # New chat button
