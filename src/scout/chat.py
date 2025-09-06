@@ -255,6 +255,17 @@ def create_demo():
                     with gr.Row():
                         refresh_chat_btn = gr.Button("🔄 Refresh Results", variant="secondary", size="sm")
                         auto_refresh_chat_checkbox = gr.Checkbox(label="Auto-refresh every 3s", value=True)
+                    
+                    # Latest 5 chats radio buttons
+                    gr.Markdown("## 📋 Latest Chats")
+                    latest_chats_radio = gr.Radio(
+                        label="Quick Access",
+                        choices=[],
+                        value=None,
+                        interactive=True,
+                        show_label=False,
+                        elem_classes=["sidebar-quick-chats"]
+                    )
 
                 # Create main content area with tight spacing
                 with gr.Column():
@@ -1138,6 +1149,77 @@ def create_demo():
                     background: rgba(0, 122, 255, 0.15) !important;
                     border-color: rgba(0, 122, 255, 0.3) !important;
                     transform: translateY(-0.5px) !important;
+                }}
+                
+                /* Sidebar Quick Chats Radio Styling */
+                .sidebar-quick-chats {{
+                    padding: 8px 0 !important;
+                }}
+                
+                /* Style radio buttons as iOS-style cards */
+                .sidebar-quick-chats .wrap,
+                .sidebar-quick-chats fieldset {{
+                    border: none !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    background: transparent !important;
+                }}
+                
+                .sidebar-quick-chats label {{
+                    display: block !important;
+                    background: rgba(255, 255, 255, 0.9) !important;
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    border: 1px solid rgba(0, 0, 0, 0.04) !important;
+                    border-radius: 8px !important;
+                    padding: 12px !important;
+                    margin: 4px 0 !important;
+                    cursor: pointer !important;
+                    transition: all 0.2s ease !important;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif !important;
+                }}
+                
+                .sidebar-quick-chats label:hover {{
+                    background: rgba(0, 122, 255, 0.05) !important;
+                    border-color: rgba(0, 122, 255, 0.1) !important;
+                    transform: translateY(-0.5px) !important;
+                    box-shadow: 0 2px 6px rgba(0, 122, 255, 0.05) !important;
+                }}
+                
+                /* Selected state for sidebar radio */
+                .sidebar-quick-chats input[type="radio"]:checked + label,
+                .sidebar-quick-chats label:has(input[type="radio"]:checked) {{
+                    background: rgba(0, 122, 255, 0.08) !important;
+                    border-color: rgba(0, 122, 255, 0.2) !important;
+                    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.1) !important;
+                }}
+                
+                /* Hide default radio circles */
+                .sidebar-quick-chats input[type="radio"] {{
+                    display: none !important;
+                    opacity: 0 !important;
+                }}
+                
+                /* Style radio text content */
+                .sidebar-quick-chats label span {{
+                    font-size: 13px !important;
+                    line-height: 1.3 !important;
+                    color: #1D1D1F !important;
+                    font-weight: 400 !important;
+                    display: block !important;
+                    overflow: hidden !important;
+                    text-overflow: ellipsis !important;
+                    white-space: nowrap !important;
+                }}
+                
+                /* Sidebar heading for Latest Chats */
+                .gradio-sidebar h2:has(+ .sidebar-quick-chats) {{
+                    font-size: 14px !important;
+                    font-weight: 600 !important;
+                    color: #6B7280 !important;
+                    margin: 16px 0 8px 0 !important;
+                    padding: 0 !important;
                 }}`;
                 document.head.appendChild(style);
                 
@@ -1688,21 +1770,46 @@ def create_demo():
             
             return gr.update(choices=choices, value=None)
         
+        def load_latest_chats_radio():
+            """Load and format latest 5 chats for radio buttons."""
+            chats = chat_manager.get_chats()
+            if not chats:
+                return gr.update(choices=[], value=None)
+            
+            # Get latest 5 chats
+            latest_chats = chats[:5]
+            choices = []
+            for chat in latest_chats:
+                title = chat['title'][:40] + "..." if len(chat['title']) > 40 else chat['title']
+                choices.append((title, chat['id']))
+            
+            return gr.update(choices=choices, value=None)
+        
         def create_new_chat(task_map):
             """Create a new chat and update the UI."""
             chat_id = chat_manager.create_chat()
             chats = chat_manager.get_chats()
             if not chats:
                 updated_dropdown = gr.update(choices=[], value=None)
+                updated_radio = gr.update(choices=[], value=None)
             else:
                 choices = []
                 for chat in chats:
                     title = chat['title'][:50] + "..." if len(chat['title']) > 50 else chat['title']
                     choices.append((title, chat['id']))
                 updated_dropdown = gr.update(choices=choices, value=None)
+                
+                # Update radio with latest 5 chats
+                latest_chats = chats[:5]
+                radio_choices = []
+                for chat in latest_chats:
+                    title = chat['title'][:40] + "..." if len(chat['title']) > 40 else chat['title']
+                    radio_choices.append((title, chat['id']))
+                updated_radio = gr.update(choices=radio_choices, value=None)
             
             return (
                 updated_dropdown,  # Update chat dropdown with None value
+                updated_radio,     # Update radio buttons with latest chats
                 [],  # Clear chatbot
                 gr.update(visible=False),  # Hide chatbot
                 gr.update(visible=True),   # Show placeholder
@@ -1757,6 +1864,7 @@ def create_demo():
             chats = chat_manager.get_chats()
             if not chats:
                 updated_dropdown = gr.update(choices=[], value=None)
+                updated_radio = gr.update(choices=[], value=None)
             else:
                 choices = []
                 for chat in chats:
@@ -1764,8 +1872,17 @@ def create_demo():
                     choices.append((title, chat['id']))
                 updated_dropdown = gr.update(choices=choices, value=None)
                 
+                # Update radio with latest 5 chats
+                latest_chats = chats[:5]
+                radio_choices = []
+                for chat in latest_chats:
+                    title = chat['title'][:40] + "..." if len(chat['title']) > 40 else chat['title']
+                    radio_choices.append((title, chat['id']))
+                updated_radio = gr.update(choices=radio_choices, value=None)
+                
             return (
                 updated_dropdown,  # Update chat dropdown
+                updated_radio,     # Update radio buttons with latest chats
                 [],  # Clear chatbot
                 gr.update(visible=False),  # Hide chatbot
                 gr.update(visible=True),   # Show placeholder
@@ -1969,11 +2086,18 @@ def create_demo():
             outputs=[chatbot, chatbot, placeholder_md, flexible_spacer, current_session_id, current_chat_id, chat_task_map]
         )
         
+        # Connect latest chats radio to load selected chat
+        latest_chats_radio.change(
+            fn=load_selected_chat,
+            inputs=[latest_chats_radio, chat_task_map],
+            outputs=[chatbot, chatbot, placeholder_md, flexible_spacer, current_session_id, current_chat_id, chat_task_map]
+        )
+        
         # Connect sidebar buttons
         new_chat_btn.click(
             fn=create_new_chat,
             inputs=[chat_task_map],
-            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map],
+            outputs=[chat_dropdown, latest_chats_radio, chatbot, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map],
             js="""
             function() {
                 // Re-apply placeholder styling when new chat is created
@@ -2027,7 +2151,7 @@ def create_demo():
         delete_chat_btn.click(
             fn=delete_selected_chat,
             inputs=[current_chat_id, chat_task_map],
-            outputs=[chat_dropdown, chatbot, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map]
+            outputs=[chat_dropdown, latest_chats_radio, chatbot, chatbot, placeholder_md, flexible_spacer, current_chat_id, current_session_id, chat_task_map]
         )
         
         # Connect refresh chat results button
@@ -2173,14 +2297,15 @@ def create_demo():
         
         def initialize_ui_with_tasks():
             chat_list = load_chat_list()
+            latest_chats = load_latest_chats_radio()
             combined_update = update_info_cards("")
             completed_update, ongoing_update = update_task_radios()
-            return chat_list, combined_update, completed_update, ongoing_update
+            return chat_list, latest_chats, combined_update, completed_update, ongoing_update
         
         demo.load(
             fn=initialize_ui_with_tasks,
             inputs=[],
-            outputs=[chat_dropdown, combined_info, completed_tasks_radio, ongoing_tasks_radio]
+            outputs=[chat_dropdown, latest_chats_radio, combined_info, completed_tasks_radio, ongoing_tasks_radio]
         )
 
         # Connect context button (placeholder functionality)
