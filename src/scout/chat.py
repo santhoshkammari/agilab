@@ -233,11 +233,12 @@ def create_demo():
         with gr.Tabs() as main_tabs:
             # Scout tab with all existing functionality
             with gr.Tab("Scout"):
-                with gr.Sidebar(open=False):
+                with gr.Sidebar(open=True):
                     gr.Markdown("## 🪡 Scout Chats")
                     
                     # New chat button
                     new_chat_btn = gr.Button("➕ New Chat", variant="primary", size="sm")
+
                     
                     # Chat list using dropdown
                     chat_dropdown = gr.Dropdown(
@@ -256,6 +257,14 @@ def create_demo():
                         refresh_chat_btn = gr.Button("🔄 Refresh Results", variant="secondary", size="sm")
                         auto_refresh_chat_checkbox = gr.Checkbox(label="Auto-refresh every 3s", value=True)
                     
+
+                    gr.Markdown("## 🪼 Modes")
+                    gr.Radio(
+                            ["Scout", "DeepResearch", "AgenticSearch"], 
+                            label="Modes", show_label=False,
+                            value='Scout'
+                            ),
+
                     # Latest 10 chats radio buttons
                     gr.Markdown("## ✨ Threads")
                     latest_chats_radio = gr.Radio(
