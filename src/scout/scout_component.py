@@ -335,26 +335,26 @@ def create_scout_textbox_ui(
             inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
     }
     
-    /* AgenticSearch mode - very light violet hint */
+    /* AgenticSearch mode - very light violet hint (2% more visible) */
     .scout-textbox-wrapper.mode-agenticsearch {
         background: linear-gradient(135deg, 
             rgba(248, 245, 255, 0.98), 
             rgba(245, 240, 255, 0.98), 
             rgba(243, 238, 255, 0.98)) !important;
-        border: 1px solid rgba(138, 43, 226, 0.05) !important;
+        border: 1px solid rgba(138, 43, 226, 0.07) !important;
         box-shadow: 
-            0 2px 8px rgba(138, 43, 226, 0.02),
-            0 6px 20px rgba(75, 0, 130, 0.01),
-            0 1px 3px rgba(147, 112, 219, 0.03),
+            0 2px 8px rgba(138, 43, 226, 0.04),
+            0 6px 20px rgba(75, 0, 130, 0.03),
+            0 1px 3px rgba(147, 112, 219, 0.05),
             inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
     }
     
     .scout-textbox-wrapper.mode-agenticsearch:focus-within {
-        border: 1px solid rgba(138, 43, 226, 0.08) !important;
+        border: 1px solid rgba(138, 43, 226, 0.10) !important;
         box-shadow: 
-            0 3px 12px rgba(138, 43, 226, 0.03),
-            0 8px 25px rgba(75, 0, 130, 0.02),
-            0 2px 6px rgba(147, 112, 219, 0.04),
+            0 3px 12px rgba(138, 43, 226, 0.05),
+            0 8px 25px rgba(75, 0, 130, 0.04),
+            0 2px 6px rgba(147, 112, 219, 0.06),
             inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
     }
     

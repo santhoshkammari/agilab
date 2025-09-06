@@ -1475,21 +1475,27 @@ def create_demo():
             return choices_update, combined_update
         
         def handle_mode_change(selected_mode):
-            """Handle mode change and update textbox styling."""
+            """Handle mode change and update textbox styling, placeholder, and markdown header."""
             if selected_mode == "DeepResearch":
-                # Return update to add DeepResearch mode class
-                return gr.update(
-                    elem_classes=["scout-textbox-wrapper", "mode-deepresearch"]
+                # Return updates for wrapper styling, textbox placeholder, and markdown header
+                return (
+                    gr.update(elem_classes=["scout-textbox-wrapper", "mode-deepresearch"]),
+                    gr.update(placeholder="Create a website based on my vibes"),
+                    gr.update(value="Drop Research Ideas")
                 )
             elif selected_mode == "AgenticSearch": 
-                # Return update to add AgenticSearch mode class
-                return gr.update(
-                    elem_classes=["scout-textbox-wrapper", "mode-agenticsearch"]
+                # Return updates for wrapper styling, textbox placeholder, and markdown header
+                return (
+                    gr.update(elem_classes=["scout-textbox-wrapper", "mode-agenticsearch"]),
+                    gr.update(placeholder="Create a website based on my vibes"),
+                    gr.update(value="Drop Agent Ideas")
                 )
             else:  # Scout mode (default)
-                # Return default styling
-                return gr.update(
-                    elem_classes=["scout-textbox-wrapper"]
+                # Return default styling, placeholder, and markdown header
+                return (
+                    gr.update(elem_classes=["scout-textbox-wrapper"]),
+                    gr.update(placeholder="Create a website based on my vibes"),
+                    gr.update(value="Drop Ideas")
                 )
         
         # Task management functions
@@ -2365,11 +2371,11 @@ def create_demo():
             outputs=[chatbot, chat_task_map]
         )
         
-        # Connect mode radio to current_mode state and update textbox styling
+        # Connect mode radio to current_mode state and update textbox styling, placeholder, and markdown header
         mode_radio.change(
-            fn=lambda mode: (mode, handle_mode_change(mode)),
+            fn=lambda mode: (mode, *handle_mode_change(mode)),
             inputs=[mode_radio],
-            outputs=[current_mode, textbox_wrapper]
+            outputs=[current_mode, textbox_wrapper, scout_textbox, placeholder_md]
         )
         
         # Load chat list and info cards on startup
