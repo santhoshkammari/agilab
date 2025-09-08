@@ -615,7 +615,7 @@ def create_scout_textbox_ui(
     
     with gr.Row():
         gr.Markdown()
-        wrapper_column = gr.Column(elem_classes=wrapper_classes, scale=3)
+        wrapper_column = gr.Column(elem_classes=wrapper_classes, scale=2)
         with wrapper_column:
             # Main textbox
             textbox = gr.Textbox(
