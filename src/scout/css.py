@@ -41,8 +41,8 @@ class ScoutNewTheme(Base):
             font_mono=font_mono,
         )
         super().set(
-            body_background_fill="#FFFFFF",
-            body_background_fill_dark="#FFFFFF",
+            body_background_fill="rgba(255, 255, 255, 0.6)",
+            body_background_fill_dark="rgba(255, 255, 255, 0.6)",
             
             # Primary button using Scout blue
             button_primary_background_fill="#57BAFF",
@@ -59,16 +59,16 @@ class ScoutNewTheme(Base):
             button_secondary_text_color="#57BAFF",
             
             # Neutral/background elements - all transparent/white
-            block_background_fill="#FFFFFF",
-            block_background_fill_dark="#FFFFFF",
-            panel_background_fill="#FFFFFF",
-            panel_background_fill_dark="#FFFFFF",
+            block_background_fill="rgba(255, 255, 255, 0.4)",
+            block_background_fill_dark="rgba(255, 255, 255, 0.4)",
+            panel_background_fill="rgba(255, 255, 255, 0.3)",
+            panel_background_fill_dark="rgba(255, 255, 255, 0.3)",
             
             # Input elements
-            input_background_fill="#FFFFFF",
-            input_background_fill_dark="#FFFFFF",
-            input_background_fill_focus="#EAF6FF",
-            input_background_fill_focus_dark="#EAF6FF",
+            input_background_fill="rgba(255, 255, 255, 0.4)",
+            input_background_fill_dark="rgba(255, 255, 255, 0.4)",
+            input_background_fill_focus="rgba(90, 180, 255, 0.15)",
+            input_background_fill_focus_dark="rgba(90, 180, 255, 0.15)",
             input_border_color="#F2F4F6",
             input_border_color_focus="#57BAFF",
             
@@ -79,13 +79,13 @@ class ScoutNewTheme(Base):
             block_title_text_color_dark="#1F2937",
             
             # Other elements
-            block_border_color="#F2F4F6",
-            border_color_primary="#57BAFF",
-            
-            # Clean, minimal styling
-            block_radius="8px",
-            button_large_radius="6px",
-            input_radius="6px",
+            block_border_color="rgba(255, 255, 255, 0.4)",
+            border_color_primary="rgba(87, 186, 255, 0.8)",
+
+            # Premium rounded styling
+            block_radius="16px",
+            button_large_radius="12px",
+            input_radius="12px",
         )
 
 # Create the theme instance

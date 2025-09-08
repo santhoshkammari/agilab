@@ -33,6 +33,40 @@ from utils import status_messages
 API_BASE_URL = "http://0.0.0.0:8000"
 AI_BUDDY_EMOJI = "🔅"
 
+# iOS-inspired glassy theme overrides
+IOS_GLASSY_CSS = """
+body {
+    background: linear-gradient(135deg, #e0e7ff 0%, #f9fafb 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+}
+
+.gradio-container {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    background: rgba(255, 255, 255, 0.45) !important;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.gr-button, button {
+    border-radius: 12px !important;
+    background: rgba(255, 255, 255, 0.35) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.4) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.gr-chatbot {
+    background: rgba(255, 255, 255, 0.3) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 16px;
+}
+"""
+
 
 def get_current_branch():
     """Get the current Git branch name."""
@@ -221,7 +255,7 @@ def create_demo():
     # Initialize chat manager
     chat_manager = ChatManager()
 
-    with gr.Blocks(title="Scout", theme=theme) as demo:
+    with gr.Blocks(title="Scout", theme=theme, css=IOS_GLASSY_CSS) as demo:
         # State variables
         current_chat_id = gr.State(None)
         current_session_id = gr.State(None)
