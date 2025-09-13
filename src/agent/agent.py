@@ -297,8 +297,9 @@ class Agent:
                         if not tool_call['function']['arguments']:
                             tool_call['function']['arguments'] = '{}'
                 
-                elif hasattr(llm_stream, '__iter__') and not isinstance(llm_stream, (str, dict)):
-                    # Custom streaming format (LLM/hgLLM style)
+                elif hasattr(llm_stream, '__iter__'):
+                    # Custom streaming format (generator). Handle dict-chunk streams (FlowGen)
+                    # and raw text streams (tag-parsing) in a unified way.
                     accumulated_content = ""
                     accumulated_think = ""
                     current_buffer = ""
@@ -307,6 +308,7 @@ class Agent:
                     in_tool_call = False
                     tool_call_content = ""
                     tool_calls_found = []
+                    executed_during_stream = False
                     
                     for chunk in llm_stream:
                         if isinstance(chunk, str):
@@ -314,9 +316,21 @@ class Agent:
                             current_buffer += chunk
                         elif isinstance(chunk, dict):
                             # LLM chunk format
-                            if 'content' in chunk:
+                            if chunk.get('content'):
                                 token = chunk.get('content', '')
                                 current_buffer += token
+                            # Some servers emit tool_calls as a final chunk
+                            if chunk.get('tool_calls'):
+                                # Normalize arguments to strings for consistency
+                                for tc in chunk['tool_calls']:
+                                    fn = tc.get('function', {})
+                                    args = fn.get('arguments', '{}')
+                                    if not isinstance(args, str):
+                                        fn['arguments'] = json.dumps(args)
+                                tool_calls_found.extend(chunk['tool_calls'])
+                                # Do not execute here; allow the normal post-stream path to run tools
+                                # Continue to process remaining chunks if any
+                                continue
                         
                         # Process buffer for thinking and tool call tags
                         while True:
@@ -451,6 +465,7 @@ class Agent:
                                                     'arguments': json.dumps(tool_args) if isinstance(tool_args, dict) else tool_args
                                                 }
                                             })
+                                            executed_during_stream = True
                                             
                                         except Exception as e:
                                             yield {
@@ -477,7 +492,7 @@ class Agent:
                         'content': accumulated_content,
                         'think': accumulated_think,
                         'tool_calls': tool_calls_found,
-                        '_tools_executed_in_streaming': True  # Flag to prevent double execution
+                        '_tools_executed_in_streaming': executed_during_stream  # Flag to prevent double execution
                     }
                 
                 else:
@@ -610,7 +625,11 @@ class Agent:
     def _execute_tool_sync(self, tool_call: Dict) -> Any:
         """Execute a single tool call synchronously."""
         tool_name = tool_call['name']
-        tool_args = json.loads(str(tool_call['arguments']))
+        raw_args = tool_call.get('arguments', '{}')
+        if isinstance(raw_args, dict):
+            tool_args = raw_args
+        else:
+            tool_args = json.loads(str(raw_args))
 
         if tool_name not in self._tool_functions:
             return f"Error: Tool '{tool_name}' not found"
