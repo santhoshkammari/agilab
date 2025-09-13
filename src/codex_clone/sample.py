@@ -18,16 +18,18 @@ class ChatBot:
         self.setup_layout()
         
     def add_message(self, sender, message):
-        timestamp = datetime.now().strftime("%H:%M")
-        self.messages.append(f"[{timestamp}] {sender}: {message}")
+        if sender == "User":
+            self.messages.append(f"> {message}")
+        else:
+            self.messages.append(message)
         self.update_chat_display()
         
     def get_chat_text(self):
         if not self.messages:
             return FormattedText([
-                ('class:welcome', '🤖 Welcome to the ChatBot!\n'),
-                ('class:instruction', 'Type your message and press Enter to send.\n'),
-                ('class:instruction', 'Press Ctrl+Q to quit.\n')
+                ('class:instruction', 'Welcome to ChatBot\n'),
+                ('class:instruction', 'Type your message and press Enter to send\n'),
+                ('class:instruction', 'Press Ctrl+Q to quit\n')
             ])
         
         formatted_messages = []
@@ -35,14 +37,10 @@ class ChatBot:
         recent_messages = self.messages[-20:] if len(self.messages) > 20 else self.messages
         
         for msg in recent_messages:
-            if "User:" in msg:
+            if msg.startswith("> "):
                 formatted_messages.append(('class:user', msg + '\n'))
             else:
                 formatted_messages.append(('class:bot', msg + '\n'))
-        
-        # Add extra newline at the end to prevent the gap issue
-        if formatted_messages:
-            formatted_messages.append(('', '\n'))
         
         return FormattedText(formatted_messages)
     
@@ -127,31 +125,19 @@ class ChatBot:
             dont_extend_height=True
         )
         
-        # Input label
-        input_label = Window(
-            content=FormattedTextControl(
-                text=FormattedText([('class:input-label', '> ')])
-            ),
-            width=2,
-            dont_extend_height=True
-        )
-        
         # Status bar
         status_bar = Window(
             content=FormattedTextControl(
                 text=FormattedText([
-                    ('class:status', ' ChatBot v1.0 | Ctrl+Q to quit | Enter to send ')
+                    ('class:status', ' ChatBot | Ctrl+Q to quit | Enter to send ')
                 ])
             ),
             height=1,
             dont_extend_height=True
         )
         
-        # Input container
-        input_container = VSplit([
-            input_label,
-            input_window
-        ])
+        # Input container - just the input window, no label
+        input_container = input_window
         
         # Main container
         root_container = HSplit([
@@ -165,16 +151,14 @@ class ChatBot:
     
     def run(self):
         # Add welcome message
-        self.add_message("Bot", "Hello! I'm your friendly chatbot. How can I help you today?")
+        self.add_message("Bot", "Hello! How can I help you today?")
         
         # Style configuration
         from prompt_toolkit.styles import Style
         style = Style.from_dict({
-            'user': '#00aa00 bold',      # Green for user messages
-            'bot': '#0088ff',            # Blue for bot messages  
-            'welcome': '#ffaa00 bold',   # Orange for welcome
+            'user': '#00aa00',           # Green for user messages (with >)
+            'bot': '#ffffff',            # White for bot messages  
             'instruction': '#888888',    # Gray for instructions
-            'input-label': '#00aa00 bold', # Green for input prompt
             'status': 'bg:#444444 #ffffff'  # Status bar styling
         })
         
