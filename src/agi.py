@@ -397,10 +397,64 @@ class Agent:
         self._tool_functions = {tool.__name__: tool for tool in self.tools}
         self._conversation = []  # Current conversation (gets reset on new calls)
         self._console = Console()
-
+        
         # Add system prompt to history if provided
         if system_prompt:
             self.history.append({"role": "system", "content": system_prompt})
+    
+    def _format_tool_calls_for_message(self, tool_calls: List[Dict]) -> Dict:
+        """Format tool calls as content (universal format).
+        
+        Args:
+            tool_calls: List of tool calls in standard format
+            
+        Returns:
+            Message dict with tool calls in content format
+        """
+        content_parts = []
+        for tool_call in tool_calls:
+            func = tool_call['function']
+            tool_call_json = {
+                "name": func['name'],
+                "arguments": json.loads(func['arguments']) if isinstance(func['arguments'], str) else func['arguments']
+            }
+            content_parts.append(f"<tool_call>\n{json.dumps(tool_call_json)}\n</tool_call>")
+        
+        return {
+            "role": "assistant",
+            "content": "\n".join(content_parts)
+        }
+    
+    def _parse_tool_calls_from_content(self, content: str) -> List[Dict]:
+        """Parse tool calls from content format (for models like LFM2-350M).
+        
+        Args:
+            content: Assistant response content that may contain <tool_call> tags
+            
+        Returns:
+            List of tool calls in standard format
+        """
+        import re
+        
+        tool_calls = []
+        pattern = r'<tool_call>\s*({.*?})\s*</tool_call>'
+        matches = re.findall(pattern, content, re.DOTALL)
+        
+        for i, match in enumerate(matches):
+            try:
+                tool_data = json.loads(match)
+                tool_calls.append({
+                    "id": f"call_{i}",
+                    "type": "function",
+                    "function": {
+                        "name": tool_data.get("name", "unknown"),
+                        "arguments": json.dumps(tool_data.get("arguments", {})) if isinstance(tool_data.get("arguments"), dict) else str(tool_data.get("arguments", "{}"))
+                    }
+                })
+            except json.JSONDecodeError:
+                continue
+                
+        return tool_calls
 
     def _run_sync(self, input: Union[str, List[Dict]], **kwargs) -> Union[Dict, Generator]:
         """Execute agentic behavior synchronously for sync LLMs."""
@@ -464,8 +518,16 @@ class Agent:
                     expand=False
                 ))
 
+            # Check for tool calls in response (content format only)
+            tool_calls = response.get('tool_calls', [])
+            if not tool_calls and response.get('content'):
+                # Parse tool calls from content (universal approach)
+                tool_calls = self._parse_tool_calls_from_content(response['content'])
+                if tool_calls:
+                    response['tool_calls'] = tool_calls
+                    
             # No tool calls - add assistant response and return final result
-            if not response.get('tool_calls'):
+            if not tool_calls:
                 # Add the assistant's response to conversation
                 messages.append({
                     "role": "assistant",
@@ -483,11 +545,9 @@ class Agent:
                     'final': True
                 }
 
-            # Add assistant message with tool calls
-            messages.append({
-                "role": "assistant",
-                "tool_calls": response['tool_calls']
-            })
+            # Add assistant message with tool calls (format depends on model)
+            tool_call_message = self._format_tool_calls_for_message(response['tool_calls'])
+            messages.append(tool_call_message)
 
             # Execute tools and add results
             for i, tool_call in enumerate(response['tool_calls']):
@@ -855,8 +915,16 @@ class Agent:
                 'messages': messages.copy()
             }
 
+            # Check for tool calls in response (content format only) 
+            tool_calls = response.get('tool_calls', [])
+            if not tool_calls and response.get('content'):
+                # Parse tool calls from content (universal approach)
+                tool_calls = self._parse_tool_calls_from_content(response['content'])
+                if tool_calls:
+                    response['tool_calls'] = tool_calls
+                    
             # No tool calls - add assistant response and yield final result
-            if not response.get('tool_calls'):
+            if not tool_calls:
                 # Add the assistant's response to conversation
                 messages.append({
                     "role": "assistant",
@@ -875,11 +943,9 @@ class Agent:
                 }
                 return
 
-            # Add assistant message with tool calls
-            messages.append({
-                "role": "assistant",
-                "tool_calls": response['tool_calls']
-            })
+            # Add assistant message with tool calls (format depends on model)
+            tool_call_message = self._format_tool_calls_for_message(response['tool_calls'])
+            messages.append(tool_call_message)
 
             # Execute tools and yield results (only if not already executed during streaming)
             if not response.get('_tools_executed_in_streaming', False):
@@ -975,6 +1041,7 @@ class Agent:
         """Add a tool function to the agent."""
         self.tools.append(tool)
         self._tool_functions[tool.__name__] = tool
+    
 
     def remove_tool(self, tool_name: str) -> None:
         """Remove a tool by name."""
@@ -997,6 +1064,49 @@ class Agent:
     def set_history(self, messages: List[Dict]) -> None:
         """Replace current history with new messages."""
         self.history = messages.copy()
+    
+    def get_messages(self) -> List[Dict]:
+        """Get clean message list for GRPO/TRL compatibility.
+        
+        Returns:
+            List of message dicts with only role and content fields
+        """
+        clean_messages = []
+        for msg in self._conversation:
+            clean_msg = {
+                "role": msg["role"],
+                "content": msg.get("content", "")
+            }
+            # Preserve tool name for tool messages
+            if msg.get("role") == "tool" and "name" in msg:
+                clean_msg["name"] = msg["name"]
+            clean_messages.append(clean_msg)
+        return clean_messages
+    
+    def get_full_conversation(self) -> List[Dict]:
+        """Get full conversation including history + current conversation.
+        
+        Returns:
+            Complete message list ready for training/fine-tuning
+        """
+        return self.history + self.get_messages()
+    
+    def to_chat_format(self) -> str:
+        """Convert conversation to simple chat text format.
+        
+        Returns:
+            Human-readable chat format string
+        """
+        chat_lines = []
+        for msg in self.get_full_conversation():
+            role = msg["role"].title()
+            content = msg.get("content", "")
+            if role == "Tool":
+                tool_name = msg.get("name", "unknown")
+                chat_lines.append(f"Tool ({tool_name}): {content}")
+            else:
+                chat_lines.append(f"{role}: {content}")
+        return "\n\n".join(chat_lines)
 
     def __rshift__(self, other: 'Agent') -> 'AgentChain':
         """Chain agents using >> operator."""
@@ -1084,8 +1194,11 @@ class Agent:
             elif role == 'User':
                 md += f"**👤 User:** {content}\n\n"
             elif role == 'Assistant':
-                if 'tool_calls' in msg:
-                    md += f"**🤖 Assistant:** *Called tools: {', '.join([tc['function']['name'] for tc in msg['tool_calls']])}\n\n"
+                if '<tool_call>' in content:
+                    # Extract tool names from content
+                    import re
+                    tool_names = re.findall(r'"name":\s*"([^"]+)"', content)
+                    md += f"**🤖 Assistant:** *Called tools: {', '.join(tool_names)}*\n\n"
                 else:
                     md += f"**🤖 Assistant:** {content}\n\n"
             elif role == 'Tool':
@@ -1241,6 +1354,9 @@ curl --location 'http://0.0.0.0:8000/load' \
 def tool_calling_transformers():
     import torch
     from transformers import AutoTokenizer, AutoModelForCausalLM
+    import json
+    import re
+    
     tokenizer = AutoTokenizer.from_pretrained("LiquidAI/LFM2-350M")
 
     def get_current_temperature(location: str):
@@ -1259,59 +1375,69 @@ def tool_calling_transformers():
         {"role": "user", "content": "Hey, what's the weather like in Paris right now?"}
     ]
 
-    # With add_generation_prompt=True
+    # FIXED: Use tools parameter to add tools to the system prompt
     tool_prompt = tokenizer.apply_chat_template(
         chat,
+        tools=tools,  # This adds tools to the system prompt correctly
         add_generation_prompt=True,
         tokenize=False
     )
-    print("==== tool_prompt (add_generation_prompt=True) ====")
+    print("==== tool_prompt with tools (add_generation_prompt=True) ====")
     print(tool_prompt)
 
-    # With add_generation_prompt=False
+    # Without add_generation_prompt
     tool_prompt_no_gen = tokenizer.apply_chat_template(
         chat,
+        tools=tools,
         add_generation_prompt=False,
         tokenize=False
     )
-    print("==== tool_prompt_no_gen (add_generation_prompt=False) ====")
+    print("==== tool_prompt with tools (add_generation_prompt=False) ====")
     print(tool_prompt_no_gen)
 
-    response="""<tool_call>
+    # Simulate model response
+    response = """<tool_call>
 {"arguments": {"location": "Paris, France"}, "name": "get_current_temperature"}
-</tool_call><|im_end|>
-"""
+</tool_call>"""
 
+    # FIXED: Put tool call in content field, not tool_calls field
     message = {
         "role": "assistant",
-        "tool_calls": [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_current_temperature",
-                    "arguments": {"location": "Paris, France"}
-                }
-            }
-        ]
+        "content": response  # Tool calls go in content field for this model
     }
     chat.append(message)
+    
+    # Parse and execute the tool call
+    tool_call_match = re.search(r'<tool_call>\s*({.*?})\s*</tool_call>', response, re.DOTALL)
+    if tool_call_match:
+        tool_call_data = json.loads(tool_call_match.group(1))
+        result = get_current_temperature(**tool_call_data["arguments"])
+        
+        # Add tool response
+        chat.append({
+            "role": "tool",
+            "name": tool_call_data["name"],
+            "content": str(result)
+        })
 
-
+    # Now this works without error
     tool_prompt = tokenizer.apply_chat_template(
         chat,
+        tools=tools,
         add_generation_prompt=True,
         tokenize=False
     )
-    print("==== tool_prompt (add_generation_prompt=True) ====")
+    print("==== Final conversation with tool execution ====")
     print(tool_prompt)
 
-    # With add_generation_prompt=False
+    # Without add_generation_prompt
     tool_prompt_no_gen = tokenizer.apply_chat_template(
         chat,
+        tools=tools,
         add_generation_prompt=False,
         tokenize=False
     )
-    print("==== tool_prompt_no_gen (add_generation_prompt=False) ====")
+    print("==== Final conversation (no generation prompt) ====")
     print(tool_prompt_no_gen)
 
 
@@ -1362,4 +1488,4 @@ def testing():
             print(event)
 
 if __name__ == '__main__':
-    tool_calling_transformers()
+    testing()
