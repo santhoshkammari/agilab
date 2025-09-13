@@ -1,16 +1,39 @@
+"""
+A terminal-based chatbot application built with prompt_toolkit.
+
+Features:
+- Multi-line input buffer with autocomplete support for `/model` command.
+- Chat history display with styled formatting for user, bot, and system messages.
+- Switch between multiple AI models (`Sonnet`, `Gpt-5`, `Qwen`, `LLama`) using `/model` command
+  or interactive menu.
+- Key bindings:
+  * Ctrl+C: Quit application
+  * Enter: Send message (or confirm model selection in menu)
+  * Ctrl+J: Insert newline in input
+  * Up/Down: Navigate model selection menu
+  * Escape: Exit model menu
+- Interactive model selection menu with descriptions for each model.
+- Status bar showing available shortcuts.
+
+Fixes applied:
+1. Removed cursor in chat history by replacing `BufferControl` with `FormattedTextControl`.
+2. Updated user message and input prompt color to a softer green (`#34D399`).
+
+Usage:
+Run the script directly to start the chatbot CLI:
+    python chatbot.py
+"""
+
 from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.layout.containers import VSplit, HSplit, Window, ScrollOffsets
+from prompt_toolkit.layout.containers import VSplit, HSplit, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.layout import Layout
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.layout.dimension import Dimension
-from prompt_toolkit.application import get_app
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
-from datetime import datetime
-import os
 
 class ModelCompleter(Completer):
     def get_completions(self, document, complete_event):
@@ -18,7 +41,6 @@ class ModelCompleter(Completer):
         if text.startswith('/model'):
             models = ['Sonnet', 'Gpt-5', 'Qwen', 'LLama']
             word = text[6:].strip()  # Remove '/model'
-            
             for model in models:
                 if model.lower().startswith(word.lower()):
                     yield Completion(model, start_position=-len(word))
@@ -31,20 +53,20 @@ class ChatBot:
         self.show_model_menu = False
         self.selected_model_index = 0
         self.input_buffer = Buffer(
-            multiline=True, 
+            multiline=True,
             completer=ModelCompleter(),
             complete_while_typing=True
         )
         self.setup_keybindings()
         self.setup_layout()
-        
+
     def add_message(self, sender, message):
         if sender == "User":
             self.messages.append(f"▊ {message}")
         else:
             self.messages.append(message)
         self.update_chat_display()
-        
+
     def get_chat_text(self):
         if not self.messages:
             return FormattedText([
@@ -52,10 +74,9 @@ class ChatBot:
                 ('class:instruction', 'Type your message and press Enter to send\n'),
                 ('class:instruction', 'Press Ctrl+Q to quit\n')
             ])
-        
+
         formatted_messages = []
         recent_messages = self.messages[-20:] if len(self.messages) > 20 else self.messages
-        
         for msg in recent_messages:
             if msg.startswith("▊ "):
                 formatted_messages.append(('class:user', msg + '\n'))
@@ -63,25 +84,12 @@ class ChatBot:
                 formatted_messages.append(('class:system', msg + '\n'))
             else:
                 formatted_messages.append(('class:bot', msg + '\n'))
-        
         return FormattedText(formatted_messages)
-    
-    def update_chat_display(self):
-        if hasattr(self, 'chat_buffer'):
-            text_lines = []
-            recent_messages = self.messages[-50:] if len(self.messages) > 50 else self.messages
-            for msg in recent_messages:
-                text_lines.append(msg)
 
-            new_text = '\n'.join(text_lines)
-            # Use set_document to bypass read_only
-            self.chat_buffer.set_document(
-                Document(new_text, cursor_position=len(new_text)),
-                bypass_readonly=True
-            )
-        else:
+    def update_chat_display(self):
+        if hasattr(self, 'chat_control'):
             self.chat_control.text = self.get_chat_text()
-        
+
     def process_input(self):
         user_input = self.input_buffer.text.strip()
         if user_input:
@@ -102,7 +110,7 @@ class ChatBot:
                 bot_response = self.generate_response(user_input)
                 self.add_message("Bot", bot_response)
             self.input_buffer.text = ""
-            
+
     def generate_response(self, user_input):
         user_input_lower = user_input.lower()
         if "hello" in user_input_lower or "hi" in user_input_lower:
@@ -115,14 +123,14 @@ class ChatBot:
             return f"[{self.current_model}] I'm here to chat! Try /model to switch models or just say hello."
         else:
             return f"[{self.current_model}] You said: '{user_input}'. That's interesting! Tell me more."
-    
+
     def setup_keybindings(self):
         self.kb = KeyBindings()
-        
+
         @self.kb.add('c-c')
         def exit_(event):
             event.app.exit()
-            
+
         @self.kb.add('enter')
         def process_message(event):
             if self.show_model_menu:
@@ -136,23 +144,23 @@ class ChatBot:
                 event.app.layout.focus(self.input_buffer)
             else:
                 self.process_input()
-            
+
         @self.kb.add('c-j')
         def newline(event):
             self.input_buffer.insert_text('\n')
-            
+
         @self.kb.add('up')
         def move_up(event):
             if self.show_model_menu:
                 self.selected_model_index = (self.selected_model_index - 1) % len(self.models)
                 self.update_layout()
-                
+
         @self.kb.add('down')
         def move_down(event):
             if self.show_model_menu:
                 self.selected_model_index = (self.selected_model_index + 1) % len(self.models)
                 self.update_layout()
-                
+
         @self.kb.add('escape')
         def hide_menu(event):
             if self.show_model_menu:
@@ -160,15 +168,15 @@ class ChatBot:
                 self.input_buffer.text = ""
                 self.update_layout()
                 event.app.layout.focus(self.input_buffer)
-    
+
     def get_model_menu_text(self):
         if not self.show_model_menu:
             return FormattedText([])
-        
+
         menu_items = []
         menu_items.append(('class:menu-header', 'Select model and reasoning level\n'))
         menu_items.append(('class:menu-subtitle', 'Switch between OpenAI models for this and future Codex CLI session\n\n'))
-        
+
         for i, model in enumerate(self.models):
             if i == self.selected_model_index:
                 menu_items.append(('class:menu-selected', f'  {i+1}. {model} '))
@@ -182,41 +190,34 @@ class ChatBot:
                     menu_items.append(('class:menu-description', '— maximizes reasoning depth for complex or ambiguous problems\n'))
             else:
                 menu_items.append(('class:menu-item', f'  {i+1}. {model}\n'))
-        
+
         menu_items.append(('class:menu-footer', '\nPress Enter to confirm or Esc to go back'))
         return FormattedText(menu_items)
 
     def setup_layout(self):
         self.chat_control = FormattedTextControl(
-            text=self.get_chat_text(),
+            text=lambda: self.get_chat_text(),
             show_cursor=False
         )
-        
-        self.chat_buffer = Buffer(multiline=True, read_only=True)
-        
+
         self.chat_window = Window(
-            content=BufferControl(
-                buffer=self.chat_buffer,
-                focusable=False
-            ),
+            content=self.chat_control,
             wrap_lines=True,
-            always_hide_cursor=True,
-            dont_extend_height=False,
-            dont_extend_width=False
+            always_hide_cursor=True
         )
-        
+
         self.model_menu_control = FormattedTextControl(
             text=self.get_model_menu_text(),
             show_cursor=False
         )
-        
+
         self.model_menu_window = Window(
             content=self.model_menu_control,
             wrap_lines=True,
             dont_extend_height=True,
             dont_extend_width=True
         )
-        
+
         input_prompt = Window(
             content=FormattedTextControl(
                 text=FormattedText([('class:input-prompt', '▊ ')])
@@ -224,7 +225,7 @@ class ChatBot:
             width=2,
             dont_extend_height=True
         )
-        
+
         input_window = Window(
             content=BufferControl(
                 buffer=self.input_buffer,
@@ -234,12 +235,12 @@ class ChatBot:
             wrap_lines=True,
             dont_extend_height=True
         )
-        
+
         input_area = VSplit([
             input_prompt,
             input_window
         ])
-        
+
         status_bar = Window(
             content=FormattedTextControl(
                 text=FormattedText([
@@ -257,7 +258,7 @@ class ChatBot:
             height=1,
             dont_extend_height=True
         )
-        
+
         if self.show_model_menu:
             root_container = HSplit([
                 self.model_menu_window,
@@ -270,25 +271,25 @@ class ChatBot:
                 input_area,
                 status_bar
             ])
-        
+
         self.layout = Layout(root_container)
-        
+
     def update_layout(self):
         self.model_menu_control.text = self.get_model_menu_text()
         self.setup_layout()
         if hasattr(self, 'app'):
             self.app.layout = self.layout
-    
+
     def run(self):
         self.add_message("Bot", "Hello! How can I help you today?")
-        
+
         from prompt_toolkit.styles import Style
         style = Style.from_dict({
-            'user': '#00aa00',
+            'user': '#34D399',              # softer green for user messages
+            'input-prompt': '#34D399',      # same green for ▊ prompt
             'bot': '#ffffff',
             'system': '#ffaa00',
             'instruction': '#888888',
-            'input-prompt': '#00aa00',
             'status-text': 'bg:#2d2d2d #ffffff',
             'status-key': 'bg:#2d2d2d #ffffff bold',
             'status-shortcut': 'bg:#2d2d2d #888888',
@@ -299,14 +300,14 @@ class ChatBot:
             'menu-description': '#888888',
             'menu-footer': '#888888',
         })
-        
+
         self.app = Application(
             layout=self.layout,
             key_bindings=self.kb,
             full_screen=True,
             style=style
         )
-        
+
         self.app.layout.focus(self.input_buffer)
         self.app.run()
 
