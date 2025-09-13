@@ -1221,21 +1221,6 @@ def list_directory(path: str) -> list[str]:
     pass
 
 
-if __name__ == "__main__":
-    checkpoint_path = "/home/ntlpt59/master/models/LiquidAI__LFM2-350M"
-    llm = LLM(checkpoint_path)
-
-    message = [{"role": "user", "content": "hi"}]
-    response = llm(message, tools=[])
-    print(response)
-
-    message = [{"role": "user", "content": "list files at /home/app "}]
-    response = llm(message, tools=[write_file, read_file, list_directory])
-    print(response)
-
-
-
-
 # Shared Pydantic models for testing
 class MenuItem(BaseModel):
     """A menu item in a restaurant."""
