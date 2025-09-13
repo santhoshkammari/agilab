@@ -13,7 +13,7 @@ import os
 class ChatBot:
     def __init__(self):
         self.messages = []
-        self.input_buffer = Buffer()
+        self.input_buffer = Buffer(multiline=True)
         self.setup_keybindings()
         self.setup_layout()
         
@@ -86,13 +86,18 @@ class ChatBot:
     def setup_keybindings(self):
         self.kb = KeyBindings()
         
-        @self.kb.add('c-q')
+        @self.kb.add('c-c')
         def exit_(event):
             event.app.exit()
             
         @self.kb.add('enter')
         def process_message(event):
             self.process_input()
+            
+        @self.kb.add('c-j')
+        def newline(event):
+            # Add newline to input
+            self.input_buffer.insert_text('\n')
     
     def setup_layout(self):
         self.chat_control = FormattedTextControl(
@@ -114,30 +119,52 @@ class ChatBot:
             dont_extend_width=False
         )
         
-        # Input area
+        # Input area with prompt
+        input_prompt = Window(
+            content=FormattedTextControl(
+                text=FormattedText([('class:input-prompt', '> ')])
+            ),
+            width=2,
+            dont_extend_height=True
+        )
+        
         input_window = Window(
             content=BufferControl(
                 buffer=self.input_buffer,
-                input_processors=[],
+                input_processors=[]
             ),
-            height=1,
+            height=Dimension(min=1, max=4),
             wrap_lines=True,
             dont_extend_height=True
         )
         
-        # Status bar
+        # Input container with prompt
+        input_area = VSplit([
+            input_prompt,
+            input_window
+        ])
+        
+        # Status bar with keyboard shortcuts like Codex
         status_bar = Window(
             content=FormattedTextControl(
                 text=FormattedText([
-                    ('class:status', ' ChatBot | Ctrl+Q to quit | Enter to send ')
+                    ('class:status-text', ' '),
+                    ('class:status-key', 'send'),
+                    ('class:status-text', '   '),
+                    ('class:status-shortcut', 'Ctrl+J'),
+                    ('class:status-text', ' newline   '),
+                    ('class:status-shortcut', 'Ctrl+T'),
+                    ('class:status-text', ' transcript   '),
+                    ('class:status-shortcut', 'Ctrl+C'),
+                    ('class:status-text', ' quit')
                 ])
             ),
             height=1,
             dont_extend_height=True
         )
         
-        # Input container - just the input window, no label
-        input_container = input_window
+        # Input container with proper styling
+        input_container = input_area
         
         # Main container
         root_container = HSplit([
@@ -153,13 +180,16 @@ class ChatBot:
         # Add welcome message
         self.add_message("Bot", "Hello! How can I help you today?")
         
-        # Style configuration
+        # Style configuration - Codex-like dark theme
         from prompt_toolkit.styles import Style
         style = Style.from_dict({
-            'user': '#00aa00',           # Green for user messages (with >)
-            'bot': '#ffffff',            # White for bot messages  
-            'instruction': '#888888',    # Gray for instructions
-            'status': 'bg:#444444 #ffffff'  # Status bar styling
+            'user': '#00aa00',                    # Green for user messages (with >)
+            'bot': '#ffffff',                     # White for bot messages  
+            'instruction': '#888888',             # Gray for instructions
+            'input-prompt': '#00aa00',            # Green prompt >
+            'status-text': 'bg:#2d2d2d #ffffff',  # Dark background, white text
+            'status-key': 'bg:#2d2d2d #ffffff bold',     # Highlighted commands
+            'status-shortcut': 'bg:#2d2d2d #888888',     # Gray shortcuts
         })
         
         app = Application(
