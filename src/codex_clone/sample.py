@@ -267,7 +267,6 @@ class ChatBot:
         else:
             root_container = HSplit([
                 self.chat_window,
-                Window(height=1, char='-', dont_extend_height=True),
                 input_area,
                 status_bar
             ])
