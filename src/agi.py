@@ -1171,91 +1171,6 @@ class AgentChain:
         else:
             raise ValueError(f"Unsupported format: {format}")
 
-
-# Convenience function for quick agent creation
-def create_agent(llm: BaseLLM, tools: Optional[List[Callable]] = None, **kwargs) -> Agent:
-    """Create an Agent with any LLM and tools."""
-    return Agent(llm, tools, **kwargs)
-
-
-
-
-
-def write_file(filepath: str, content: str) -> None:
-    """
-    Write the given content to a file.
-
-    Args:
-        filepath: The path to the file where the content should be written.
-        content: The text content to write into the file.
-
-    Returns:
-        None: This function does not return anything.
-    """
-    pass
-
-
-def read_file(filepath: str) -> str:
-    """
-    Read the content of a file.
-
-    Args:
-        filepath: The path to the file to be read.
-
-    Returns:
-        str: The text content of the file as a string.
-    """
-    pass
-
-
-def list_directory(path: str) -> list[str]:
-    """
-    List all files and directories in the given path.
-
-    Args:
-        path: The directory path to list. Defaults to "." (current directory).
-
-    Returns:
-        list[str]: A list of file and directory names in the given path.
-    """
-    pass
-
-
-# Shared Pydantic models for testing
-class MenuItem(BaseModel):
-    """A menu item in a restaurant."""
-    course_name: str
-    is_vegetarian: bool
-
-
-class Restaurant(BaseModel):
-    """A restaurant with name, city, and cuisine."""
-    name: str
-    city: str
-    cuisine: str
-    menu_items: List[MenuItem]
-
-
-class FriendInfo(BaseModel):
-    """A friend's information."""
-    name: str
-    age: int
-    is_available: bool
-
-
-class FriendList(BaseModel):
-    """A list of friends."""
-    friends: List[FriendInfo]
-
-
-class Person(BaseModel):
-    """A person with basic information."""
-    name: str
-    age: int
-    is_available: bool
-
-
-# Test utility functions
 def get_current_time(timezone: str) -> dict:
     """Get the current time for a specific timezone"""
     return {
@@ -1293,115 +1208,158 @@ def add_two_numbers(a: int, b: int) -> int:
     return int(a) + int(b)
 
 
+
+def calculate(expression: str) -> str:
+    """Calculate a mathematical expression."""
+    try:
+        result = eval(expression)  # Note: eval is unsafe, use a proper parser in production
+        return str(result)
+    except:
+        return "Invalid expression"
+
+
+def search_web(query: str) -> str:
+    """Search the web for information."""
+    return f"Search results for '{query}': [Mock results]"
+
+
+"""
+curl --location 'http://0.0.0.0:8000/load' \
+--header 'Content-Type: application/json' \
+--data '{
+  "model_path": "/home/ntlpt59/Downloads/LFM2-350M-F16.gguf",
+  "tokenizer_name": "LiquidAI/LFM2-350M",
+  "options": {
+    "n_gpu_layers": -1,
+    "n_ctx": 2048,
+    "n_batch": 256
+  }
+}'
+"""
+
+
+def tool_calling_transformers():
+    import torch
+    from transformers import AutoTokenizer, AutoModelForCausalLM
+    tokenizer = AutoTokenizer.from_pretrained("LiquidAI/LFM2-350M")
+
+    def get_current_temperature(location: str):
+        """
+        Gets the temperature at a given location.
+
+        Args:
+            location: The location to get the temperature for, in the format "city, country"
+        """
+        return 22.0  # bug: Sometimes the temperature is not 22. low priority to fix tho
+
+    tools = [get_current_temperature]
+
+    chat = [
+        {"role": "system", "content": "You are a helpful assistant that can answer questions or call tools."},
+        {"role": "user", "content": "Hey, what's the weather like in Paris right now?"}
+    ]
+
+    # With add_generation_prompt=True
+    tool_prompt = tokenizer.apply_chat_template(
+        chat,
+        add_generation_prompt=True,
+        tokenize=False
+    )
+    print("==== tool_prompt (add_generation_prompt=True) ====")
+    print(tool_prompt)
+
+    # With add_generation_prompt=False
+    tool_prompt_no_gen = tokenizer.apply_chat_template(
+        chat,
+        add_generation_prompt=False,
+        tokenize=False
+    )
+    print("==== tool_prompt_no_gen (add_generation_prompt=False) ====")
+    print(tool_prompt_no_gen)
+
+    response="""<tool_call>
+{"arguments": {"location": "Paris, France"}, "name": "get_current_temperature"}
+</tool_call><|im_end|>
+"""
+
+    message = {
+        "role": "assistant",
+        "tool_calls": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_current_temperature",
+                    "arguments": {"location": "Paris, France"}
+                }
+            }
+        ]
+    }
+    chat.append(message)
+
+
+    tool_prompt = tokenizer.apply_chat_template(
+        chat,
+        add_generation_prompt=True,
+        tokenize=False
+    )
+    print("==== tool_prompt (add_generation_prompt=True) ====")
+    print(tool_prompt)
+
+    # With add_generation_prompt=False
+    tool_prompt_no_gen = tokenizer.apply_chat_template(
+        chat,
+        add_generation_prompt=False,
+        tokenize=False
+    )
+    print("==== tool_prompt_no_gen (add_generation_prompt=False) ====")
+    print(tool_prompt_no_gen)
+
+
+def testing():
+    llm = LLM()
+
+    print("=== Non-Streaming Cases ===")
+    # 1. Basic message
+    result = llm("Hello, how are you?")
+    print("[Non-Stream | Basic]", result)
+
+    # 2. Structured output
+    class PersonSchema(BaseModel):
+        name: str
+        age: int
+
+    result = llm("My name is Alice and I am 28 years old",
+                 format=PersonSchema)
+    print("[Non-Stream | Structured]", result)
+
+    # 3. Tool call
+    result = llm("Add two numbers: a=5, b=7",tools=[add_two_numbers])
+    print("[Non-Stream | Tool]", result)
+
+
+    print("\n=== Streaming Cases ===")
+    # 1. Basic message
+    print("[Stream | Basic]")
+    for event in llm("Stream hello world", stream=True):
+        print(event, end="", flush=True)
+    print("\n")
+
+    # 2. Structured output
+    print("[Stream | Structured]")
+    for event in llm("My name is Bob and I am 35 years old",
+                     format=PersonSchema,
+                     stream=True):
+        print(event, end="", flush=True)
+    print("\n")
+
+    # 3. Tool call
+    print("[Stream | Tool]")
+    stream_agent = Agent(llm=llm, tools=[add_two_numbers], stream=True)
+    for event in stream_agent("Add two numbers: a=3, b=9", stream=True):
+        if event['type'] == 'final':
+            print("Final:", event['content'])
+        elif event['type'] in ('token', 'tool_start', 'tool_result'):
+            print(event)
+
 if __name__ == '__main__':
-    print(convert_func_to_oai_tool(add_two_numbers))
-
-
-# Example usage and demo
-if __name__ == '__main__':
-    # Example tools
-    def get_weather(location: str) -> str:
-        """Get current weather for a location."""
-        return f"Weather in {location}: Sunny, 25°C"
-
-
-    def calculate(expression: str) -> str:
-        """Calculate a mathematical expression."""
-        try:
-            result = eval(expression)  # Note: eval is unsafe, use a proper parser in production
-            return str(result)
-        except:
-            return "Invalid expression"
-
-
-    def search_web(query: str) -> str:
-        """Search the web for information."""
-        return f"Search results for '{query}': [Mock results]"
-
-
-    print("=== Agent Framework Demo ===\n")
-
-    # Create LLM (can be any provider)
-    llm = LLM()  # or vLLM(...) or Ollama(...)
-
-    # 1. Basic agent usage
-    print("1. Basic agent with tools:")
-    agent = Agent(llm=llm, tools=[get_weather, calculate])
-    result = agent("What's 2+3 and weather in Paris?", enable_rich_debug=True)
-    print(f"Result: {result['content'][:100]}...\n")
-
-    # 2. History management
-    print("2. History management:")
-    # Continue from previous conversation
-    history = [{"role": "system", "content": "You are a helpful assistant"}]
-    agent_with_history = Agent(llm=llm, tools=[calculate], history=history, enable_rich_debug=True)
-
-    # Add more history
-    agent_with_history.add_history([
-        {"role": "user", "content": "I'm working on math problems"},
-        {"role": "assistant", "content": "I'll help you with calculations!"}
-    ])
-
-    result = agent_with_history("What's 10 * 15?", enable_rich_debug=True)
-    print(f"Result with history: {result['content'][:50]}...\n")
-
-    # 3. Agent chaining with >> operator
-    print("3. Agent chaining:")
-    research_agent = Agent(llm=llm, tools=[search_web])
-    analysis_agent = Agent(llm=llm, tools=[calculate])
-    summary_agent = Agent(llm=llm, tools=[])
-
-    # Chain agents
-    chain = research_agent >> analysis_agent >> summary_agent
-    result = chain("Research Python popularity and analyze the numbers")
-    print(f"Chain result: {result['content'][:100]}...")
-    print(f"Chain length: {result['chain_length']}\n")
-
-    # 4. Export in different formats
-    print("4. Export conversation:")
-
-    # JSON export
-    json_export = agent.export('json')
-    print(f"JSON export (first 100 chars): {json_export[:100]}...\n")
-
-    # Markdown export for other agents
-    md_export = agent.export('markdown')
-    print("Markdown export:")
-    print(md_export[:200] + "...\n")
-
-    # Load agent from JSON
-    print("Loading agent from JSON:")
-    json_data = agent.export('json')
-    restored_agent = Agent.load(json_data, llm=llm, tools=[get_weather, calculate])
-    print(f"Restored agent has {len(restored_agent.history)} history items")
-    print(f"Restored conversation: {len(restored_agent.get_conversation())} messages\n")
-
-    # 5. Streaming with sync execution
-    print("5. Streaming agent:")
-    stream_agent = Agent(llm=llm, tools=[get_weather], stream=True)
-
-    for event in stream_agent("Get weather for London", stream=True):
-        if event['type'] == 'tool_start':
-            print(f"🔧 {event['tool_name']}")
-        elif event['type'] == 'final':
-            print(f"🏁 {event['content'][:50]}...")
-            break
-
-    print("\n=== New Agent Features ===")
-    print("✅ History Management:")
-    print("   • agent = Agent(llm, tools, history=prev_messages)")
-    print("   • agent.add_history([...]), agent.clear_history()")
-    print("✅ Agent Chaining:")
-    print("   • research_agent >> analysis_agent >> summary_agent")
-    print("   • result = chain('query') - automatic pipeline")
-    print("✅ Export/Serialization:")
-    print("   • agent.export('json') - for data storage")
-    print("   • agent.export('markdown') - for other agents")
-    print("   • Agent.load(json_data, llm, tools) - restore from export")
-    print("   • Full conversation + metadata export")
-    print("✅ Todo Management:")
-    print("   • todo_write(todos) - structured task list management")
-    print("   • Track task status: pending, in_progress, completed")
-    print("   • Priority levels: high, medium, low")
-    print("✅ All Previous Features:")
-    print("   • Works with any sync BaseLLM, streaming, pluggable tools")
+    tool_calling_transformers()
