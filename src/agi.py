@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from typing import Generator, Dict,Union
 
 import requests
@@ -169,24 +170,6 @@ class BaseLLM(ABC):
             return []
         return [convert_func_to_oai_tool(f) if not isinstance(f, dict) else f for f in func]
 
-    def _extract_thinking(self, content):
-        """Extract thinking content from <think> tags."""
-        import re
-        think = ''
-        if '<think>' in content:
-            if '</think>' in content:
-                # Complete thinking block
-                think_match = re.search(r'<think>(.*?)</think>', content, re.DOTALL)
-                if think_match:
-                    think = think_match.group(1).strip()
-                    content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
-            else:
-                # Incomplete thinking block - extract everything after <think>
-                think_match = re.search(r'<think>(.*)', content, re.DOTALL)
-                if think_match:
-                    think = think_match.group(1).strip()
-                    content = re.sub(r'<think>.*', '', content, flags=re.DOTALL)
-        return think, content
 
 
 class LLM(BaseLLM):
@@ -259,9 +242,9 @@ class LLM(BaseLLM):
             return self._convert_api_response(api_result)
 
         except requests.exceptions.RequestException as e:
-            return {"think": "", "content": f"API Error: {str(e)}", "tool_calls": []}
+            return {"content": f"API Error: {str(e)}", "tool_calls": []}
         except Exception as e:
-            return {"think": "", "content": f"Error: {str(e)}", "tool_calls": []}
+            return {"content": f"Error: {str(e)}", "tool_calls": []}
 
     def _stream_chat(self, messages, format_schema, tools, **kwargs):
         """Generate streaming text using HTTP API."""
@@ -315,25 +298,24 @@ class LLM(BaseLLM):
                                     content = chunk_data['content']
                                     if content is not None:
                                         content_parts.append(content)
-                                        # Yield chunk like ollama/vllm do
-                                        yield {"think": "", "content": content, "tool_calls": []}
+                                        yield {"content": content, "tool_calls": []}
                                 elif 'completion' in chunk_data:
                                     # Handle final completion with tool calls
                                     completion = chunk_data['completion']
                                     final_result = self._convert_api_response(completion)
                                     if final_result['tool_calls']:
-                                        yield {"think": "", "content": "", "tool_calls": final_result['tool_calls']}
+                                        yield {"content": "", "tool_calls": final_result['tool_calls']}
                             except json.JSONDecodeError:
                                 continue
 
             except requests.exceptions.RequestException as e:
-                yield {"think": "", "content": f"Stream Error: {str(e)}", "tool_calls": []}
+                yield {"content": f"Stream Error: {str(e)}", "tool_calls": []}
 
         return stream_generator()
 
     def _convert_api_response(self, api_result):
         """Convert API ChatCompletion format to flowgen LLM format."""
-        result = {"think": "", "content": "", "tool_calls": []}
+        result = {"content": "", "tool_calls": []}
 
         # Handle error responses
         if "error" in api_result:
@@ -345,16 +327,14 @@ class LLM(BaseLLM):
             message = api_result["choices"][0].get("message", {})
             content = message.get("content", "")
 
-            # Extract thinking from content if present
-            think, content = self._extract_thinking(content)
-            result["think"] = think
+            # Keep content as-is without extracting thinking
             result["content"] = content
 
         # Extract tool calls
         if "tool_calls" in api_result and api_result["tool_calls"]:
             for tool_call in api_result["tool_calls"]:
                 result["tool_calls"].append({
-                    "id": f"call_{len(result['tool_calls'])}",
+                    "id": str(uuid.uuid4()),
                     "type": "function",
                     "function": {
                         "name": tool_call["name"],
@@ -500,10 +480,7 @@ class Agent:
             # Debug: Show assistant response
             if enable_debug:
                 content = response.get('content', '')
-                think = response.get('think', '')
                 debug_text = ""
-                if think:
-                    debug_text += f"Think: {think}\\n\\n"
                 if content:
                     debug_text += f"Response: {content}"
 
@@ -539,7 +516,6 @@ class Agent:
 
                 return {
                     'content': response.get('content', ''),
-                    'think': response.get('think', ''),
                     'iterations': iteration + 1,
                     'messages': messages,
                     'final': True
@@ -599,7 +575,6 @@ class Agent:
         # Max iterations reached
         return {
             'content': 'Max iterations reached',
-            'think': '',
             'iterations': self.max_iterations,
             'messages': messages,
             'final': True,
@@ -639,7 +614,6 @@ class Agent:
                 if hasattr(llm_stream, '__class__') and 'Stream' in str(llm_stream.__class__):
                     # Streaming response from OpenAI-compatible APIs (vLLM, Gemini, etc.)
                     accumulated_content = ""
-                    accumulated_think = ""
                     tool_calls_dict = {}
 
                     for chunk in llm_stream:
@@ -696,7 +670,6 @@ class Agent:
                     # Build final response from streaming
                     response = {
                         'content': accumulated_content,
-                        'think': accumulated_think,
                         'tool_calls': list(tool_calls_dict.values()) if tool_calls_dict else []
                     }
 
@@ -708,10 +681,7 @@ class Agent:
                 elif hasattr(llm_stream, '__iter__') and not isinstance(llm_stream, (str, dict)):
                     # Custom streaming format (LLM/hgLLM style)
                     accumulated_content = ""
-                    accumulated_think = ""
                     current_buffer = ""
-                    in_thinking = False
-                    thinking_content = ""
                     in_tool_call = False
                     tool_call_content = ""
                     tool_calls_found = []
@@ -726,31 +696,11 @@ class Agent:
                                 token = chunk.get('content', '')
                                 current_buffer += token
 
-                        # Process buffer for thinking and tool call tags
+                        # Process buffer for tool call tags (simplified)
                         while True:
                             processed = False
 
-                            if not in_thinking and not in_tool_call:
-                                # Check for thinking tag
-                                think_match = re.search(r'<think>', current_buffer)
-                                if think_match:
-                                    # Yield content before thinking
-                                    before_think = current_buffer[:think_match.start()]
-                                    if before_think:
-                                        accumulated_content += before_think
-                                        yield {
-                                            'type': 'token',
-                                            'content': before_think,
-                                            'accumulated_content': accumulated_content,
-                                            'iteration': iteration + 1
-                                        }
-
-                                    current_buffer = current_buffer[think_match.end():]
-                                    in_thinking = True
-                                    thinking_content = ""
-                                    processed = True
-                                    continue
-
+                            if not in_tool_call:
                                 # Check for tool_call tag
                                 tool_match = re.search(r'<tool_call>', current_buffer)
                                 if tool_match:
@@ -772,8 +722,7 @@ class Agent:
                                     continue
 
                                 # No special tags - yield as regular content
-                                if current_buffer and not re.search(r'<t?h?i?n?k?>?$|<t?o?o?l?_?c?a?l?l?>?$',
-                                                                    current_buffer):
+                                if current_buffer and not re.search(r'<t?o?o?l?_?c?a?l?l?>?$', current_buffer):
                                     accumulated_content += current_buffer
                                     yield {
                                         'type': 'token',
@@ -782,38 +731,6 @@ class Agent:
                                         'iteration': iteration + 1
                                     }
                                     current_buffer = ""
-
-                            elif in_thinking:
-                                # Look for thinking end tag
-                                end_match = re.search(r'</think>', current_buffer)
-                                if end_match:
-                                    thinking_content += current_buffer[:end_match.start()]
-                                    current_buffer = current_buffer[end_match.end():]
-                                    in_thinking = False
-
-                                    if thinking_content.strip():
-                                        accumulated_think += thinking_content
-                                        yield {
-                                            'type': 'think_block',
-                                            'content': thinking_content.strip(),
-                                            'accumulated_think': accumulated_think,
-                                            'iteration': iteration + 1
-                                        }
-
-                                    thinking_content = ""
-                                    processed = True
-                                    continue
-                                else:
-                                    # Accumulate thinking content and yield as think tokens
-                                    if current_buffer and not re.search(r'</t?h?i?n?k?>?$', current_buffer):
-                                        thinking_content += current_buffer
-                                        yield {
-                                            'type': 'think_token',
-                                            'content': current_buffer,
-                                            'accumulated_think': thinking_content,
-                                            'iteration': iteration + 1
-                                        }
-                                        current_buffer = ""
 
                             elif in_tool_call:
                                 # Look for tool call end tag
@@ -886,7 +803,6 @@ class Agent:
 
                     response = {
                         'content': accumulated_content,
-                        'think': accumulated_think,
                         'tool_calls': tool_calls_found,
                         '_tools_executed_in_streaming': True  # Flag to prevent double execution
                     }
@@ -909,7 +825,6 @@ class Agent:
             yield {
                 'type': 'llm_response',
                 'content': response.get('content', ''),
-                'think': response.get('think', ''),
                 'tool_calls': response.get('tool_calls', []),
                 'iteration': iteration + 1,
                 'messages': messages.copy()
@@ -937,7 +852,6 @@ class Agent:
                 yield {
                     'type': 'final',
                     'content': response.get('content', ''),
-                    'think': response.get('think', ''),
                     'iterations': iteration + 1,
                     'messages': messages.copy()
                 }
@@ -1208,82 +1122,6 @@ class Agent:
         return md
 
 
-class AgentChain:
-    """Chain multiple agents together using >> operator."""
-
-    def __init__(self, agents: List[Agent]):
-        self.agents = agents
-
-    def __rshift__(self, other: Agent) -> 'AgentChain':
-        """Add another agent to the chain."""
-        return AgentChain(self.agents + [other])
-
-    def __call__(self, input: Union[str, List[Dict]], **kwargs) -> Dict:
-        """Execute the agent chain sequentially, passing full conversation history."""
-        current_input = input
-        results = []
-        accumulated_conversation = []
-
-        for i, agent in enumerate(self.agents):
-            if i == 0:
-                # For first agent, use original input
-                result = agent(current_input, **kwargs)
-            else:
-                # For subsequent agents, pass the accumulated conversation history
-                # This gives them full context of the entire chain so far
-                current_input = result.get('content', '')
-                result = agent(current_input, history=accumulated_conversation, **kwargs)
-
-            # Result is already executed, no need to convert
-
-            results.append(result)
-
-            # If streaming was requested, we can't chain properly
-            if (hasattr(result, '__iter__') and
-                not isinstance(result, (str, dict)) and
-                not hasattr(result, 'get')):  # Also allow dict-like objects
-                raise ValueError("Cannot chain streaming agents. Set stream=False.")
-
-            # Accumulate conversation history for next agent
-            # Get the full conversation from this agent's execution
-            agent_conversation = agent.get_conversation()
-            if agent_conversation:
-                accumulated_conversation = agent_conversation
-
-        # Return final result with chain metadata
-        final_result = results[-1].copy()
-        final_result['chain_results'] = results
-        final_result['chain_length'] = len(self.agents)
-        final_result['full_conversation'] = accumulated_conversation
-
-        return final_result
-
-    def export(self, format: str = 'dict') -> Union[Dict, str]:
-        """Export entire chain conversation."""
-        chain_data = {
-            'chain_length': len(self.agents),
-            'agents': []
-        }
-
-        for i, agent in enumerate(self.agents):
-            agent_data = agent.export('dict')
-            agent_data['position'] = i
-            chain_data['agents'].append(agent_data)
-
-        if format == 'dict':
-            return chain_data
-        elif format == 'json':
-            return json.dumps(chain_data, indent=2)
-        elif format == 'markdown':
-            md = f"# Agent Chain Export ({len(self.agents)} agents)\n\n"
-            for i, agent in enumerate(self.agents):
-                md += f"## Agent {i + 1}\n\n"
-                md += agent._export_markdown(agent.export('dict'))
-                md += "\n---\n\n"
-            return md
-        else:
-            raise ValueError(f"Unsupported format: {format}")
-
 def get_current_time(timezone: str) -> dict:
     """Get the current time for a specific timezone"""
     return {
@@ -1441,51 +1279,24 @@ def tool_calling_transformers():
     print(tool_prompt_no_gen)
 
 
-def testing():
-    llm = LLM()
-
-    print("=== Non-Streaming Cases ===")
-    # 1. Basic message
-    result = llm("Hello, how are you?")
-    print("[Non-Stream | Basic]", result)
-
-    # 2. Structured output
-    class PersonSchema(BaseModel):
-        name: str
-        age: int
-
-    result = llm("My name is Alice and I am 28 years old",
-                 format=PersonSchema)
-    print("[Non-Stream | Structured]", result)
-
-    # 3. Tool call
-    result = llm("Add two numbers: a=5, b=7",tools=[add_two_numbers])
-    print("[Non-Stream | Tool]", result)
-
-
+def sample_running():
+    llm = LLM(base_url='http://192.168.170.76:8000')
     print("\n=== Streaming Cases ===")
     # 1. Basic message
     print("[Stream | Basic]")
-    for event in llm("Stream hello world", stream=True):
-        print(event, end="", flush=True)
-    print("\n")
-
-    # 2. Structured output
-    print("[Stream | Structured]")
-    for event in llm("My name is Bob and I am 35 years old",
-                     format=PersonSchema,
+    for event in llm("what is 2+3?", tools=[add_two_numbers],
                      stream=True):
-        print(event, end="", flush=True)
+        print(event, flush=True)
     print("\n")
 
-    # 3. Tool call
-    print("[Stream | Tool]")
-    stream_agent = Agent(llm=llm, tools=[add_two_numbers], stream=True)
-    for event in stream_agent("Add two numbers: a=3, b=9", stream=True):
-        if event['type'] == 'final':
-            print("Final:", event['content'])
-        elif event['type'] in ('token', 'tool_start', 'tool_result'):
-            print(event)
+    # # 3. Tool call
+    # print("[Stream | Tool]")
+    # stream_agent = Agent(llm=llm, tools=[add_two_numbers], stream=True)
+    # for event in stream_agent("Add two numbers: a=3, b=9", stream=True):
+    #     if event['type'] == 'final':
+    #         print("Final:", event['content'])
+    #     elif event['type'] in ('token', 'tool_start', 'tool_result'):
+    #         print(event)
 
 if __name__ == '__main__':
-    testing()
+    sample_running()
