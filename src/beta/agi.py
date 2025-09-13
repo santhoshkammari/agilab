@@ -67,8 +67,8 @@ class Agent:
         self.tool_schemas = [convert_func_to_oai_tool(t) for t in (tools or [])]
         self.messages = []
 
-    def __call__(self, user_content, **kwargs):
-        self.messages.append({"role": "user", "content": user_content})
+    def __call__(self, messages, **kwargs):
+        self.messages.extend(messages)
 
         response_text = []
         for chunk in llm(self.messages, tools=self.tool_schemas, **kwargs):
@@ -90,10 +90,12 @@ if __name__ == "__main__":
     os.environ["BASE_URL"] = "http://192.168.170.76:8000"
     agent = Agent()
 
-    for event in agent("what is 2+3?"):
+    for event in agent([{"role": "user", "content": "what is 2+3?"}]):
         print(event["content"], end="")
 
-    for event in agent("What is first question  i have asked you?"):
+    for event in agent([
+        {"role": "user", "content": "What is first question  i have asked you?"}
+    ]):
         print(event["content"], end="")
 
     print("Conversation history:", agent.messages)
