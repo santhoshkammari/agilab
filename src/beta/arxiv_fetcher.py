@@ -1,3 +1,13 @@
+"""
+arXiv Paper Fetcher
+
+A comprehensive tool for fetching and categorizing the latest Computer Science papers from arXiv.
+Provides intelligent paper categorization, GitHub URL extraction, and optional PDF downloading.
+
+Author: AGI Lab
+License: MIT
+"""
+
 import json
 import re
 
@@ -151,24 +161,58 @@ def fetch_latest_arxiv_cs_papers(
     max_results_per_category: int = 1000,
     download_pdfs: bool = False,
     pdf_dir: Optional[str] = None,
-    user_timezone: str = "Asia/Kolkata",  # IST timezone
-    days: int = 5  # NEW: number of days to fetch
-) -> DataFrame:
-
+    user_timezone: str = "Asia/Kolkata",
+    days: int = 5
+) -> List[Dict]:
     """
-    Fetch the latest arXiv papers for specified CS categories, handling time zones intelligently.
+    Fetch the latest arXiv papers from selected Computer Science categories.
 
-    Args:
-        categories: List of category codes (e.g., "cs.AI") or CSTag objects
-                   If None, fetches papers for all defined CS categories
-        max_results_per_category: Maximum number of results per category
-        download_pdfs: Whether to download PDF files
-        pdf_dir: Directory to save PDFs (default: './arxiv_pdfs')
-        user_timezone: User's timezone (default: "Asia/Kolkata" for IST)
+    This function queries the arXiv API, retrieves metadata for recent papers,
+    assigns content-based categories (via keyword matching), extracts GitHub URLs,
+    and optionally downloads PDFs. Duplicate titles are removed.
 
-    Returns:
-        Dictionary mapping category codes to lists of paper dictionaries
+    Parameters
+    ----------
+    categories : list of str or CSTag, optional
+        Category codes (e.g., "cs.AI") or `CSTag` objects.
+        If None, all predefined CS categories are used.
+    max_results_per_category : int, default=1000
+        Maximum number of results to fetch per category.
+    download_pdfs : bool, default=False
+        Whether to download PDF files for each paper.
+    pdf_dir : str, optional
+        Directory to save downloaded PDFs. Defaults to "./arxiv_pdfs".
+        Only used if `download_pdfs=True`.
+    user_timezone : str, default="Asia/Kolkata"
+        Timezone for aligning daily arXiv updates (IANA format).
+    days : int, default=5
+        Number of past days to include in the search.
+
+    Returns
+    -------
+    papers : list of dict
+        A list of paper metadata dictionaries, one per paper, with keys:
+        - arxiv_id (str): Unique arXiv identifier.
+        - title (str): Paper title.
+        - abstract (str): Paper abstract.
+        - authors (list[str]): Author names.
+        - categories (list[str]): arXiv category codes.
+        - published (str): Publication datetime (ISO format).
+        - updated (str): Last updated datetime (ISO format).
+        - pdf_url (str): Direct PDF download link.
+        - url (str): Abstract page URL.
+        - tag (str): Primary category tag (e.g., "cs.AI").
+        - category (str): Auto-assigned content category (keyword-based).
+        - github_url (str): Extracted GitHub URL from abstract (if found).
+        - local_pdf_path (str, optional): Path to local PDF file if downloaded.
+
+    Examples
+    --------
+    >>> papers = fetch_latest_arxiv_cs_papers(["cs.AI"], days=3)
+    >>> print(f"Found {len(papers)} papers")
+    >>> print(papers[0]["title"])
     """
+
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("arxiv_fetcher")
 
@@ -418,13 +462,12 @@ def fetch_latest_arxiv_cs_papers(
     df_with_categories = handle_category(df)
     df_with_categories['github_url'] = df_with_categories['abstract'].apply(find_github_url)
     df_cleaned = df_with_categories.drop_duplicates(subset=['title'], keep='first')
-    return df_cleaned
+    return df_cleaned.to_dict(orient='records')
 
 import time
 
 if __name__ == '__main__':
     start = time.time()
     df = fetch_latest_arxiv_cs_papers()
-    df.to_csv('today.csv', index=False)
     end = time.time()
     print(f"Runtime: {end - start:.2f} seconds")
