@@ -1,12 +1,14 @@
 from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.layout.containers import VSplit, HSplit, Window
+from prompt_toolkit.layout.containers import VSplit, HSplit, Window, ScrollOffsets
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.layout import Layout
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.layout.dimension import Dimension
+from prompt_toolkit.application import get_app
 from datetime import datetime
+import os
 
 class ChatBot:
     def __init__(self):
@@ -29,16 +31,37 @@ class ChatBot:
             ])
         
         formatted_messages = []
-        for msg in self.messages[-20:]:  # Show last 20 messages
+        # Show last 20 messages
+        recent_messages = self.messages[-20:] if len(self.messages) > 20 else self.messages
+        
+        for msg in recent_messages:
             if "User:" in msg:
                 formatted_messages.append(('class:user', msg + '\n'))
             else:
                 formatted_messages.append(('class:bot', msg + '\n'))
         
+        # Add extra newline at the end to prevent the gap issue
+        if formatted_messages:
+            formatted_messages.append(('', '\n'))
+        
         return FormattedText(formatted_messages)
     
     def update_chat_display(self):
-        self.chat_control.text = self.get_chat_text()
+        # Update the buffer text and move cursor to end
+        if hasattr(self, 'chat_buffer'):
+            # Create text from messages - simple approach
+            text_lines = []
+            recent_messages = self.messages[-50:] if len(self.messages) > 50 else self.messages
+            
+            for msg in recent_messages:
+                text_lines.append(msg)
+            
+            # Set buffer text and move cursor to end
+            self.chat_buffer.text = '\n'.join(text_lines)
+            # Move cursor to end to show latest messages at bottom
+            self.chat_buffer.cursor_position = len(self.chat_buffer.text)
+        else:
+            self.chat_control.text = self.get_chat_text()
         
     def process_input(self):
         user_input = self.input_buffer.text.strip()
@@ -79,10 +102,18 @@ class ChatBot:
             show_cursor=False
         )
         
-        # Chat history area
-        chat_window = Window(
-            content=self.chat_control,
-            wrap_lines=True
+        # Chat history area with buffer to show messages from bottom
+        self.chat_buffer = Buffer(multiline=True)
+        
+        self.chat_window = Window(
+            content=BufferControl(
+                buffer=self.chat_buffer,
+                focusable=False
+            ),
+            wrap_lines=True,
+            always_hide_cursor=True,
+            dont_extend_height=False,
+            dont_extend_width=False
         )
         
         # Input area
@@ -91,8 +122,9 @@ class ChatBot:
                 buffer=self.input_buffer,
                 input_processors=[],
             ),
-            height=Dimension(min=1, max=3),
-            wrap_lines=True
+            height=1,
+            wrap_lines=True,
+            dont_extend_height=True
         )
         
         # Input label
@@ -100,7 +132,8 @@ class ChatBot:
             content=FormattedTextControl(
                 text=FormattedText([('class:input-label', '> ')])
             ),
-            width=2
+            width=2,
+            dont_extend_height=True
         )
         
         # Status bar
@@ -110,7 +143,8 @@ class ChatBot:
                     ('class:status', ' ChatBot v1.0 | Ctrl+Q to quit | Enter to send ')
                 ])
             ),
-            height=1
+            height=1,
+            dont_extend_height=True
         )
         
         # Input container
@@ -121,8 +155,8 @@ class ChatBot:
         
         # Main container
         root_container = HSplit([
-            chat_window,
-            Window(height=1, char='-'),  # separator
+            self.chat_window,
+            Window(height=1, char='-', dont_extend_height=True),  # separator
             input_container,
             status_bar
         ])
