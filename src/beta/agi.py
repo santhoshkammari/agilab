@@ -1,25 +1,12 @@
 import requests
 import json
-
 import os
 import requests
 import json
+import inspect
 
 def llm(messages, base_url=None, **kwargs):
-    """
-    Simple LLM client that always streams responses.
-
-    Args:
-        messages (list[dict]): Conversation messages [{"role": "user", "content": "..."}]
-        base_url (str | None): API base URL (priority: arg > env > default)
-        **kwargs: Extra options (max_tokens, temperature, top_p, tools, etc.)
-
-    Yields:
-        dict: Streaming chunks {"content": "..."} or {"tool_calls": [...]}
-    """
-    # Priority: arg > env > default
-    if base_url is None:
-        base_url = os.getenv("BASE_URL", "http://0.0.0.0:8000")
+    base_url = baseurl or os.getenv("BASE_URL", "http://0.0.0.0:8000")
     base_url = base_url.rstrip("/")
 
     payload = {
@@ -29,7 +16,7 @@ def llm(messages, base_url=None, **kwargs):
             "max_tokens": kwargs.get("max_tokens", 1000),
             "temperature": kwargs.get("temperature", 0.8),
             "top_p": kwargs.get("top_p", 0.95),
-            "stream": True  # always streaming
+            "stream": True
         }
     }
 
@@ -49,11 +36,8 @@ def llm(messages, base_url=None, **kwargs):
         yield {"content": f"Error: {e}"}
 
 
-import inspect
-
 
 def convert_func_to_oai_tool(func):
-    """Convert Python function into OpenAI-style tool schema."""
     sig = inspect.signature(func)
     props, required = {}, []
     for name, param in sig.parameters.items():
@@ -79,10 +63,6 @@ class Agent:
         self.messages = []  # keep conversation history here
 
     def __call__(self, user_content, **kwargs):
-        """
-        Run one assistant turn.
-        Adds user message automatically, streams tokens back.
-        """
         self.messages.append({"role": "user", "content": user_content})
 
         response_text = []
@@ -97,7 +77,6 @@ class Agent:
             self.messages.append({"role": "assistant", "content": "".join(response_text)})
 
     def clear(self):
-        """Reset the conversation."""
         self.messages = []
 
 
@@ -117,5 +96,3 @@ if __name__ == "__main__":
         print(event['content'], end="")
 
     print("Conversation history:", agent.messages)
-
-
