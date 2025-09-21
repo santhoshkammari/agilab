@@ -435,7 +435,7 @@ class UniversalLogger:
 
 # Convenience function for quick setup
 def get_logger(
-    name: str = "app",
+    name: str = "logs",
     level: Optional[str] = None,
     enable_rich: bool = True,
     enable_files: bool = True,
