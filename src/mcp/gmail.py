@@ -12,7 +12,7 @@ import os
 import mimetypes
 import time
 import logging
-from typing import Optional
+from typing import Optional,List
 
 from fastmcp import FastMCP
 
@@ -222,16 +222,17 @@ def gmail(body, subject="AiLite Email", to_email='santhoshkammari1999@gmail.com'
 mcp = FastMCP("Gmail Server")
 
 @mcp.tool
-def gmail_send(subject: str, body: str, to: Optional[str] = None):
+def gmail_send(subject: str, body: str, to: Optional[str] = None, attachments: Optional[List[str]] = None):
     """Send an email via Gmail. Only subject and body are required.
 
     Optional:
     - to: recipient email; if omitted, uses the default in GmailAutomation.
+    - attachments: list of file paths to attach to the email
     """
     ga = GmailAutomation()
     to_email = to if to else 'santhoshkammari1999@gmail.com'
-    ok = ga.send(subject=subject, message=body, to_email=to_email)
-    return {"ok": bool(ok), "to": to_email, "subject": subject}
+    ok = ga.send(subject=subject, message=body, to_email=to_email, attachments=attachments)
+    return {"ok": bool(ok), "to": to_email, "subject": subject, "attachments": attachments or []}
 
 tool_functions = {
     "gmail_send": gmail_send,
@@ -239,3 +240,4 @@ tool_functions = {
 
 if __name__ == "__main__":
     mcp.run()
+
