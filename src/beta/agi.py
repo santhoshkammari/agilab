@@ -5,8 +5,10 @@ import requests
 import json
 import inspect
 
+from simple_tools import tools
+
 def llm(messages, base_url=None, **kwargs):
-    base_url = baseurl or os.getenv("BASE_URL", "http://0.0.0.0:8000")
+    base_url = base_url or os.getenv("BASE_URL", "http://0.0.0.0:8000")
     base_url = base_url.rstrip("/")
 
     payload = {
@@ -82,17 +84,15 @@ class Agent:
 
 if __name__ == "__main__":
     import os
-    os.environ['BASE_URL'] = "http://192.168.170.76:8000"
+    #os.environ['BASE_URL'] = "http://192.168.170.76:8000"
     # messages = [{"role": "user", "content": "What is 2+3?"}]
     # for chunk in llm(messages):
     #     print(chunk)
 
-    agent = Agent()
+    agent = Agent(tools = list(tools.values()))
+    agent.messages.append({"role":"system","content":"you are helpful assistant, for queries releated to tools use them else answer normally"})
 
-    for event in agent("what is 2+3?"):
-        print(event['content'],end="")
+    while True:
+        for event in agent(input(">")):
+            print(event['content'],end="")
 
-    for event in agent("What is first question  i have asked you?"):
-        print(event['content'], end="")
-
-    print("Conversation history:", agent.messages)
