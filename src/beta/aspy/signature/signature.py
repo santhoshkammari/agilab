@@ -88,11 +88,11 @@ class Signature:
         out_fields = {k: _field_def(t) for k, t in self.output_types.items()}
 
         self.Input = create_model("Input", __base__=BaseModel, **in_fields)   # type: ignore
-        self.Output = create_model("Output", __base__=BaseModel, **out_fields) # type: ignore
+        self.Prediction = create_model("Prediction", __base__=BaseModel, **out_fields) # type: ignore
 
     def __call__(self):
-        """Convenience: return (Input, Output) tuple."""
-        return self.Input, self.Output
+        """Convenience: return (Input, Prediction) tuple."""
+        return self.Input, self.Prediction
 
     def __repr__(self):
         return f"Signature({self.spec!r})"

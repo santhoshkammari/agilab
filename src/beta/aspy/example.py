@@ -35,11 +35,47 @@ print(O2.model_json_schema()["properties"])  # ok:bool, meta:dict(str, any) [opt
 # '''
 
 lm = a.LM(api_base="http://192.168.170.76:8000")
-res = lm([[{"role":"user","content":"tell me a fact in 5 lines"}]]*12, temperature=2)
-print(res)
 
+# Test basic ChainOfThought usage
+print("\n=== Testing ChainOfThought ===")
+math = a.ChainOfThought("question -> answer: float")
+math.set_lm(lm)
+result = math(question="Two dice are tossed. What is the probability that the sum equals two?")
+print(result)
 
+# Test basic Predict usage
+print("\n=== Testing Predict ===")
+predictor = a.Predict("query -> response")
+predictor.set_lm(lm)
+result = predictor(query="What is the capital of France?")
+print(result)
 
+# Test multi-stage module like the DraftArticle example
+print("\n=== Testing Multi-stage Module ===")
+class DraftArticle(a.Module):
+    def __init__(self):
+        super().__init__()
+        self.build_outline = a.ChainOfThought("topic -> title, sections:[str]")
+        self.draft_section = a.ChainOfThought("topic, section_heading -> content")
 
+    def forward(self, topic):
+        outline = self.build_outline(topic=topic)
+        sections = []
+
+        # Handle sections list
+        if hasattr(outline, 'sections') and outline.sections:
+            for heading in outline.sections[:2]:  # Limit to 2 sections for demo
+                section = self.draft_section(topic=outline.title, section_heading=f"## {heading}")
+                sections.append(section.content)
+
+        return a.Prediction(title=outline.title, sections=sections)
+
+draft_article = DraftArticle()
+draft_article.set_lm(lm)
+draft_article.build_outline.set_lm(lm)
+draft_article.draft_section.set_lm(lm)
+
+article = draft_article(topic="World Cup 2002")
+print(article)
 
 
