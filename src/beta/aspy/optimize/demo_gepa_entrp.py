@@ -3,9 +3,10 @@ Demo of GEPA evolutionary optimization in aspy
 """
 
 import aspy
+from lm.lm_threadpooled import LM  # Use threadpool version
 
-# Setup
-lm = aspy.LM(api_base="http://192.168.170.76:8000")
+# Setup with threadpool LM for batch processing
+lm = LM(api_base="http://192.168.170.76:8000", max_workers=8)
 aspy.configure(lm=lm)
 
 print("🧬 GEPA Evolutionary Optimization Demo")
