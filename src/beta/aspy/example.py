@@ -1,3 +1,8 @@
+"""
+vllm serve Qwen/Qwen3-4B-Instruct-2507 --gpu-memory-utilization 0.4 --max-model-len 10k
+"""
+import os
+
 import aspy as a
 
 sig = a.Signature("question -> answer")
@@ -9,10 +14,6 @@ print(Input.model_json_schema()["properties"])   # {'question': {'title': 'Quest
 # Output model: one required str field "answer"
 print(Output.model_json_schema()["properties"])  # {'answer': {'title': 'Answer', 'type': 'string'}}
 
-sig2 = a.Signature("a:int, flags:[bool] -> ok:bool, meta:str")
-I2, O2 = sig2()
-print(I2.model_json_schema()["properties"])  # a:int, flags:list(bool)
-print(O2.model_json_schema()["properties"])  # ok:bool, meta:dict(str, any) [optional]
 
 #
 # class Outline(a.Signature):
@@ -45,10 +46,18 @@ print(result)
 
 # Test basic Predict usage
 print("\n=== Testing Predict ===")
-predictor = a.Predict("query -> response")
+predictor = a.Predict("query -> two_lines")
 predictor.set_lm(lm)
 result = predictor(query="What is the capital of France?")
 print(result)
+
+# Test basic Predict usage
+print("\n=== Testing Predict ===")
+predictor = a.Predict("context,query -> answer")
+predictor.set_lm(lm)
+result = predictor(context='bob age is 25',query="age of bob?")
+print(result)
+
 
 # Test multi-stage module like the DraftArticle example
 print("\n=== Testing Multi-stage Module ===")

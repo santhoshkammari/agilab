@@ -1,5 +1,7 @@
 # aspy/lm.py
 import asyncio
+import os
+
 import aiohttp
 import requests
 from typing import Any, Dict, List, Union
