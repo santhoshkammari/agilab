@@ -11,36 +11,39 @@ aspy.configure(lm=lm)
 print("🧬 GEPA Evolutionary Optimization Demo")
 print("=" * 50)
 
-# Create training dataset for evolution
-print("📚 Creating training dataset...")
-trainset = [
-    aspy.Example(question="Classify sentiment: 'I love this movie!'", answer="positive"),
-    aspy.Example(question="Classify sentiment: 'This is terrible.'", answer="negative"),
-    aspy.Example(question="Classify sentiment: 'It was okay, nothing special.'", answer="neutral"),
-    aspy.Example(question="Classify sentiment: 'Amazing performance!'", answer="positive"),
-    aspy.Example(question="Classify sentiment: 'Worst experience ever.'", answer="negative"),
-    aspy.Example(question="Classify sentiment: 'Pretty good overall.'", answer="positive"),
-    aspy.Example(question="Classify sentiment: 'Not bad, could be better.'", answer="neutral"),
-    aspy.Example(question="Classify sentiment: 'Absolutely fantastic!'", answer="positive"),
-]
+import requests
+import dspy
+import json
+import random
 
-# Create validation dataset
-print("🔍 Creating validation dataset...")
-valset = [
-    aspy.Example(question="Classify sentiment: 'Great job!'", answer="positive"),
-    aspy.Example(question="Classify sentiment: 'Very disappointing.'", answer="negative"),
-    aspy.Example(question="Classify sentiment: 'It was fine.'", answer="neutral"),
-    aspy.Example(question="Classify sentiment: 'Horrible quality.'", answer="negative"),
-    aspy.Example(question="Classify sentiment: 'Excellent work!'", answer="positive"),
-]
+def init_dataset():
+    # Load from the url
+    url = "https://raw.githubusercontent.com/meta-llama/llama-prompt-ops/refs/heads/main/use-cases/facility-support-analyzer/dataset.json"
+    dataset = json.loads(requests.get(url).text)
+    dspy_dataset = [
+        dspy.Example({
+            "message": d['fields']['input'],
+            "answer": d['answer'],
+        }).with_inputs("message")
+        for d in dataset
+    ]
+    random.Random(0).shuffle(dspy_dataset)
+    train_set = dspy_dataset[:int(len(dspy_dataset) * 0.33)]
+    val_set = dspy_dataset[int(len(dspy_dataset) * 0.33):int(len(dspy_dataset) * 0.66)]
+    test_set = dspy_dataset[int(len(dspy_dataset) * 0.66):]
+
+    return train_set, val_set, test_set
+
+trainset,valset,testset=init_dataset()
 
 print(f"Training examples: {len(trainset)}")
 print(f"Validation examples: {len(valset)}")
 print()
+print(trainset[0])
 
 # Create initial module
 print("🏗️ Creating initial sentiment classifier...")
-sentiment_classifier = aspy.Predict("question -> answer")
+sentiment_classifier = aspy.Predict("message -> answer")
 
 # Test baseline performance
 print("📊 Testing baseline performance...")

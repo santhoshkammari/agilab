@@ -142,6 +142,64 @@ Respond with valid JSON matching this schema:
             # Fallback to raw prediction
             return Prediction(**output_data)
 
+    def batch_forward(self, inputs_list):
+        """Batch forward pass through the language model."""
+        # Try to get LM: explicit -> context -> error
+        lm = self._lm
+        if not lm:
+            from .. import get_lm
+            lm = get_lm()
+
+        if not lm:
+            raise ValueError("No language model set. Use aspy.configure(lm=...) or pass lm in constructor.")
+
+        # Build batch of messages
+        messages_batch = []
+        for inputs in inputs_list:
+            messages = self._build_prompt(**inputs)
+            messages_batch.append(messages)
+
+        response_format = self._get_response_format()
+
+        # Call LM with batch of messages
+        responses = lm(messages_batch, response_format=response_format)
+
+        # Process batch responses
+        predictions = []
+        for response in responses:
+            if isinstance(response, Exception):
+                # Handle exceptions in batch
+                predictions.append(Prediction(error=str(response)))
+                continue
+
+            try:
+                content = response["choices"][0]["message"]["content"]
+
+                # Parse JSON response
+                try:
+                    output_data = json.loads(content)
+                except json.JSONDecodeError:
+                    # Fallback: create output with raw content
+                    output_fields = list(self.signature.output_types.keys())
+                    if len(output_fields) == 1:
+                        output_data = {output_fields[0]: content}
+                    else:
+                        output_data = {field: content for field in output_fields}
+
+                # Create Prediction instance
+                _, Prediction = self.signature()
+                try:
+                    prediction_instance = Prediction(**output_data)
+                    predictions.append(Prediction(**prediction_instance.model_dump()))
+                except Exception:
+                    # Fallback to raw prediction
+                    predictions.append(Prediction(**output_data))
+
+            except Exception as e:
+                predictions.append(Prediction(error=str(e)))
+
+        return predictions
+
 
 class ChainOfThought(Predict):
     """Chain of thought reasoning module."""

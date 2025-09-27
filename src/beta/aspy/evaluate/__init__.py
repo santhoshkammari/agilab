@@ -33,7 +33,9 @@ class Evaluate:
         devset: List[Example],
         metric: Callable,
         display_progress: bool = True,
-        save_as_json: Optional[str] = None
+        save_as_json: Optional[str] = None,
+        batch_size: int = 4,
+        batched: bool = True
     ):
         """
         Args:
@@ -41,11 +43,15 @@ class Evaluate:
             metric: Function that takes (example, prediction) and returns a score
             display_progress: Whether to show tqdm progress bar
             save_as_json: Optional path to save results as JSON
+            batch_size: Size of batches for evaluation (default: 4)
+            batched: Whether to use batch processing (default: True)
         """
         self.devset = devset
         self.metric = metric
         self.display_progress = display_progress
         self.save_as_json = save_as_json
+        self.batch_size = batch_size
+        self.batched = batched
 
     def __call__(self, module: Module) -> EvaluationResult:
         """
@@ -57,6 +63,13 @@ class Evaluate:
         Returns:
             EvaluationResult with score and detailed results
         """
+        if self.batched and hasattr(module, 'batch_forward'):
+            return self._evaluate_batched(module)
+        else:
+            return self._evaluate_sequential(module)
+
+    def _evaluate_sequential(self, module: Module) -> EvaluationResult:
+        """Sequential evaluation (original implementation)."""
         results = []
         total_score = 0.0
 
@@ -89,6 +102,62 @@ class Evaluate:
         final_score = (total_score / len(self.devset)) * 100 if self.devset else 0.0
 
         print(f"\nEvaluation complete: {final_score:.2f}% ({total_score:.1f}/{len(self.devset)})")
+
+        # Save results if requested
+        if self.save_as_json:
+            self._save_results_json(results, final_score)
+
+        return EvaluationResult(score=final_score, results=results)
+
+    def _evaluate_batched(self, module: Module) -> EvaluationResult:
+        """Batched evaluation for improved performance."""
+        results = []
+        total_score = 0.0
+
+        # Create batches
+        batches = [
+            self.devset[i:i + self.batch_size]
+            for i in range(0, len(self.devset), self.batch_size)
+        ]
+
+        # Create progress bar for batches
+        iterator = tqdm.tqdm(batches, desc="Evaluating (batched)", disable=not self.display_progress)
+
+        for batch in iterator:
+            try:
+                # Prepare batch inputs
+                batch_inputs = [example.inputs() for example in batch]
+
+                # Get batch predictions
+                predictions = module.batch_forward(batch_inputs)
+
+                # Process batch results
+                batch_scores = []
+                for example, prediction in zip(batch, predictions):
+                    try:
+                        score = self.metric(example, prediction)
+                        total_score += score
+                        batch_scores.append(score)
+                        results.append((example, prediction, score))
+                    except Exception as e:
+                        print(f"Error calculating metric for example: {e}")
+                        results.append((example, prediction, 0.0))
+                        batch_scores.append(0.0)
+
+                # Update progress bar with current average
+                current_avg = total_score / len(results) if results else 0.0
+                iterator.set_postfix(avg_score=f"{current_avg:.3f}", batch_avg=f"{sum(batch_scores)/len(batch_scores):.3f}")
+
+            except Exception as e:
+                # Handle batch errors gracefully
+                print(f"Error evaluating batch: {e}")
+                for example in batch:
+                    results.append((example, Prediction(error=str(e)), 0.0))
+
+        # Calculate final score as percentage
+        final_score = (total_score / len(self.devset)) * 100 if self.devset else 0.0
+
+        print(f"\nEvaluation complete: {final_score:.2f}% ({total_score:.1f}/{len(self.devset)}) [Batched: batch_size={self.batch_size}]")
 
         # Save results if requested
         if self.save_as_json:
