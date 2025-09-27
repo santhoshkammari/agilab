@@ -1,13 +1,6 @@
 """
 vllm serve Qwen/Qwen3-4B-Instruct-2507 --gpu-memory-utilization 0.4 --max-model-len 10k
-"""
-from pydantic import BaseModel
 
-import aspy as a
-
-
-sig = a.Signature("question:str,age:int -> age:int,year:int,name:str")
-lm = a.LM(api_base="http://192.168.170.76:8000")
 
 #
 # prompt created via XML tagging + dspy signature to prompt style. + followed by output + inputfields.
@@ -21,18 +14,33 @@ lm = a.LM(api_base="http://192.168.170.76:8000")
 # <dynamic_user_level_input_fields>
 # </dynamic_user_level_input_fields>
 # '''
+
+
+"""
+from pydantic import BaseModel
+
+class Dice(BaseModel):
+    answer:str
+    reason:str
+
+import aspy as a
+
+lm = a.LM(api_base="http://192.168.170.76:8000")
+a.configure(lm=lm)
+
+sig = a.Signature("question -> answer")
 math = a.ChainOfThought(sig)
-math.set_lm(lm)
 result = math(question="Two dice are tossed. What is the probability that the sum equals two?")
 print(result)
 
 print("\n=== Testing Predict ===")
 predictor = a.Predict("query -> two_lines")
-predictor.set_lm(lm)
 result = predictor(query="What is the capital of France?")
 print(result)
 
 print("\n=== Testing Multi-stage Module ===")
+
+
 class DraftArticle(a.Module):
     def __init__(self):
         super().__init__()
@@ -51,12 +59,8 @@ class DraftArticle(a.Module):
 
         return a.Prediction(title=outline.title, sections=sections)
 
-draft_article = DraftArticle()
-draft_article.set_lm(lm)
-draft_article.build_outline.set_lm(lm)
-draft_article.draft_section.set_lm(lm)
 
+# Zero configuration needed - everything just works!
+draft_article = DraftArticle()
 article = draft_article(topic="World Cup 2002")
 print(article)
-
-
