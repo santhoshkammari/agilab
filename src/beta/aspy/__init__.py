@@ -2,7 +2,7 @@ import contextvars
 
 from .lm.lm import LM
 from .signature.signature import Signature, register_type, get_registered_types
-from .module import Module, Predict, ChainOfThought, Prediction
+from .predict.predict import Module, Predict, ChainOfThought, Prediction
 
 # Global LM context
 _current_lm = contextvars.ContextVar('lm', default=None)

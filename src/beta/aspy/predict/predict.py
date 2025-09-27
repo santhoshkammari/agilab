@@ -107,7 +107,7 @@ Respond with valid JSON matching this schema:
         # Try to get LM: explicit -> context -> error
         lm = self._lm
         if not lm:
-            from . import get_lm
+            from .. import get_lm
             lm = get_lm()
 
         if not lm:
