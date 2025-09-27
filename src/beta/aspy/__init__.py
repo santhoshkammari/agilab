@@ -3,6 +3,7 @@ import contextvars
 from .lm.lm import LM
 from .signature.signature import Signature, register_type, get_registered_types
 from .predict.predict import Module, Predict, ChainOfThought, Prediction
+from .evaluate import Evaluate, EvaluationResult, exact_match, contains_match, Example
 
 # Global LM context
 _current_lm = contextvars.ContextVar('lm', default=None)

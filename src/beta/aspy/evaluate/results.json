@@ -1,0 +1,37 @@
+{
+  "score": 33.33333333333333,
+  "total_examples": 3,
+  "results": [
+    {
+      "example": {
+        "question": "What is 2+2?",
+        "answer": "4"
+      },
+      "prediction": {
+        "error": "1 validation error for Input\ncontext\n  Field required [type=missing, input_value={'question': 'What is 2+2?'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing"
+      },
+      "score": 0.0
+    },
+    {
+      "example": {
+        "question": "Capital of France?",
+        "answer": "Paris"
+      },
+      "prediction": {
+        "error": "1 validation error for Input\ncontext\n  Field required [type=missing, input_value={'question': 'Capital of France?'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing"
+      },
+      "score": 0.0
+    },
+    {
+      "example": {
+        "question": "What is the result?",
+        "context": "5 + 3",
+        "answer": "8"
+      },
+      "prediction": {
+        "answer": "8"
+      },
+      "score": 1.0
+    }
+  ]
+}
