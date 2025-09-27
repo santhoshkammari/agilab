@@ -311,7 +311,8 @@ class GEPA:
         for example in minibatch:
             try:
                 # Execute module and gather trace
-                prediction = module(example.inputs())
+                inputs = example.inputs()
+                prediction = module(**inputs)
 
                 # Get feedback from feedback function
                 feedback_result = self.feedback_function(example, prediction, self.metric)
@@ -394,25 +395,39 @@ class GEPA:
     def _evaluate_single(self, module: Module, example: Example) -> float:
         """Evaluate module on a single example."""
         try:
-            prediction = module(example.inputs())
-            return self.metric(example, prediction)
-        except Exception:
+            # Call module with keyword arguments, not positional
+            inputs = example.inputs()
+            prediction = module(**inputs)
+            score = self.metric(example, prediction)
+            return score
+        except Exception as e:
+            if self.verbose:
+                print(f"⚠️ Evaluation failed: {e}")
             return 0.0
 
     def _create_module_with_instruction(self, original_module: Module, new_instruction: str) -> Module:
         """Create a new module with modified instruction."""
         try:
-            # Create a new Predict module with updated instruction
+            # Preserve the original signature and just update instructions
             if hasattr(original_module, 'signature'):
                 from ..signature.signature import Signature
-                # Create new signature with updated instructions
-                new_sig = Signature(original_module.signature.spec, instructions=new_instruction)
-                new_module = Predict(new_sig)
+
+                # Create new signature preserving all original properties
+                new_sig = Signature(
+                    original_module.signature.spec,
+                    instructions=new_instruction,
+                    custom_types=original_module.signature.custom_types
+                )
+
+                # Create new module with preserved signature
+                new_module = type(original_module)(new_sig)
                 return new_module
             else:
                 # Create basic Predict with instruction
                 new_module = Predict("input -> output", instructions=new_instruction)
                 return new_module
-        except Exception:
+        except Exception as e:
+            if self.verbose:
+                print(f"⚠️ Module creation failed: {e}, using original")
             # Fallback: return copy of original
             return original_module
