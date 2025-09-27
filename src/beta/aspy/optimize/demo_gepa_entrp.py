@@ -37,7 +37,7 @@ def init_dataset():
     val_set = dspy_dataset[int(len(dspy_dataset) * 0.33):int(len(dspy_dataset) * 0.66)]
     test_set = dspy_dataset[int(len(dspy_dataset) * 0.66):]
 
-    return train_set[:10], val_set[:10], test_set
+    return train_set, val_set, test_set
 
 trainset,valset,testset=init_dataset()
 
@@ -117,11 +117,11 @@ print()
 print("🔧 Setting up GEPA optimizer...")
 gepa_optimizer = aspy.GEPA(
     metric=metric,
-    minibatch_size=3,      # Size of minibatch for evaluation
-    budget=50,             # Total rollout budget
-    pareto_set_size=5,     # Use valset size for Pareto evaluation
-    verbose=True,
-    seed=42
+    # minibatch_size=10,      # Size of minibatch for evaluation
+    # budget=500,             # Total rollout budget
+    # pareto_set_size=66,     # Use valset size for Pareto evaluation
+    # verbose=True,
+    # seed=42
 )
 
 # Run GEPA optimization
@@ -165,9 +165,8 @@ test_examples = [
 
 for message in test_examples:
     result_pred = result.best_module(message=message)
-    answer = getattr(result_pred, 'answer', 'No answer field')
     print(f"Q: {message}")
-    print(f"A: {answer}")
+    print(f"A: {result_pred}")
     print()
 
 print("✅ GEPA optimization demo complete!")
