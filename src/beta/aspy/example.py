@@ -1,28 +1,15 @@
 """
 vllm serve Qwen/Qwen3-4B-Instruct-2507 --gpu-memory-utilization 0.4 --max-model-len 10k
 """
-import os
+from pydantic import BaseModel
 
 import aspy as a
 
-sig = a.Signature("question -> answer")
-Input, Output = sig()
 
-# Input model: one required str field "question"
-print(Input.model_json_schema()["properties"])   # {'question': {'title': 'Question', 'type': 'string'}}
-
-# Output model: one required str field "answer"
-print(Output.model_json_schema()["properties"])  # {'answer': {'title': 'Answer', 'type': 'string'}}
-
+sig = a.Signature("question:str,age:int -> age:int,year:int,name:str")
+lm = a.LM(api_base="http://192.168.170.76:8000")
 
 #
-# class Outline(a.Signature):
-#     """Outline a thorough overview of a topic."""
-#
-#     topic: str = a.InputField()
-#     title: str = a.OutputField()
-#     sections: list[str] = a.OutputField() #or a.OutputField(pydanticBaseModelclassname) ex: a.OutputField(Person).
-# '''
 # prompt created via XML tagging + dspy signature to prompt style. + followed by output + inputfields.
 # example:
 # <system_prompt>
@@ -34,32 +21,17 @@ print(Output.model_json_schema()["properties"])  # {'answer': {'title': 'Answer'
 # <dynamic_user_level_input_fields>
 # </dynamic_user_level_input_fields>
 # '''
-
-lm = a.LM(api_base="http://192.168.170.76:8000")
-
-# Test basic ChainOfThought usage
-print("\n=== Testing ChainOfThought ===")
-math = a.ChainOfThought("question -> answer: float")
+math = a.ChainOfThought(sig)
 math.set_lm(lm)
 result = math(question="Two dice are tossed. What is the probability that the sum equals two?")
 print(result)
 
-# Test basic Predict usage
 print("\n=== Testing Predict ===")
 predictor = a.Predict("query -> two_lines")
 predictor.set_lm(lm)
 result = predictor(query="What is the capital of France?")
 print(result)
 
-# Test basic Predict usage
-print("\n=== Testing Predict ===")
-predictor = a.Predict("context,query -> answer")
-predictor.set_lm(lm)
-result = predictor(context='bob age is 25',query="age of bob?")
-print(result)
-
-
-# Test multi-stage module like the DraftArticle example
 print("\n=== Testing Multi-stage Module ===")
 class DraftArticle(a.Module):
     def __init__(self):
