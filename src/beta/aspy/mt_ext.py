@@ -36,6 +36,7 @@ class EntityExtractor(a.Module):
                        instructions="Final verification: Review the complete text and fix any missed entities or incorrect categorizations. Ensure ALL entities mentioned in the text are captured in the appropriate category. Look for patterns like 'including X', 'excluding Y', and main entity names.")
         )
 
+
     def _clean_entities(self, entities):
         """Remove 'all'/'All'/'ALL' from entity lists"""
         if not entities:
