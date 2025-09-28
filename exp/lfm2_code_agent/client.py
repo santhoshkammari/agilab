@@ -25,7 +25,7 @@ class LFMClient:
         )
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
 
-        # Default tools
+        # Default tools from code_tools.py
         self.tools = {
             "read_file": read_file,
             "write_file": write_file,
@@ -123,8 +123,8 @@ class LFMClient:
         if "get_weather" not in self.tools:
             self.tools["get_weather"] = self.get_weather
 
-        # Use provided tools or default tools (only read_file and write_file work)
-        tool_functions = tools if tools else [read_file, write_file]
+        # Use provided tools or default tools from code_tools.py
+        tool_functions = tools if tools else [read_file, write_file, delete_lines]
 
         conversation_history = []
         current_content = messages[-1]["content"] if messages else ""
