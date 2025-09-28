@@ -14,31 +14,44 @@ def read_file(filepath: str) -> str:
         FileNotFoundError: If the file does not exist.
         IOError: If there's an error reading the file.
     """
-    with open(filepath, 'r', encoding='utf-8') as f:
-        return f.read()
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return f"Successfully read {len(content)} characters from {filepath}:\n\n{content}"
+    except FileNotFoundError:
+        return f"Error: File '{filepath}' not found."
+    except IOError as e:
+        return f"Error reading file '{filepath}': {e}"
 
 
-def write_file(filepath: str, content: str) -> None:
+def write_file(filepath: str, content: str) -> str:
     """Write content to a file.
 
     Args:
         filepath: Path to the file to write.
         content: Content to write to the file.
 
+    Returns:
+        str: A success message indicating the file was written.
+
     Raises:
         IOError: If there's an error writing to the file.
     """
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(content)
+    return f"Successfully wrote {len(content)} characters to {filepath}"
 
 
-def delete_lines(filepath: str, start: int, end: int) -> None:
+def delete_lines(filepath: str, start: int, end: int) -> str:
     """Delete lines from a file between start and end (inclusive).
 
     Args:
         filepath: Path to the file to modify.
         start: Starting line number (1-indexed).
         end: Ending line number (1-indexed, inclusive).
+
+    Returns:
+        str: A success message indicating the lines were deleted.
 
     Raises:
         FileNotFoundError: If the file does not exist.
@@ -59,6 +72,8 @@ def delete_lines(filepath: str, start: int, end: int) -> None:
 
     with open(filepath, 'w', encoding='utf-8') as f:
         f.writelines(lines)
+    
+    return f"Successfully deleted lines {start} to {end} from {filepath}. File now has {len(lines)} lines."
 
 
 if __name__ == "__main__":
@@ -70,16 +85,15 @@ if __name__ == "__main__":
     test_content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n"
 
     try:
-        write_file(test_file, test_content)
-        content = read_file(test_file)
-        print(f"✓ write_file and read_file: successful")
+        result = write_file(test_file, test_content)
+        print(f"✓ {result}")
+        
+        result = read_file(test_file)
+        print(f"✓ {result}")
 
         # Test delete_lines
-        delete_lines(test_file, 2, 3)  # Delete lines 2-3
-        updated_content = read_file(test_file)
-        print(f"✓ delete_lines: successful")
-        print(f"Original lines: {len(test_content.splitlines())}")
-        print(f"After deletion: {len(updated_content.splitlines())}")
+        result2 = delete_lines(test_file, 2, 3)  # Delete lines 2-3
+        print(f"✓ {result2}")
 
         # Clean up
         import os
