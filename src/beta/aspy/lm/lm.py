@@ -1,10 +1,6 @@
-# aspy/lm.py
 import asyncio
-import os
-
 import aiohttp
 import requests
-from typing import Any, Dict, List, Union
 
 class LM:
     def __init__(self, model: str="", api_base="http://localhost:11434", api_key: str = "-"):

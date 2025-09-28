@@ -58,28 +58,35 @@
 # print(article)
 
 
+# import aspy
+#
+# # Setup
+# lm = aspy.LM(api_base="http://192.168.170.76:8000")
+# aspy.configure(lm=lm)
+#
+# # Create some test examples
+# examples = [
+#   aspy.Example(question="What is 2+2?", answer="4"),
+#   aspy.Example(question="Capital of France?", answer="Paris"),
+# ]
+#
+# # Create a module to evaluate
+# math_qa = aspy.Predict("question -> answer")
+#
+# # Evaluate with progress bar and nice scoring
+# evaluator = aspy.Evaluate(
+#   devset=examples,
+#   metric=aspy.exact_match,
+#   display_progress=True,
+#   save_as_json="results.json"
+# )
+#
+# result = evaluator(math_qa)
+# print(f"Final score: {result.score}%")
+
+
 import aspy
 
 # Setup
 lm = aspy.LM(api_base="http://192.168.170.76:8000")
-aspy.configure(lm=lm)
-
-# Create some test examples
-examples = [
-  aspy.Example(question="What is 2+2?", answer="4"),
-  aspy.Example(question="Capital of France?", answer="Paris"),
-]
-
-# Create a module to evaluate
-math_qa = aspy.Predict("question -> answer")
-
-# Evaluate with progress bar and nice scoring
-evaluator = aspy.Evaluate(
-  devset=examples,
-  metric=aspy.exact_match,
-  display_progress=True,
-  save_as_json="results.json"
-)
-
-result = evaluator(math_qa)
-print(f"Final score: {result.score}%")
+print(lm("""Do NBFCs classified as Basel Layer have to maintain CRAR?""",temperature = 0.7, top_p = 0.8, top_k = 20,repetition_penalty=1.1,max_new_tokens=2048)['choices'][0]['message']['content'])
