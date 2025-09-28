@@ -54,9 +54,6 @@ class LM:
         url = f"{self.api_base}/v1/chat/completions"
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
-
-        print(messages)
-
         body = {
             "model": self.model,
             "messages": messages,
