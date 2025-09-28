@@ -11,6 +11,7 @@ _PRIMS = {
     "int": int,
     "float": float,
     "bool": bool,
+    "list": list,
     "any": Any,
     "": str,  # default
 }

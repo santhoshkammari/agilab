@@ -17,14 +17,14 @@
 #
 #
 # """
-# import aspy as a
-# lm = a.LM(api_base="http://192.168.170.76:8000")
-# a.configure(lm=lm)
-# sig = a.Signature("question -> answer:float")
-# math = a.Predict(sig)
-# result = math(question="Two dice are tossed. What is the probability that the sum equals two?")
-# print(result)
-#
+import aspy as a
+lm = a.LM(api_base="http://192.168.170.76:8000")
+a.configure(lm=lm)
+sig = a.Signature("question -> answer:float")
+math = a.Predict(sig)
+result = math(question="Two dice are tossed. What is the probability that the sum equals two?")
+print(result)
+
 # print("\n=== Testing Predict ===")
 # predictor = a.Predict("query -> two_lines")
 # result = predictor(query="What is the capital of France?")
@@ -84,9 +84,11 @@
 # result = evaluator(math_qa)
 # print(f"Final score: {result.score}%")
 
-
-import aspy
-
-# Setup
-lm = aspy.LM(api_base="http://192.168.170.76:8000")
-print(lm("""Do NBFCs classified as Basel Layer have to maintain CRAR?""",temperature = 0.7, top_p = 0.8, top_k = 20,repetition_penalty=1.1,max_new_tokens=2048)['choices'][0]['message']['content'])
+#
+# import aspy
+#
+# # Setup
+# lm = aspy.LM(api_base="http://192.168.170.76:8000")
+# response = lm("""what is 2+3/""")
+# content = response['choices'][0]['message']['content']
+# print(content)
