@@ -210,11 +210,6 @@ for i in tqdm(range(0, len(texts), batch_size), desc="Processing batches"):
 
     # Store results
     for text, result in zip(batch_texts, results):
-        print(f"Text: {text}")
-        print(f"Including: {result.including}")
-        print(f"Excluding: {result.excluding}")
-        print(f"General: {result.general}")
-        print("---")
         entities[text] = {"including": result.including, "excluding": result.excluding, "general": result.general}
 
     # Save after each batch
