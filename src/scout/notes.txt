@@ -10,25 +10,26 @@
 5. AutoBashing
  
 
-'Task', 'ExitPlanMode','NotebookEdit', 
+Discarded
+-----------
+'Task', 'ExitPlanMode','NotebookEdit'
+
+default
+----
 
 'Bash', 
 
-'Glob', 'Grep','LS',
+'Glob','Grep','LS'
 
-Read', 
+'Read',
 'Edit',
-'Write',
+'MultiEdit',
+'Write'
 
 
 'WebFetch', 'WebSearch', 
 
-
-'MultiEdit',
-
-
 'TodoWrite', 
-
 
 'BashOutput',
 'KillBash'

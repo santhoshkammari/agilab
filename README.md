@@ -50,6 +50,7 @@ A key focus for Agilab's evolution is the development of tools for generating co
 - Fine-tuning utilities for custom agent behaviors
 - Web-based UI for agent management and interaction
 - OutputTemplating: Define output styles (e.g., markdown formatting) for specific task types, training models to consistently produce outputs in the expected format using grammar-based constraints at the decoding layer
+- for multitask input query -> parallel task specific categorized single output that has maximum answer
 
 ## Quick Start
 

@@ -16,14 +16,20 @@
 # # '''
 #
 #
-# """
+
 import aspy as a
 lm = a.LM(api_base="http://192.168.170.76:8000")
-a.configure(lm=lm)
-sig = a.Signature("question -> answer:float")
-math = a.Predict(sig)
-result = math(question="Two dice are tossed. What is the probability that the sum equals two?")
-print(result)
+print(lm('what is 2+3?'))
+
+
+# """
+# import aspy as a
+# lm = a.LM(api_base="http://192.168.170.76:8000")
+# a.configure(lm=lm)
+# sig = a.Signature("question -> answer:float")
+# math = a.Predict(sig)
+# result = math(question="Two dice are tossed. What is the probability that the sum equals two?")
+# print(result)
 
 # print("\n=== Testing Predict ===")
 # predictor = a.Predict("query -> two_lines")
