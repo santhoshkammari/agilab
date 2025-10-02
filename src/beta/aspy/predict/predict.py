@@ -39,11 +39,11 @@ class Module:
 class Predict(Module):
     """Basic prediction module that directly calls LM with signature."""
 
-    def __init__(self, signature: Union[str, Signature], lm: LM = None):
+    def __init__(self, signature: Union[str, Signature],instructions:str=None ,lm: LM = None):
         super().__init__()
         # Handle string->Signature conversion internally
         if isinstance(signature, str):
-            self.signature = Signature(signature)
+            self.signature = Signature(signature,instructions=instructions)
         else:
             self.signature = signature
 
