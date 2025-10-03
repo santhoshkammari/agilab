@@ -174,6 +174,24 @@ class Predict:
         else:
             self.signature = None
         self.lm = lm
+        self._last_messages = None
+
+    @property
+    def messages(self):
+        """Get the last built messages."""
+        return self._last_messages
+
+    @property
+    def prompt(self):
+        """Get the last built prompt as a formatted string."""
+        if not self._last_messages:
+            return None
+        parts = []
+        for msg in self._last_messages:
+            role = msg['role'].upper()
+            content = msg['content']
+            parts.append(f"=== {role} ===\n{content}\n")
+        return "\n".join(parts)
 
     def _build_prompt(self, **inputs):
         Input, Output = self.signature()
@@ -221,6 +239,7 @@ class Predict:
             raise ValueError("No signature set. Pass signature in constructor.")
 
         messages = self._build_prompt(**inputs)
+        self._last_messages = messages
         response_format = self._get_response_format()
 
         # Use LM without tools, with response_format
