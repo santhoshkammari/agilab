@@ -314,20 +314,20 @@ class Evaluate:
 
     def __init__(self,
                  devset: List[Example],
-                 metric: callable,
+                 metrics,
                  output_file: str = None,
                  display_progress: bool = True,
                  force_restart: bool = False):
         """
         Args:
             devset: List of Examples to evaluate
-            metric: Function (example, prediction) -> score (0.0 to 1.0)
+            metrics: Single callable OR list of callables OR dict {name: callable}
             output_file: Path to JSON file for live saving and resume
             display_progress: Show tqdm progress bar
             force_restart: Ignore existing results and start fresh
         """
         self.devset = devset
-        self.metric = metric
+        self.metrics = self._normalize_metrics(metrics)
         self.output_file = output_file
         self.display_progress = display_progress
         self.force_restart = force_restart
@@ -336,6 +336,22 @@ class Evaluate:
 
         if self.output_file and not self.force_restart:
             self._load_existing_results()
+
+    def _normalize_metrics(self, metrics):
+        """Normalize metrics input to dict format."""
+        if callable(metrics):
+            # Single callable -> dict with function name
+            name = metrics.__name__ if hasattr(metrics, '__name__') else 'metric'
+            return {name: metrics}
+        elif isinstance(metrics, list):
+            # List of callables -> dict with function names
+            return {m.__name__ if hasattr(m, '__name__') else f'metric_{i}': m
+                    for i, m in enumerate(metrics)}
+        elif isinstance(metrics, dict):
+            # Already a dict
+            return metrics
+        else:
+            raise ValueError("metrics must be a callable, list of callables, or dict")
 
     def _load_existing_results(self):
         """Load existing results from JSON file if it exists."""
@@ -351,14 +367,19 @@ class Evaluate:
         except json.JSONDecodeError:
             print(f"Warning: Could not parse {self.output_file}, starting fresh")
 
-    def _save_results(self, total_score: float, completed: int):
+    def _save_results(self, total_scores: dict, completed: int):
         """Save current results to JSON file."""
         if not self.output_file:
             return
 
-        final_score = (total_score / len(self.devset)) * 100 if self.devset else 0.0
+        # Calculate final scores as percentages
+        final_scores = {
+            name: (total_scores[name] / len(self.devset)) * 100 if self.devset else 0.0
+            for name in self.metrics.keys()
+        }
+
         data = {
-            "score": final_score,
+            "scores": final_scores,
             "total_examples": len(self.devset),
             "completed": completed,
             "results": self.results
@@ -369,7 +390,9 @@ class Evaluate:
 
     def __call__(self, module):
         """Run evaluation on the module."""
-        total_score = sum(r['score'] for r in self.results)
+        # Initialize total scores for each metric
+        total_scores = {name: sum(r['scores'].get(name, 0.0) for r in self.results)
+                       for name in self.metrics.keys()}
 
         try:
             from tqdm import tqdm
@@ -394,27 +417,32 @@ class Evaluate:
                 inputs = example.inputs()
                 prediction = module(**inputs)
 
-                # Calculate score
-                score = self.metric(example, prediction)
-                total_score += score
+                # Calculate scores for all metrics
+                scores = {}
+                for metric_name, metric_func in self.metrics.items():
+                    score = metric_func(example, prediction)
+                    scores[metric_name] = score
+                    total_scores[metric_name] += score
 
                 # Store result
                 result = {
                     "example_id": idx,
                     "inputs": inputs,
                     "prediction": prediction if isinstance(prediction, dict) else str(prediction),
-                    "score": score
+                    "scores": scores
                 }
                 self.results.append(result)
                 self.completed_indices.add(idx)
 
                 # Live save
-                self._save_results(total_score, len(self.completed_indices))
+                self._save_results(total_scores, len(self.completed_indices))
 
                 # Update progress
-                current_avg = total_score / len(self.completed_indices)
                 if has_tqdm and self.display_progress:
-                    iterator.set_postfix(avg_score=f"{current_avg:.3f}")
+                    current_avgs = {name: total_scores[name] / len(self.completed_indices)
+                                   for name in self.metrics.keys()}
+                    postfix_str = " ".join([f"{name}={avg:.3f}" for name, avg in current_avgs.items()])
+                    iterator.set_postfix_str(postfix_str)
 
             except Exception as e:
                 print(f"\nError evaluating example {idx}: {e}")
@@ -422,17 +450,24 @@ class Evaluate:
                     "example_id": idx,
                     "inputs": example.inputs(),
                     "prediction": {"error": str(e)},
-                    "score": 0.0
+                    "scores": {name: 0.0 for name in self.metrics.keys()}
                 }
                 self.results.append(result)
                 self.completed_indices.add(idx)
-                self._save_results(total_score, len(self.completed_indices))
+                self._save_results(total_scores, len(self.completed_indices))
 
-        # Final score
-        final_score = (total_score / len(self.devset)) * 100 if self.devset else 0.0
-        print(f"\nEvaluation complete: {final_score:.2f}% ({total_score:.1f}/{len(self.devset)})")
+        # Final scores
+        final_scores = {
+            name: (total_scores[name] / len(self.devset)) * 100 if self.devset else 0.0
+            for name in self.metrics.keys()
+        }
 
-        return {"score": final_score, "results": self.results}
+        print(f"\nEvaluation complete:")
+        for name, score in final_scores.items():
+            raw_score = total_scores[name]
+            print(f"  {name}: {score:.2f}% ({raw_score:.1f}/{len(self.devset)})")
+
+        return {"scores": final_scores, "results": self.results}
 
 
 def exact_match(example: Example, prediction) -> float:
@@ -443,6 +478,16 @@ def exact_match(example: Example, prediction) -> float:
     else:
         predicted = getattr(prediction, 'answer', getattr(prediction, 'output', ''))
     return 1.0 if str(expected).strip() == str(predicted).strip() else 0.0
+
+
+def contains_match(example: Example, prediction) -> float:
+    """Check if prediction contains the expected answer."""
+    expected = str(getattr(example, 'answer', getattr(example, 'output', ''))).strip().lower()
+    if isinstance(prediction, dict):
+        predicted = str(prediction.get('answer', prediction.get('output', ''))).strip().lower()
+    else:
+        predicted = str(getattr(prediction, 'answer', getattr(prediction, 'output', ''))).strip().lower()
+    return 1.0 if expected in predicted else 0.0
 
 
 # ============ Example Tools ============
@@ -476,9 +521,16 @@ if __name__ == '__main__':
         Example(question="What is 3+3?", answer="6"),
     ]*10
     qa_predictor = Predict("question -> answer")
-    evaluator = Evaluate(devset=devset, metric=exact_match, output_file="eval_results.json")
+
+    # Single metric
+    evaluator = Evaluate(devset=devset, metrics=exact_match, output_file="eval_single.json")
     eval_result = evaluator(qa_predictor)
     print(eval_result)
+
+    # Multiple metrics
+    evaluator_multi = Evaluate(devset=devset, metrics=[exact_match, contains_match], output_file="eval_multi.json")
+    eval_result_multi = evaluator_multi(qa_predictor)
+    print(eval_result_multi)
 
     # lm = LM(api_base='http://192.168.170.76:8000')
     # response = lm(messages='what is weather in gurgaon /no_think', tools=[get_weather])
