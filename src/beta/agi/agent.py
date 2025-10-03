@@ -6,6 +6,8 @@ from pydantic import BaseModel, create_model, Field
 import inspect
 import json
 import contextvars
+import asyncio
+import aiohttp
 
 # Global LM context
 _current_lm = contextvars.ContextVar('lm', default=None)
@@ -61,6 +63,32 @@ class LM:
         completion_tokens = raw['usage']['completion_tokens']
         return Prediction(raw=raw, content=content, tools=tools,
                          prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+
+    async def async_call_llm(self, messages, **params):
+        """Async version of call_llm for batched requests."""
+        if isinstance(messages, str):
+            messages = [{"role": "user", "content": messages}]
+
+        stream = params.get('stream', False)
+        if stream:
+            raise ValueError("Streaming not supported in async mode")
+
+        payload = {"model": self.model, "messages": messages, **params}
+
+        timeout = aiohttp.ClientTimeout(total=300)  # 5 minute timeout
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                f"{self.api_base}/v1/chat/completions",
+                json=payload
+            ) as response:
+                raw = await response.json()
+                message = raw['choices'][0]['message']
+                content = message.get('content', '')
+                tools = message.get('tool_calls', [])
+                prompt_tokens = raw['usage']['prompt_tokens']
+                completion_tokens = raw['usage']['completion_tokens']
+                return Prediction(raw=raw, content=content, tools=tools,
+                                prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
 
 
 # ============ Signature System ============
@@ -264,6 +292,40 @@ class Predict:
         except Exception:
             return output_data
 
+    async def async_predict(self, **inputs):
+        """Async version of __call__ for batched evaluation."""
+        lm = self.lm or get_lm()
+        if not lm:
+            raise ValueError("No LM set. Use configure(lm=...) or pass lm in constructor.")
+
+        if not self.signature:
+            raise ValueError("No signature set. Pass signature in constructor.")
+
+        messages = self._build_prompt(**inputs)
+        response_format = self._get_response_format()
+
+        # Use async LM call
+        raw_response = await lm.async_call_llm(messages, response_format=response_format)
+
+        # Extract content and parse
+        content = raw_response.content
+        try:
+            output_data = json.loads(content)
+        except json.JSONDecodeError:
+            output_fields = list(self.signature.output_types.keys())
+            if len(output_fields) == 1:
+                output_data = {output_fields[0]: content}
+            else:
+                output_data = {field: content for field in output_fields}
+
+        # Return as dict
+        _, Output = self.signature()
+        try:
+            prediction_instance = Output(**output_data)
+            return prediction_instance
+        except Exception:
+            return output_data
+
 
 # ============ Evaluation System ============
 
@@ -317,7 +379,9 @@ class Evaluate:
                  metrics,
                  output_file: str = None,
                  display_progress: bool = True,
-                 force_restart: bool = False):
+                 force_restart: bool = False,
+                 batched: bool = True,
+                 batch_size: int = 4):
         """
         Args:
             devset: List of Examples to evaluate
@@ -325,12 +389,16 @@ class Evaluate:
             output_file: Path to JSON file for live saving and resume
             display_progress: Show tqdm progress bar
             force_restart: Ignore existing results and start fresh
+            batched: Enable async batched evaluation for better throughput
+            batch_size: Number of concurrent requests to send (default: 4)
         """
         self.devset = devset
         self.metrics = self._normalize_metrics(metrics)
         self.output_file = output_file
         self.display_progress = display_progress
         self.force_restart = force_restart
+        self.batched = batched
+        self.batch_size = batch_size
         self.completed_indices = set()
         self.results = []
 
@@ -390,6 +458,13 @@ class Evaluate:
 
     def __call__(self, module):
         """Run evaluation on the module."""
+        if self.batched:
+            return asyncio.run(self._evaluate_async(module))
+        else:
+            return self._evaluate_sequential(module)
+
+    def _evaluate_sequential(self, module):
+        """Sequential evaluation (original behavior)."""
         # Initialize total scores for each metric
         total_scores = {name: sum(r['scores'].get(name, 0.0) for r in self.results)
                        for name in self.metrics.keys()}
@@ -469,6 +544,107 @@ class Evaluate:
 
         return {"scores": final_scores, "results": self.results}
 
+    async def _evaluate_async(self, module):
+        """Async batched evaluation for better throughput."""
+        # Initialize total scores
+        total_scores = {name: sum(r['scores'].get(name, 0.0) for r in self.results)
+                       for name in self.metrics.keys()}
+
+        try:
+            from tqdm import tqdm
+            has_tqdm = True
+        except ImportError:
+            has_tqdm = False
+            print("Install tqdm for progress bars: pip install tqdm")
+
+        # Get examples that need evaluation
+        examples_to_eval = [(idx, ex) for idx, ex in enumerate(self.devset)
+                           if idx not in self.completed_indices]
+
+        # Create batches
+        batches = [examples_to_eval[i:i + self.batch_size]
+                  for i in range(0, len(examples_to_eval), self.batch_size)]
+
+        # Progress bar
+        if has_tqdm and self.display_progress:
+            pbar = tqdm(total=len(examples_to_eval), desc="Evaluating (batched)")
+        else:
+            pbar = None
+
+        for batch in batches:
+            try:
+                # Process batch concurrently
+                tasks = []
+                for idx, example in batch:
+                    inputs = example.inputs()
+                    if hasattr(module, 'async_predict'):
+                        task = module.async_predict(**inputs)
+                    else:
+                        # Fallback to sync if module doesn't support async
+                        task = asyncio.to_thread(module, **inputs)
+                    tasks.append((idx, example, inputs, task))
+
+                # Gather results
+                predictions = await asyncio.gather(*[t[3] for t in tasks], return_exceptions=True)
+
+                # Process results
+                for (idx, example, inputs, _), prediction in zip(tasks, predictions):
+                    if isinstance(prediction, Exception):
+                        print(f"\nError evaluating example {idx}: {prediction}")
+                        scores = {name: 0.0 for name in self.metrics.keys()}
+                        prediction_data = {"error": str(prediction)}
+                    else:
+                        # Calculate scores
+                        scores = {}
+                        for metric_name, metric_func in self.metrics.items():
+                            score = metric_func(example, prediction)
+                            scores[metric_name] = score
+                            total_scores[metric_name] += score
+                        prediction_data = prediction if isinstance(prediction, dict) else str(prediction)
+
+                    # Store result
+                    result = {
+                        "example_id": idx,
+                        "inputs": inputs,
+                        "prediction": prediction_data,
+                        "scores": scores
+                    }
+                    self.results.append(result)
+                    self.completed_indices.add(idx)
+
+                # Live save after each batch
+                self._save_results(total_scores, len(self.completed_indices))
+
+                # Update progress
+                if pbar:
+                    pbar.update(len(batch))
+                    current_avgs = {name: total_scores[name] / len(self.completed_indices)
+                                   for name in self.metrics.keys()}
+                    postfix_str = " ".join([f"{name}={avg:.3f}" for name, avg in current_avgs.items()])
+                    pbar.set_postfix_str(postfix_str)
+
+            except Exception as e:
+                print(f"\nError processing batch: {e}")
+                # Still update progress
+                if pbar:
+                    pbar.update(len(batch))
+
+        if pbar:
+            pbar.close()
+
+        # Final scores
+        final_scores = {
+            name: (total_scores[name] / len(self.devset)) * 100 if self.devset else 0.0
+            for name in self.metrics.keys()
+        }
+
+        print(f"\nEvaluation complete (batched={self.batched}, batch_size={self.batch_size}):")
+        for name, score in final_scores.items():
+            raw_score = total_scores[name]
+            print(f"  {name}: {score:.2f}% ({raw_score:.1f}/{len(self.devset)})")
+
+        return {"scores": final_scores, "results": self.results}
+
 
 def exact_match(example: Example, prediction) -> float:
     """Exact match metric."""
@@ -522,15 +698,20 @@ if __name__ == '__main__':
     ]*10
     qa_predictor = Predict("question -> answer")
 
-    # Single metric
-    evaluator = Evaluate(devset=devset, metrics=exact_match, output_file="eval_single.json")
+    # Single metric with batching (default)
+    evaluator = Evaluate(devset=devset, metrics=exact_match, output_file="eval_single.json", batched=True, batch_size=4)
     eval_result = evaluator(qa_predictor)
     print(eval_result)
 
-    # Multiple metrics
-    evaluator_multi = Evaluate(devset=devset, metrics=[exact_match, contains_match], output_file="eval_multi.json")
+    # Multiple metrics with batching
+    evaluator_multi = Evaluate(devset=devset, metrics=[exact_match, contains_match], output_file="eval_multi.json", batched=True, batch_size=4)
     eval_result_multi = evaluator_multi(qa_predictor)
     print(eval_result_multi)
+
+    # Sequential mode (batched=False)
+    evaluator_seq = Evaluate(devset=devset, metrics=exact_match, batched=False)
+    eval_result_seq = evaluator_seq(qa_predictor)
+    print(eval_result_seq)
 
     # lm = LM(api_base='http://192.168.170.76:8000')
     # response = lm(messages='what is weather in gurgaon /no_think', tools=[get_weather])
