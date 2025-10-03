@@ -265,6 +265,186 @@ class Predict:
             return output_data
 
 
+# ============ Evaluation System ============
+
+class Example:
+    """Container for evaluation examples."""
+
+    def __init__(self, **kwargs):
+        self._input_keys = None
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+    def with_inputs(self, *keys):
+        """Set which fields should be treated as inputs."""
+        copied = self.copy()
+        copied._input_keys = set(keys)
+        return copied
+
+    def inputs(self):
+        """Return input fields (excludes answer/output/target/label)."""
+        all_attrs = {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
+
+        if self._input_keys is not None:
+            return {k: v for k, v in all_attrs.items() if k in self._input_keys}
+        else:
+            target_fields = {'answer', 'output', 'target', 'label'}
+            return {k: v for k, v in all_attrs.items() if k not in target_fields}
+
+    def copy(self, **kwargs):
+        """Create a copy of this Example."""
+        data = self.model_dump()
+        data.update(kwargs)
+        new_example = Example(**data)
+        new_example._input_keys = self._input_keys
+        return new_example
+
+    def model_dump(self):
+        """Return all attributes as a dictionary."""
+        return {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
+
+    def __repr__(self):
+        attrs = self.model_dump()
+        attr_str = ", ".join([f"{k}={repr(v)}" for k, v in attrs.items()])
+        return f"Example({attr_str})"
+
+
+class Evaluate:
+    """Evaluation class with live saving and auto-resume support."""
+
+    def __init__(self,
+                 devset: List[Example],
+                 metric: callable,
+                 output_file: str = None,
+                 display_progress: bool = True,
+                 force_restart: bool = False):
+        """
+        Args:
+            devset: List of Examples to evaluate
+            metric: Function (example, prediction) -> score (0.0 to 1.0)
+            output_file: Path to JSON file for live saving and resume
+            display_progress: Show tqdm progress bar
+            force_restart: Ignore existing results and start fresh
+        """
+        self.devset = devset
+        self.metric = metric
+        self.output_file = output_file
+        self.display_progress = display_progress
+        self.force_restart = force_restart
+        self.completed_indices = set()
+        self.results = []
+
+        if self.output_file and not self.force_restart:
+            self._load_existing_results()
+
+    def _load_existing_results(self):
+        """Load existing results from JSON file if it exists."""
+        try:
+            with open(self.output_file, 'r') as f:
+                data = json.load(f)
+                self.results = data.get('results', [])
+                self.completed_indices = {r['example_id'] for r in self.results}
+                if self.completed_indices:
+                    print(f"Resuming from {self.output_file}: {len(self.completed_indices)} examples already completed")
+        except FileNotFoundError:
+            pass
+        except json.JSONDecodeError:
+            print(f"Warning: Could not parse {self.output_file}, starting fresh")
+
+    def _save_results(self, total_score: float, completed: int):
+        """Save current results to JSON file."""
+        if not self.output_file:
+            return
+
+        final_score = (total_score / len(self.devset)) * 100 if self.devset else 0.0
+        data = {
+            "score": final_score,
+            "total_examples": len(self.devset),
+            "completed": completed,
+            "results": self.results
+        }
+
+        with open(self.output_file, 'w') as f:
+            json.dump(data, f, indent=2)
+
+    def __call__(self, module):
+        """Run evaluation on the module."""
+        total_score = sum(r['score'] for r in self.results)
+
+        try:
+            from tqdm import tqdm
+            has_tqdm = True
+        except ImportError:
+            has_tqdm = False
+            print("Install tqdm for progress bars: pip install tqdm")
+
+        # Create iterator
+        if has_tqdm and self.display_progress:
+            iterator = tqdm(enumerate(self.devset), total=len(self.devset), desc="Evaluating")
+        else:
+            iterator = enumerate(self.devset)
+
+        for idx, example in iterator:
+            # Skip already completed
+            if idx in self.completed_indices:
+                continue
+
+            try:
+                # Get prediction
+                inputs = example.inputs()
+                prediction = module(**inputs)
+
+                # Calculate score
+                score = self.metric(example, prediction)
+                total_score += score
+
+                # Store result
+                result = {
+                    "example_id": idx,
+                    "inputs": inputs,
+                    "prediction": prediction if isinstance(prediction, dict) else str(prediction),
+                    "score": score
+                }
+                self.results.append(result)
+                self.completed_indices.add(idx)
+
+                # Live save
+                self._save_results(total_score, len(self.completed_indices))
+
+                # Update progress
+                current_avg = total_score / len(self.completed_indices)
+                if has_tqdm and self.display_progress:
+                    iterator.set_postfix(avg_score=f"{current_avg:.3f}")
+
+            except Exception as e:
+                print(f"\nError evaluating example {idx}: {e}")
+                result = {
+                    "example_id": idx,
+                    "inputs": example.inputs(),
+                    "prediction": {"error": str(e)},
+                    "score": 0.0
+                }
+                self.results.append(result)
+                self.completed_indices.add(idx)
+                self._save_results(total_score, len(self.completed_indices))
+
+        # Final score
+        final_score = (total_score / len(self.devset)) * 100 if self.devset else 0.0
+        print(f"\nEvaluation complete: {final_score:.2f}% ({total_score:.1f}/{len(self.devset)})")
+
+        return {"score": final_score, "results": self.results}
+
+
+def exact_match(example: Example, prediction) -> float:
+    """Exact match metric."""
+    expected = getattr(example, 'answer', getattr(example, 'output', ''))
+    if isinstance(prediction, dict):
+        predicted = prediction.get('answer', prediction.get('output', ''))
+    else:
+        predicted = getattr(prediction, 'answer', getattr(prediction, 'output', ''))
+    return 1.0 if str(expected).strip() == str(predicted).strip() else 0.0
+
+
 # ============ Example Tools ============
 
 def get_weather(location: str, unit: str = "celsius"):
@@ -290,6 +470,15 @@ if __name__ == '__main__':
     classifier = Predict("text -> sentiment:str, confidence:float")
     output = classifier(text="I love this product!")
     print(output)
+
+    devset = [
+        Example(question="What is 2+2?", answer="4"),
+        Example(question="What is 3+3?", answer="6"),
+    ]*10
+    qa_predictor = Predict("question -> answer")
+    evaluator = Evaluate(devset=devset, metric=exact_match, output_file="eval_results.json")
+    eval_result = evaluator(qa_predictor)
+    print(eval_result)
 
     # lm = LM(api_base='http://192.168.170.76:8000')
     # response = lm(messages='what is weather in gurgaon /no_think', tools=[get_weather])
