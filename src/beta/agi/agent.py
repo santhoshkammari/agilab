@@ -381,7 +381,8 @@ class Evaluate:
                  display_progress: bool = True,
                  force_restart: bool = False,
                  batched: bool = True,
-                 batch_size: int = 4):
+                 batch_size: int = 4,
+                 name: str = "Evaluating"):
         """
         Args:
             devset: List of Examples to evaluate
@@ -391,6 +392,7 @@ class Evaluate:
             force_restart: Ignore existing results and start fresh
             batched: Enable async batched evaluation for better throughput
             batch_size: Number of concurrent requests to send (default: 4)
+            name: Name/description for tqdm progress bar (default: "Evaluating")
         """
         self.devset = devset
         self.metrics = self._normalize_metrics(metrics)
@@ -399,6 +401,7 @@ class Evaluate:
         self.force_restart = force_restart
         self.batched = batched
         self.batch_size = batch_size
+        self.name = name
         self.completed_indices = set()
         self.results = []
 
@@ -478,7 +481,7 @@ class Evaluate:
 
         # Create iterator
         if has_tqdm and self.display_progress:
-            iterator = tqdm(enumerate(self.devset), total=len(self.devset), desc="Evaluating")
+            iterator = tqdm(enumerate(self.devset), total=len(self.devset), desc=self.name)
         else:
             iterator = enumerate(self.devset)
 
@@ -567,7 +570,8 @@ class Evaluate:
 
         # Progress bar
         if has_tqdm and self.display_progress:
-            pbar = tqdm(total=len(examples_to_eval), desc="Evaluating (batched)")
+            desc = f"{self.name} (batched)" if self.batched else self.name
+            pbar = tqdm(total=len(examples_to_eval), desc=desc)
         else:
             pbar = None
 
@@ -698,18 +702,20 @@ if __name__ == '__main__':
     ]*10
     qa_predictor = Predict("question -> answer")
 
-    # Single metric with batching (default)
-    evaluator = Evaluate(devset=devset, metrics=exact_match, output_file="eval_single.json", batched=True, batch_size=4)
+    # Single metric with batching (default) and custom name
+    evaluator = Evaluate(devset=devset, metrics=exact_match, output_file="eval_single.json", batched=True, batch_size=4, name="Math QA",
+                         force_restart=True)
     eval_result = evaluator(qa_predictor)
     print(eval_result)
 
-    # Multiple metrics with batching
-    evaluator_multi = Evaluate(devset=devset, metrics=[exact_match, contains_match], output_file="eval_multi.json", batched=True, batch_size=4)
+    # Multiple metrics with batching and custom name
+    evaluator_multi = Evaluate(devset=devset, metrics=[exact_match, contains_match], output_file="eval_multi.json", batched=True, batch_size=4, name="Multi-Metric Eval",
+                               force_restart=True)
     eval_result_multi = evaluator_multi(qa_predictor)
     print(eval_result_multi)
 
     # Sequential mode (batched=False)
-    evaluator_seq = Evaluate(devset=devset, metrics=exact_match, batched=False)
+    evaluator_seq = Evaluate(devset=devset, metrics=exact_match, batched=False, name="Sequential Test")
     eval_result_seq = evaluator_seq(qa_predictor)
     print(eval_result_seq)
 
