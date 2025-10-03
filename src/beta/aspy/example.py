@@ -17,16 +17,15 @@
 #
 #
 
-
-# """
 import aspy as a
 
 lm = a.LM(api_base="http://192.168.170.76:8000")
 a.configure(lm=lm)
 
-math = a.Predict("q -> think,answer:float",instructions='think and answer')
+math = a.Predict("q -> think,answer:float")
 res = math(q="2+3?")
 print(type(res),res)
+
 
 # print("\n=== Testing Predict ===")
 # predictor = a.Predict("query -> two_lines")

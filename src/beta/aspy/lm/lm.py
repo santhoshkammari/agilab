@@ -42,7 +42,14 @@ class LM:
         async with aiohttp.ClientSession() as session:
             body = {"model": self.model, "messages": messages, **params}
             async with session.post(f"{self.api_base}/v1/chat/completions", json=body) as resp:
-                return await resp.json()
+                data = await resp.json()
+                if resp.status >= 400:
+                    print(f"DEBUG: Error response: {data}")
+                    resp.raise_for_status()
+                # Debug: print response structure if it doesn't have expected format
+                if "choices" not in data:
+                    print(f"DEBUG: Unexpected response structure: {data}")
+                return data
 
     async def _batch_async(self, messages_batch, **params):
         """Handle batch of conversations asynchronously"""

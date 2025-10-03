@@ -39,7 +39,7 @@ class Module:
 class Predict(Module):
     """Basic prediction module that directly calls LM with signature."""
 
-    def __init__(self, signature: Union[str, Signature],instructions:str=None ,lm: LM = None):
+    def __init__(self, signature: Union[str, Signature],instructions:str=None ,lm: LM = None, tools=None):
         super().__init__()
         # Handle string->Signature conversion internally
         if isinstance(signature, str):
@@ -50,16 +50,37 @@ class Predict(Module):
         if lm:
             self.set_lm(lm)
 
+        self.tools = tools
+
     def _build_prompt(self, **inputs):
         """Build messages for chat-based LMs with XML structure."""
         Input, Output = self.signature()
         input_instance = Input(**inputs)
 
-        # Get output schema for structured generation
-        output_schema = Output.model_json_schema()
+        # Different prompts for tool mode vs structured output mode
+        if self.tools:
+            # Tool mode: simpler prompt, let model decide to use tools
+            system_content = """<system_prompt>
+You are a helpful assistant that can use tools to answer questions.
+When you need information that requires external data or computation, use the available tools.
+</system_prompt>"""
 
-        # System message with output format
-        system_content = f"""<system_prompt>
+            user_parts = []
+            if self.signature.instructions:
+                user_parts.append(f"Instructions: {self.signature.instructions}\n")
+
+            for field_name, value in input_instance.model_dump().items():
+                user_parts.append(f"{field_name}: {value}")
+
+            return [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": "\n".join(user_parts)}
+            ]
+        else:
+            # Structured output mode: strict schema enforcement
+            output_schema = Output.model_json_schema()
+
+            system_content = f"""<system_prompt>
 You are a helpful assistant that provides accurate responses.
 </system_prompt>
 
@@ -68,25 +89,25 @@ Respond with valid JSON matching this schema:
 {json.dumps(output_schema, indent=2)}
 </output_format>"""
 
-        # User message with inputs (cache-friendly - dynamic at end)
-        user_parts = ["<static_input_fields>"]
-        if self.signature.instructions:
-            user_parts.append(f"Instructions: {self.signature.instructions}")
-        user_parts.extend([
-            "</static_input_fields>",
-            "",
-            "<dynamic_user_level_input_fields>"
-        ])
+            # User message with inputs (cache-friendly - dynamic at end)
+            user_parts = ["<static_input_fields>"]
+            if self.signature.instructions:
+                user_parts.append(f"Instructions: {self.signature.instructions}")
+            user_parts.extend([
+                "</static_input_fields>",
+                "",
+                "<dynamic_user_level_input_fields>"
+            ])
 
-        for field_name, value in input_instance.model_dump().items():
-            user_parts.append(f"{field_name}: {value}")
+            for field_name, value in input_instance.model_dump().items():
+                user_parts.append(f"{field_name}: {value}")
 
-        user_parts.append("</dynamic_user_level_input_fields>")
+            user_parts.append("</dynamic_user_level_input_fields>")
 
-        return [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": "\n".join(user_parts)}
-        ]
+            return [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": "\n".join(user_parts)}
+            ]
 
     def _get_response_format(self):
         """Get response_format for structured output."""
@@ -114,15 +135,57 @@ Respond with valid JSON matching this schema:
             raise ValueError("No language model set. Use aspy.configure(lm=...) or pass lm in constructor.")
 
         messages = self._build_prompt(**inputs)
-        response_format = self._get_response_format()
 
-        # Call LM with structured output
-        response = lm(messages, response_format=response_format)
+        # Decision: Tool mode OR Structured output mode (not both)
+        if self.tools:
+            # Tool calling mode - no strict response format
+            params = {"tools": self.tools}
+            response = lm(messages, **params)
 
-        # Extract content from response
-        content = response["choices"][0]["message"]["content"]
+            message = response["choices"][0]["message"]
 
-        # Parse JSON response
+            # Check if model called a tool
+            if "tool_calls" in message and message["tool_calls"]:
+                return Prediction(
+                    tool_calls=message["tool_calls"],
+                    content=message.get("content", "")
+                )
+            else:
+                # No tool call - try to parse text response into signature output
+                content = message.get("content", "")
+                return self._parse_text_to_prediction(content)
+        else:
+            # Structured output mode - strict JSON schema
+            response_format = self._get_response_format()
+            params = {"response_format": response_format}
+            response = lm(messages, **params)
+
+            # Extract content from response
+            content = response["choices"][0]["message"]["content"]
+
+            # Parse JSON response
+            try:
+                output_data = json.loads(content)
+            except json.JSONDecodeError:
+                # Fallback: create output with raw content
+                output_fields = list(self.signature.output_types.keys())
+                if len(output_fields) == 1:
+                    output_data = {output_fields[0]: content}
+                else:
+                    output_data = {field: content for field in output_fields}
+
+            # Create Prediction instance and return as Prediction
+            _, OutputModel = self.signature()
+            try:
+                prediction_instance = OutputModel(**output_data)
+                return Prediction(**prediction_instance.model_dump())
+            except Exception:
+                # Fallback to raw prediction
+                return Prediction(**output_data)
+
+    def _parse_text_to_prediction(self, content: str):
+        """Parse text content into structured prediction when tools don't get called."""
+        # Try JSON first
         try:
             output_data = json.loads(content)
         except json.JSONDecodeError:
@@ -133,13 +196,11 @@ Respond with valid JSON matching this schema:
             else:
                 output_data = {field: content for field in output_fields}
 
-        # Create Prediction instance and return as Prediction
-        _, Prediction = self.signature()
+        _, OutputModel = self.signature()
         try:
-            prediction_instance = Prediction(**output_data)
+            prediction_instance = OutputModel(**output_data)
             return Prediction(**prediction_instance.model_dump())
         except Exception:
-            # Fallback to raw prediction
             return Prediction(**output_data)
 
     def batch_forward(self, inputs_list):
@@ -162,7 +223,10 @@ Respond with valid JSON matching this schema:
         response_format = self._get_response_format()
 
         # Call LM with batch of messages
-        responses = lm(messages_batch, response_format=response_format)
+        params = {"response_format": response_format}
+        if self.tools:
+            params["tools"] = self.tools
+        responses = lm(messages_batch, **params)
 
         # Process batch responses
         predictions = []
