@@ -15,12 +15,12 @@ import json
 
 def get_ground_truth(image, html_tags, cells):
     """
-    Generate ground truth for split lines following TABLET methodology
+    Generate ground truth for split lines using intelligent cell grouping
 
     Args:
         image: PIL Image object
-        html_tags: list of HTML tags from dataset (should use html_restored)
-        cells: list of cell data with tokens and bboxes from dataset
+        html_tags: list of HTML tags (not used in this corrected version)
+        cells: list of cell data with tokens and bboxes (nested structure)
 
     Returns:
         horizontal_gt: list of 960 binary values (0/1) for row splits
@@ -28,113 +28,111 @@ def get_ground_truth(image, html_tags, cells):
     """
     # Get original image dimensions
     orig_width, orig_height = image.size
+    target_size = 960
 
-    # Parse HTML structure
-    html_content = ''.join(html_tags)
-    soup = BeautifulSoup(html_content, 'html.parser')
+    # Fix: cells is nested - cells[0] contains the actual cell list
+    actual_cells = cells[0]
 
-    # Extract text block centers from cells (cells has nested structure)
-    text_centers = []
-    # Flatten cells structure - cells[0] contains the actual list of cells
-    actual_cells = cells[0] if len(cells) > 0 and isinstance(cells[0], list) else cells
+    # Group cells by similar Y coordinates to find rows
+    y_groups = {}
+    y_threshold = 5  # pixels - cells within 5px are same row
+
     for cell in actual_cells:
-        tokens = cell['tokens']
-        bbox = cell['bbox']
-        text = ''.join(tokens)
+        y_center = (cell['bbox'][1] + cell['bbox'][3]) / 2
 
-        # Skip empty cells
-        if not text.strip():
-            continue
+        # Find existing group with similar Y
+        found_group = False
+        for existing_y in y_groups.keys():
+            if abs(y_center - existing_y) <= y_threshold:
+                y_groups[existing_y].append(cell)
+                found_group = True
+                break
 
-        # bbox format: [x1, y1, x2, y2, page]
-        x1, y1, x2, y2 = bbox[0], bbox[1], bbox[2], bbox[3]
+        if not found_group:
+            y_groups[y_center] = [cell]
 
-        # Calculate text center
-        center_x = (x1 + x2) / 2
-        center_y = (y1 + y2) / 2
+    table_rows = len(y_groups)
+    table_cols = max(len(group) for group in y_groups.values()) if y_groups else 0
 
-        # Scale to 960x960 coordinates
-        scaled_x = int(center_x * 960 / orig_width)
-        scaled_y = int(center_y * 960 / orig_height)
+    # Sort cells into proper grid order
+    sorted_cells = []
+    for y_pos in sorted(y_groups.keys()):
+        row_cells = sorted(y_groups[y_pos], key=lambda c: c['bbox'][0])  # Sort by X
+        sorted_cells.extend(row_cells)
 
-        text_centers.append((scaled_x, scaled_y, text))
+    # Find row boundaries (between grid rows)
+    row_boundaries = []
+    for row_idx in range(table_rows - 1):
+        # Get cells in current and next row
+        current_row_start = row_idx * table_cols
+        current_row_end = (row_idx + 1) * table_cols
+        next_row_start = (row_idx + 1) * table_cols
+        next_row_end = (row_idx + 2) * table_cols
+
+        current_row_cells = sorted_cells[current_row_start:min(current_row_end, len(sorted_cells))]
+        next_row_cells = sorted_cells[next_row_start:min(next_row_end, len(sorted_cells))]
+
+        if current_row_cells and next_row_cells:
+            # Bottom of current row
+            current_bottom = max(cell['bbox'][3] for cell in current_row_cells)
+            # Top of next row
+            next_top = min(cell['bbox'][1] for cell in next_row_cells)
+            # Split line is between them
+            split_y = (current_bottom + next_top) / 2
+            row_boundaries.append(split_y)
+
+    # Find column boundaries (between grid columns)
+    col_boundaries = []
+    for col_idx in range(table_cols - 1):
+        # Get cells in current and next column
+        current_col_cells = []
+        next_col_cells = []
+
+        for row in range(table_rows):
+            current_cell_idx = row * table_cols + col_idx
+            next_cell_idx = row * table_cols + col_idx + 1
+
+            if current_cell_idx < len(sorted_cells):
+                current_col_cells.append(sorted_cells[current_cell_idx])
+            if next_cell_idx < len(sorted_cells):
+                next_col_cells.append(sorted_cells[next_cell_idx])
+
+        if current_col_cells and next_col_cells:
+            # Right edge of current column
+            current_right = max(cell['bbox'][2] for cell in current_col_cells)
+            # Left edge of next column
+            next_left = min(cell['bbox'][0] for cell in next_col_cells)
+            # Split line is between them
+            split_x = (current_right + next_left) / 2
+            col_boundaries.append(split_x)
+
+    # Scale boundaries to target size (960x960)
+    y_scaled = [(y * target_size / orig_height) for y in row_boundaries]
+    x_scaled = [(x * target_size / orig_width) for x in col_boundaries]
 
     # Initialize ground truth arrays
-    horizontal_gt = [0] * 960
-    vertical_gt = [0] * 960
+    horizontal_gt = [0] * target_size
+    vertical_gt = [0] * target_size
 
-    # TABLET methodology: Find split regions based on text projections
+    # Mark horizontal split lines
+    for y in y_scaled:
+        y_int = int(round(y))
+        if 0 <= y_int < target_size:
+            # Mark a thin line (3 pixels wide for better detection)
+            for offset in range(-1, 2):
+                pos = y_int + offset
+                if 0 <= pos < target_size:
+                    horizontal_gt[pos] = 1
 
-    # HORIZONTAL SPLITS (row boundaries)
-    # Project text centers onto Y-axis
-    y_projections = [center[1] for center in text_centers]
-    y_projections.sort()
-
-    # Find gaps between consecutive Y projections
-    if len(y_projections) > 1:
-        for i in range(len(y_projections) - 1):
-            curr_y = y_projections[i]
-            next_y = y_projections[i + 1]
-
-            # If gap is significant (> 10 pixels), mark as split region
-            if next_y - curr_y > 10:
-                split_start = curr_y + 5  # Small offset from text
-                split_end = next_y - 5
-
-                # Ensure minimum split width of 5 pixels
-                if split_end - split_start < 5:
-                    split_center = (split_start + split_end) // 2
-                    split_start = split_center - 2
-                    split_end = split_center + 3
-
-                # Mark split region
-                for y in range(max(0, split_start), min(960, split_end)):
-                    horizontal_gt[y] = 1
-
-    # VERTICAL SPLITS (column boundaries)
-    # Project text centers onto X-axis
-    x_projections = [center[0] for center in text_centers]
-    x_projections.sort()
-
-    # Find gaps between consecutive X projections
-    if len(x_projections) > 1:
-        for i in range(len(x_projections) - 1):
-            curr_x = x_projections[i]
-            next_x = x_projections[i + 1]
-
-            # If gap is significant (> 10 pixels), mark as split region
-            if next_x - curr_x > 10:
-                split_start = curr_x + 5  # Small offset from text
-                split_end = next_x - 5
-
-                # Ensure minimum split width of 5 pixels
-                if split_end - split_start < 5:
-                    split_center = (split_start + split_end) // 2
-                    split_start = split_center - 2
-                    split_end = split_center + 3
-
-                # Mark split region
-                for x in range(max(0, split_start), min(960, split_end)):
-                    vertical_gt[x] = 1
-
-    # TABLET post-processing: If regions have no text projections, mark as splits
-    # This step ensures robustness for tables with missing content
-
-    # Check for empty horizontal regions
-    for y in range(0, 960, 10):  # Sample every 10 pixels
-        has_text_nearby = any(abs(center[1] - y) < 15 for center in text_centers)
-        if not has_text_nearby and y > 50 and y < 910:  # Avoid image borders
-            # Mark small split region around this empty area
-            for split_y in range(max(0, y-2), min(960, y+3)):
-                horizontal_gt[split_y] = 1
-
-    # Check for empty vertical regions
-    for x in range(0, 960, 10):  # Sample every 10 pixels
-        has_text_nearby = any(abs(center[0] - x) < 15 for center in text_centers)
-        if not has_text_nearby and x > 50 and x < 910:  # Avoid image borders
-            # Mark small split region around this empty area
-            for split_x in range(max(0, x-2), min(960, x+3)):
-                vertical_gt[split_x] = 1
+    # Mark vertical split lines
+    for x in x_scaled:
+        x_int = int(round(x))
+        if 0 <= x_int < target_size:
+            # Mark a thin line (3 pixels wide for better detection)
+            for offset in range(-1, 2):
+                pos = x_int + offset
+                if 0 <= pos < target_size:
+                    vertical_gt[pos] = 1
 
     return horizontal_gt, vertical_gt
 
@@ -232,29 +230,32 @@ class SplitModel(nn.Module):
         self.h_local_conv = nn.Conv2d(128, 1, kernel_size=1)
         self.v_local_conv = nn.Conv2d(128, 1, kernel_size=1)
         
+        # Fix: Correct feature dimensions - 128 + W/4 = 128 + 120 = 248
+        feature_dim = 128 + 120  # Global + Local features
+
         # Positional embeddings (1D as mentioned in paper)
-        self.h_pos_embed = nn.Parameter(torch.randn(480, 368))
-        self.v_pos_embed = nn.Parameter(torch.randn(480, 368))
+        self.h_pos_embed = nn.Parameter(torch.randn(480, feature_dim))
+        self.v_pos_embed = nn.Parameter(torch.randn(480, feature_dim))
 
         # Transformers with correct dimensions
         self.h_transformer = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
-                d_model=368, nhead=8, dim_feedforward=2048,
+                d_model=feature_dim, nhead=8, dim_feedforward=2048,
                 dropout=0.1, batch_first=True
             ),
             num_layers=3
         )
         self.v_transformer = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
-                d_model=368, nhead=8, dim_feedforward=2048,
+                d_model=feature_dim, nhead=8, dim_feedforward=2048,
                 dropout=0.1, batch_first=True
             ),
             num_layers=3
         )
 
         # Classification heads
-        self.h_classifier = nn.Linear(368, 1)
-        self.v_classifier = nn.Linear(368, 1)
+        self.h_classifier = nn.Linear(feature_dim, 1)
+        self.v_classifier = nn.Linear(feature_dim, 1)
         
     def forward(self, x):
         # Input: [B, 3, 960, 960]
@@ -268,12 +269,12 @@ class SplitModel(nn.Module):
         F_RG = torch.einsum('bchw,w->bch', F_half, self.h_global_weight)  # [B, 128, 480]
         F_RG = F_RG.transpose(1, 2)  # [B, 480, 128]
         
-        # Local: 1×2 AvgPool then 1×1 conv to 1 channel, treat spatial as features
-        F_RL_pooled = F.avg_pool2d(F_half, kernel_size=(1, 2))  # [B, 128, 480, 240]
-        F_RL = self.h_local_conv(F_RL_pooled)  # [B, 1, 480, 240]
-        F_RL = F_RL.squeeze(1)  # [B, 480, 240] - spatial becomes features
-        
-        # Concatenate: [B, 480, 128+240=368]
+        # Local: 1×4 AvgPool to get 120 features (W/4), then 1×1 conv to 1 channel
+        F_RL_pooled = F.avg_pool2d(F_half, kernel_size=(1, 4))  # [B, 128, 480, 120]
+        F_RL = self.h_local_conv(F_RL_pooled)  # [B, 1, 480, 120]
+        F_RL = F_RL.squeeze(1)  # [B, 480, 120] - spatial becomes features
+
+        # Concatenate: [B, 480, 128+120=248]
         F_RG_L = torch.cat([F_RG, F_RL], dim=2)
         
         # Add positional embeddings
@@ -284,13 +285,13 @@ class SplitModel(nn.Module):
         F_CG = torch.einsum('bchw,h->bcw', F_half, self.v_global_weight)  # [B, 128, 480]
         F_CG = F_CG.transpose(1, 2)  # [B, 480, 128]
         
-        # Local: 2×1 AvgPool then 1×1 conv to 1 channel, treat spatial as features
-        F_CL_pooled = F.avg_pool2d(F_half, kernel_size=(2, 1))  # [B, 128, 240, 480]
-        F_CL = self.v_local_conv(F_CL_pooled)  # [B, 1, 240, 480]
-        F_CL = F_CL.squeeze(1)  # [B, 240, 480]
-        F_CL = F_CL.transpose(1, 2)  # [B, 480, 240] - transpose to get spatial as features
-        
-        # Concatenate: [B, 480, 128+240=368]
+        # Local: 4×1 AvgPool to get 120 features (H/4), then 1×1 conv to 1 channel
+        F_CL_pooled = F.avg_pool2d(F_half, kernel_size=(4, 1))  # [B, 128, 120, 480]
+        F_CL = self.v_local_conv(F_CL_pooled)  # [B, 1, 120, 480]
+        F_CL = F_CL.squeeze(1)  # [B, 120, 480]
+        F_CL = F_CL.transpose(1, 2)  # [B, 480, 120] - transpose to get spatial as features
+
+        # Concatenate: [B, 480, 128+120=248]
         F_CG_L = torch.cat([F_CG, F_CL], dim=2)
 
         # Add positional embeddings
@@ -317,17 +318,13 @@ def focal_loss(predictions, targets, alpha=1.0, gamma=2.0):
     focal_weight = alpha * (1 - pt) ** gamma
     return (focal_weight * ce_loss).mean()
 
-def post_process_with_ocr(h_pred, v_pred, ocr_text_centers, threshold=0.5):
+def post_process_predictions(h_pred, v_pred, threshold=0.5):
     """
-    OCR-based post-processing as mentioned in paper:
-    If non-split regions contain no text projection, reclassify as split
+    Simple post-processing to convert predictions to binary masks
     """
     h_binary = (h_pred > threshold).float()
     v_binary = (v_pred > threshold).float()
-    
-    # For each non-split region, check if it contains text
-    # This is a simplified version - full implementation would need more detail
-    
+
     return h_binary, v_binary
 
 class TableDataset(Dataset):
@@ -521,14 +518,14 @@ def train_split_model(args):
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"📊 Model initialized with {total_params:,} total parameters ({trainable_params:,} trainable)")
 
-    # Load dataset
+    # Load dataset with proper train/val split
     from datasets import load_dataset
     logger.info("📥 Loading FinTabNet dataset...")
     ds = load_dataset("ds4sd/FinTabNet_OTSL")
 
-    # Create train/val datasets
+    # Fix: Use proper dataset splits
     train_dataset = TableDataset(ds['train'])
-    val_dataset = TableDataset(ds['val'])
+    val_dataset = TableDataset(ds['val'])  # Dataset already has val split
 
     # Subset for testing if specified
     if args.num_images > 0:
@@ -769,3 +766,4 @@ if __name__ == "__main__":
     print(f"📂 Final model: {log_dir}/final_model.pth")
 
     print(f"📈 View tensorboard: tensorboard --logdir {log_dir}")
+
