@@ -43,10 +43,10 @@ def get_ground_truth(image, html_tags, cells, otsl):
             if current_row:
                 grid.append(current_row)
                 current_row = []
-        elif token == 'fcel':
-            current_row.append({'type': 'fcel', 'cell_idx': cell_idx})
+        elif token == 'fcel' or token=='ecel':
+            current_row.append({'type': token, 'cell_idx': cell_idx})
             cell_idx += 1
-        elif token in ['lcel', 'ucel', 'xcel', 'ecel']:
+        elif token in ['lcel', 'ucel', 'xcel']:
             # merge/empty tokens don't consume bboxes
             current_row.append({'type': token, 'cell_idx': None})
     
@@ -56,7 +56,7 @@ def get_ground_truth(image, html_tags, cells, otsl):
     # derive row splits - max y2 for each row
     row_splits = []
     for row in grid:
-        fcel_indices = [item['cell_idx'] for item in row if item['type'] == 'fcel']
+        fcel_indices = [item['cell_idx'] for item in row if item['cell_idx'] is not None]
         if fcel_indices:
             max_y = max(cells_flat[i]['bbox'][3] for i in fcel_indices)
             row_splits.append(max_y)
@@ -67,9 +67,11 @@ def get_ground_truth(image, html_tags, cells, otsl):
     for col_idx in range(num_cols):
         col_max_x = []
         for row in grid:
-            if col_idx < len(row) and row[col_idx]['type'] == 'fcel':
-                cell_id = row[col_idx]['cell_idx']
-                col_max_x.append(cells_flat[cell_id]['bbox'][2])
+            if col_idx < len(row) and row[col_idx]['cell_idx'] is not None:
+                next_is_lcel = (col_idx + 1 < len(row) and row[col_idx + 1]['type'] == 'lcel')
+                if not next_is_lcel:
+                    cell_id = row[col_idx]['cell_idx']
+                    col_max_x.append(cells_flat[cell_id]['bbox'][2])
         if col_max_x:
             col_splits.append(max(col_max_x))
 
