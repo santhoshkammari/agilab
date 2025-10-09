@@ -10,25 +10,25 @@ from tqdm import tqdm
 import logging
 from torch.utils.tensorboard import SummaryWriter
 
-from split_model import SplitModel, TableDataset
+from split_model import SplitModel, TableDataset,focal_loss
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Config
+# Config (following TABLET paper specifications)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-batch_size = 4
-epochs = 16
-lr = 0.003  # Medium LR - not too high, not too low
-pos_weight = 15.0  # Weight positive class heavily
+batch_size = 32  # Paper specification
+epochs = 16  # Paper specification
+lr = 3e-4  # Paper: 3e-4
+pos_weight = 15.0  # Weight positive class heavily (not used with focal loss)
 
 # Load dataset
 logger.info("Loading dataset...")
 ds = load_dataset("ds4sd/FinTabNet_OTSL")
 
-train_dataset = TableDataset(ds['train'])
-val_dataset = TableDataset(ds['val'])
+train_dataset = TableDataset(ds['train'].select(range(1000)))
+val_dataset = TableDataset(ds['val'].select(range(1000)))
 
 logger.info(f"📊 Dataset sizes - Train: {len(train_dataset):,}, Val: {len(val_dataset):,}")
 
@@ -53,8 +53,14 @@ total_params = sum(p.numel() for p in model.parameters())
 trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 logger.info(f"📊 Model: {total_params:,} params ({trainable_params:,} trainable)")
 
-# Optimizer with weight decay
-optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+# Optimizer with weight decay (paper specs: lr=3e-4, betas=(0.9,0.999), eps=1e-8, weight_decay=5e-4)
+optimizer = torch.optim.AdamW(
+    model.parameters(),
+    lr=lr,
+    betas=(0.9, 0.999),
+    eps=1e-8,
+    weight_decay=5e-4
+)
 
 # Learning rate scheduler - reduce on plateau
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -98,18 +104,10 @@ def compute_metrics(pred, target):
     else:
         neg_acc = 0.0
 
-    # What % model predicts as positive
-    pred_pos_ratio = pred_binary.mean().item()
-
-    # What % actually is positive
-    gt_pos_ratio = target.mean().item()
-
     return {
         'acc': acc,
         'pos_acc': pos_acc,
-        'neg_acc': neg_acc,
-        'pred_pos_pct': pred_pos_ratio * 100,
-        'gt_pos_pct': gt_pos_ratio * 100
+        'neg_acc': neg_acc
     }
 
 
@@ -121,8 +119,8 @@ best_val_acc = 0.0  # Track best validation accuracy
 for epoch in range(epochs):
     model.train()
     epoch_loss = 0
-    epoch_h_metrics = {'acc': 0, 'pos_acc': 0, 'neg_acc': 0, 'pred_pos_pct': 0, 'gt_pos_pct': 0}
-    epoch_v_metrics = {'acc': 0, 'pos_acc': 0, 'neg_acc': 0, 'pred_pos_pct': 0, 'gt_pos_pct': 0}
+    epoch_h_metrics = {'acc': 0, 'pos_acc': 0, 'neg_acc': 0}
+    epoch_v_metrics = {'acc': 0, 'pos_acc': 0, 'neg_acc': 0}
     num_batches = 0
 
     pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
@@ -139,17 +137,22 @@ for epoch in range(epochs):
 
         # Weighted BCE loss
         # Convert sigmoid outputs back to logits for BCE with logits
-        h_logits = torch.logit(h_pred.clamp(1e-7, 1-1e-7))
-        v_logits = torch.logit(v_pred.clamp(1e-7, 1-1e-7))
+        # h_logits = torch.logit(h_pred.clamp(1e-7, 1-1e-7))
+        # v_logits = torch.logit(v_pred.clamp(1e-7, 1-1e-7))
 
-        pos_weight_tensor = torch.tensor([pos_weight]).to(device)
-        h_loss = F.binary_cross_entropy_with_logits(h_logits, h_targets, pos_weight=pos_weight_tensor)
-        v_loss = F.binary_cross_entropy_with_logits(v_logits, v_targets, pos_weight=pos_weight_tensor)
+        # pos_weight_tensor = torch.tensor([pos_weight]).to(device)
+        # h_loss = F.binary_cross_entropy_with_logits(h_logits, h_targets, pos_weight=pos_weight_tensor)
+        # v_loss = F.binary_cross_entropy_with_logits(v_logits, v_targets, pos_weight=pos_weight_tensor)
+        # loss = h_loss + v_loss
+
+        h_loss = focal_loss(h_pred,h_targets)
+        v_loss = focal_loss(v_pred,v_targets)
         loss = h_loss + v_loss
+
 
         # Backward
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)  # Paper: L2 norm with max_norm=0.5
         optimizer.step()
 
         # Metrics
@@ -167,9 +170,7 @@ for epoch in range(epochs):
         pbar.set_postfix({
             'loss': f'{loss.item():.3f}',
             'H_pos': f'{h_metrics["pos_acc"]:.2f}',
-            'V_pos': f'{v_metrics["pos_acc"]:.2f}',
-            'H_pred%': f'{h_metrics["pred_pos_pct"]:.1f}',
-            'V_pred%': f'{v_metrics["pred_pos_pct"]:.1f}'
+            'V_pos': f'{v_metrics["pos_acc"]:.2f}'
         })
 
         # TensorBoard logging
@@ -177,8 +178,6 @@ for epoch in range(epochs):
             writer.add_scalar('Train/Loss', loss.item(), global_step)
             writer.add_scalar('Train/H_Pos_Acc', h_metrics['pos_acc'], global_step)
             writer.add_scalar('Train/V_Pos_Acc', v_metrics['pos_acc'], global_step)
-            writer.add_scalar('Train/H_Pred_Pct', h_metrics['pred_pos_pct'], global_step)
-            writer.add_scalar('Train/V_Pred_Pct', v_metrics['pred_pos_pct'], global_step)
             writer.add_scalar('Train/LR', optimizer.param_groups[0]['lr'], global_step)
 
         global_step += 1
@@ -191,8 +190,8 @@ for epoch in range(epochs):
 
     logger.info(f"\n📊 Epoch {epoch+1} Results:")
     logger.info(f"  Loss: {avg_loss:.4f}")
-    logger.info(f"  H - Acc: {epoch_h_metrics['acc']:.3f}, Pos: {epoch_h_metrics['pos_acc']:.3f}, Neg: {epoch_h_metrics['neg_acc']:.3f}, Pred%: {epoch_h_metrics['pred_pos_pct']:.1f}, GT%: {epoch_h_metrics['gt_pos_pct']:.1f}")
-    logger.info(f"  V - Acc: {epoch_v_metrics['acc']:.3f}, Pos: {epoch_v_metrics['pos_acc']:.3f}, Neg: {epoch_v_metrics['neg_acc']:.3f}, Pred%: {epoch_v_metrics['pred_pos_pct']:.1f}, GT%: {epoch_v_metrics['gt_pos_pct']:.1f}")
+    logger.info(f"  H - Acc: {epoch_h_metrics['acc']:.3f}, Pos: {epoch_h_metrics['pos_acc']:.3f}, Neg: {epoch_h_metrics['neg_acc']:.3f}")
+    logger.info(f"  V - Acc: {epoch_v_metrics['acc']:.3f}, Pos: {epoch_v_metrics['pos_acc']:.3f}, Neg: {epoch_v_metrics['neg_acc']:.3f}")
 
     # Validation
     model.eval()
@@ -210,11 +209,15 @@ for epoch in range(epochs):
             h_pred, v_pred = model(images)
 
             # Loss
-            h_logits = torch.logit(h_pred.clamp(1e-7, 1-1e-7))
-            v_logits = torch.logit(v_pred.clamp(1e-7, 1-1e-7))
-            pos_weight_tensor = torch.tensor([pos_weight]).to(device)
-            h_loss = F.binary_cross_entropy_with_logits(h_logits, h_targets, pos_weight=pos_weight_tensor)
-            v_loss = F.binary_cross_entropy_with_logits(v_logits, v_targets, pos_weight=pos_weight_tensor)
+            # h_logits = torch.logit(h_pred.clamp(1e-7, 1-1e-7))
+            # v_logits = torch.logit(v_pred.clamp(1e-7, 1-1e-7))
+            # pos_weight_tensor = torch.tensor([pos_weight]).to(device)
+            # h_loss = F.binary_cross_entropy_with_logits(h_logits, h_targets, pos_weight=pos_weight_tensor)
+            # v_loss = F.binary_cross_entropy_with_logits(v_logits, v_targets, pos_weight=pos_weight_tensor)
+            # val_loss += (h_loss + v_loss).item()
+
+            h_loss = focal_loss(h_pred,h_targets)
+            v_loss = focal_loss(v_pred,v_targets)
             val_loss += (h_loss + v_loss).item()
 
             # Metrics
