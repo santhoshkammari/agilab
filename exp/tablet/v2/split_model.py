@@ -16,17 +16,18 @@ from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
 
 
-def get_ground_truth(image, cells, otsl):
+def get_ground_truth(image, cells, otsl, split_width=5):
 
     """
     parse OTSL to derive row/column split positions.
     this is the groundtruth for split model training.
-    
+
     Args:
         image: PIL Image
         html_tags: not used, kept for compatibility
         cells: nested list - cells[0] contains actual cell data
         otsl: OTSL token sequence
+        split_width: width of split regions in pixels (default: 5)
     """
     orig_width, orig_height = image.size
     target_size = 960
@@ -99,20 +100,56 @@ def get_ground_truth(image, cells, otsl):
     # init ground truth arrays
     horizontal_gt = [0] * target_size
     vertical_gt = [0] * target_size
-    
-    # mark split regions (5 pixel wide as per paper)
+
+    all_x1 = [c['bbox'][0] for c in cells_flat]
+    all_y1 = [c['bbox'][1] for c in cells_flat]
+    all_x2 = [c['bbox'][2] for c in cells_flat]
+    all_y2 = [c['bbox'][3] for c in cells_flat]
+    table_bbox = [min(all_x1), min(all_y1), max(all_x2), max(all_y2)]
+    table_y1 = int(round(table_bbox[1] * target_size / orig_height))
+    table_y2 = int(round(table_bbox[3] * target_size / orig_height))
+    table_x1 = int(round(table_bbox[0] * target_size / orig_width))
+    table_x2 = int(round(table_bbox[2] * target_size / orig_width))
+
+
+    # Mark table bbox boundaries (5 pixels wide)
+    # Top boundary
+    for offset in range(split_width):
+        pos = table_y1 + offset
+        if 0 <= pos < target_size:
+            horizontal_gt[pos] = 1
+
+    # Bottom boundary
+    for offset in range(split_width):
+        pos = table_y2 - offset
+        if 0 <= pos < target_size:
+            horizontal_gt[pos] = 1
+
+    # Left boundary
+    for offset in range(split_width):
+        pos = table_x1 + offset
+        if 0 <= pos < target_size:
+            vertical_gt[pos] = 1
+
+    # Right boundary
+    for offset in range(split_width):
+        pos = table_x2 - offset
+        if 0 <= pos < target_size:
+            vertical_gt[pos] = 1
+
+    # mark split regions (configurable pixel width)
     for y in y_scaled:
         y_int = int(round(y))
         if 0 <= y_int < target_size:
-            for offset in range(0, 5):  # 5 pixels wide
+            for offset in range(split_width):
                 pos = y_int + offset
                 if 0 <= pos < target_size:
                     horizontal_gt[pos] = 1
-    
+
     for x in x_scaled:
         x_int = int(round(x))
         if 0 <= x_int < target_size:
-            for offset in range(0,5):  # 5 pixels wide
+            for offset in range(split_width):
                 pos = x_int + offset
                 if 0 <= pos < target_size:
                     vertical_gt[pos] = 1
@@ -312,8 +349,9 @@ def post_process_predictions(h_pred, v_pred, threshold=0.5):
     return h_binary, v_binary
 
 class TableDataset(Dataset):
-    def __init__(self, hf_dataset):
+    def __init__(self, hf_dataset, split_width=5):
         self.hf_dataset = hf_dataset
+        self.split_width = split_width
 
         self.transform = transforms.Compose([
             transforms.Resize((960, 960)),
@@ -326,17 +364,18 @@ class TableDataset(Dataset):
 
     def __getitem__(self, idx):
         item = self.hf_dataset[idx]
-        
+
         image = item['image'].convert('RGB')
         image_transformed = self.transform(image)
-        
-        # pass otsl to ground truth generation
+
+        # pass otsl to ground truth generation with configurable split_width
         h_gt, v_gt = get_ground_truth(
             item['image'],  # original PIL image for dimensions
             item['cells'],
-            item['otsl']  # <-- add this
+            item['otsl'],
+            split_width=self.split_width
         )
-        
+
         return image_transformed, torch.tensor(h_gt, dtype=torch.float), torch.tensor(v_gt, dtype=torch.float)
 
 def setup_logging(log_dir):
