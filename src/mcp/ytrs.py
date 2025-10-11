@@ -12,7 +12,7 @@ def get_youtube_transcript(video_id: str):
     """
     try:
         ytt_api = YouTubeTranscriptApi()
-        transcript_list = ytt_api.get_transcript(video_id)
+        transcript_list = ytt_api.fetch(video_id).to_raw_data()
         transcript = " ".join([item['text'] for item in transcript_list])
         return transcript
     except Exception as e:
