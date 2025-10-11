@@ -1,0 +1,17 @@
+claude mcp add FileOperations python /home/ntlpt59/master/own/agilab/src/mcp/editor.py --scope user
+claude mcp remove FileOperations
+
+claude mcp add FileOperations python /home/ntlpt59/master/own/agilab/src/mcp/editor_multi_lines.py --scope user
+
+
+add just one line quick file top docstring in agi.py ,use fileoperaiton read,replace tool. also add docstring at the end of the file as well, i just want to see
+  whetehr you can able to use the replace tool in fileopariotn in on go
+
+
+claude --dangerously-skip-permissions --disallowedTools WebSearch,WebFetch
+
+claude --dangerously-skip-permissions --disallowedTools WebSearch,WebFetch,Read,Edit
+
+Read
+Edit
+MultiEdit
