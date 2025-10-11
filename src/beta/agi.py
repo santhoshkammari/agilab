@@ -62,7 +62,7 @@ def convert_func_to_oai_tool(func):
 class Agent:
     def __init__(self, tools=None):
         self.tool_schemas = [convert_func_to_oai_tool(t) for t in (tools or [])]
-        self.messages = []  # keep conversation history here
+        self.messages = [] 
 
     def __call__(self, user_content, **kwargs):
         self.messages.append({"role": "user", "content": user_content})
@@ -74,7 +74,6 @@ class Agent:
                 response_text.append(token)
                 yield {"type": "token", "content": token}
 
-        # store assistant reply in conversation
         if response_text:
             self.messages.append({"role": "assistant", "content": "".join(response_text)})
 
