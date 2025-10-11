@@ -90,6 +90,15 @@ class LM:
                 return Prediction(raw=raw, content=content, tools=tools,
                                 prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
 
+    async def async_batch_call_llm(self, messages_list: List[List[dict]], **params):
+        """
+        Sends multiple lists of messages concurrently using asyncio.gather.
+        Each item in messages_list is a list of messages for one request.
+        """
+        tasks = [self.async_call_llm(messages, **params) for messages in messages_list]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return results
+
 
 # ============ Signature System ============
 
