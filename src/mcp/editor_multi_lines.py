@@ -30,9 +30,9 @@ def replace_str_in_file(file_path: str, edits: List[Dict[str, Any]]) -> str:
     Args:
         file_path: Path to the file
         edits: List of dictionaries, each containing:
-            - line_start: Starting line number (1-indexed)
-            - line_end: Ending line number (1-indexed, inclusive)
-            - new_string: New content to replace with
+            - line_start(int): Starting line number (1-indexed)
+            - line_end(int): Ending line number (1-indexed, inclusive)
+            - new_string(str): New content to replace with
     
     Edits are applied from bottom to top to maintain line number validity.
     """
