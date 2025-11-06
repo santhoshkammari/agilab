@@ -5,7 +5,7 @@ Simple, expandable design keeping aspy's philosophy
 import asyncio
 from typing import AsyncIterator, Optional, Any
 from dataclasses import dataclass
-from .lm.lm import LM
+from .lm import LM
 
 
 @dataclass
@@ -55,7 +55,7 @@ class Agent:
         from . import get_lm
         lm = get_lm()
         if not lm:
-            raise ValueError("No LM configured. Use aspy.configure(lm=...) or pass lm to Agent")
+            raise ValueError("No LM configured. Use dspy.configure(lm=...) or pass lm to Agent")
         return lm
 
     def _build_messages(self, user_input: str) -> list:

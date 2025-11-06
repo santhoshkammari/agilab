@@ -4,7 +4,7 @@ aspy.Evaluate - Simplified evaluation module inspired by dspy.Evaluate
 import json
 from typing import Callable, List, Any, Optional
 import tqdm
-from ..predict.predict import Module, Prediction
+from ..predict import Module, Prediction
 from .example import Example
 
 

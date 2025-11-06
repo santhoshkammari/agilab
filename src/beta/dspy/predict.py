@@ -1,6 +1,6 @@
 from typing import Union
-from ..signature.signature import Signature
-from ..lm.lm import LM
+from .signature import Signature
+from .lm import LM
 import json
 
 
@@ -128,11 +128,11 @@ Respond with valid JSON matching this schema:
         # Try to get LM: explicit -> context -> error
         lm = self._lm
         if not lm:
-            from .. import get_lm
+            from . import get_lm
             lm = get_lm()
 
         if not lm:
-            raise ValueError("No language model set. Use aspy.configure(lm=...) or pass lm in constructor.")
+            raise ValueError("No language model set. Use dspy.configure(lm=...) or pass lm in constructor.")
 
         messages = self._build_prompt(**inputs)
 
@@ -208,11 +208,11 @@ Respond with valid JSON matching this schema:
         # Try to get LM: explicit -> context -> error
         lm = self._lm
         if not lm:
-            from .. import get_lm
+            from . import get_lm
             lm = get_lm()
 
         if not lm:
-            raise ValueError("No language model set. Use aspy.configure(lm=...) or pass lm in constructor.")
+            raise ValueError("No language model set. Use dspy.configure(lm=...) or pass lm in constructor.")
 
         # Build batch of messages
         messages_batch = []

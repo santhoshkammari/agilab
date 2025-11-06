@@ -31,7 +31,7 @@ vllm serve /home/ng6309/datascience/santhosh/models/Qwen3-14B \
 ### 3. Integrate UniversalLogger
 Following the FRAMEWORK_ANALYSIS.md recommendations:
 
-#### Update LM class (`dspy/lm/lm.py`)
+#### Update LM class (`dspy/lm.py`)
 ```python
 from logger import UniversalLogger
 
@@ -73,7 +73,7 @@ class Agent:
         self.log.ai(response, role="assistant")
 ```
 
-#### Update Predict class (`dspy/predict/predict.py`)
+#### Update Predict class (`dspy/predict.py`)
 ```python
 from logger import UniversalLogger
 
@@ -124,7 +124,7 @@ class ToolRegistry:
 #### Cost Tracking
 Add token cost calculation:
 ```python
-# dspy/lm/lm.py
+# dspy/lm.py
 COST_PER_1K_TOKENS = {
     "input": 0.01,   # $0.01 per 1K input tokens
     "output": 0.03   # $0.03 per 1K output tokens
@@ -178,15 +178,9 @@ async def _single_async(self, messages, **params):
 ```
 dspy/
 ├── __init__.py
-├── lm/
-│   ├── lm.py           # ✅ Updated with UniversalLogger
-│   └── __init__.py
-├── signature/
-│   ├── signature.py
-│   └── __init__.py
-├── predict/
-│   ├── predict.py      # ✅ Updated with UniversalLogger
-│   └── __init__.py
+├── lm.py               # ✅ Flattened - Updated with UniversalLogger
+├── signature.py        # ✅ Flattened
+├── predict.py          # ✅ Flattened - Updated with UniversalLogger
 ├── agent.py            # ✅ Updated with UniversalLogger
 ├── tools/              # 🆕 New module
 │   ├── __init__.py

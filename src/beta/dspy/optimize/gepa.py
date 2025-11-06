@@ -6,8 +6,8 @@ import json
 import random
 from typing import List, Callable, Optional, Dict, Any, Tuple
 import tqdm
-from ..predict.predict import Module, Predict, Prediction
-from ..lm.lm import LM
+from ..predict import Module, Predict, Prediction
+from ..lm import LM
 from ..evaluate import Evaluate, Example
 
 
@@ -410,7 +410,7 @@ class GEPA:
         try:
             # Preserve the original signature and just update instructions
             if hasattr(original_module, 'signature'):
-                from ..signature.signature import Signature
+                from ..signature import Signature
 
                 # Create new signature preserving all original properties
                 new_sig = Signature(
