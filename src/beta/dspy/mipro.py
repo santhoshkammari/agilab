@@ -6,8 +6,8 @@ import json
 import random
 from typing import List, Callable, Optional, Dict, Any
 import tqdm
-from ..predict import Module, Predict, Prediction
-from ..evaluate import Evaluate, Example
+from .predict import Module, Predict, Prediction
+from .evaluate import Evaluate, Example
 
 
 class OptimizationResult:

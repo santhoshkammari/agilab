@@ -3,8 +3,10 @@ import contextvars
 from .lm import LM
 from .signature import Signature, register_type, get_registered_types
 from .predict import Module, Predict, ChainOfThought, Prediction
-from .evaluate import Evaluate, EvaluationResult, exact_match, contains_match, Example
-from .optimize import MIPROv2, GEPA, OptimizationResult, GEPAResult
+from .evaluate import Evaluate, EvaluationResult, exact_match, contains_match
+from .evaluate_example import Example
+from .mipro import MIPROv2, OptimizationResult
+from .gepa import GEPA, GEPAResult
 from .agent import Agent, Event
 
 # Global LM context
