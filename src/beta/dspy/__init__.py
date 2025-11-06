@@ -5,8 +5,6 @@ from .signature import Signature, register_type, get_registered_types
 from .predict import Module, Predict, ChainOfThought, Prediction
 from .evaluate import Evaluate, EvaluationResult, exact_match, contains_match
 from .evaluate_example import Example
-from .mipro import MIPROv2, OptimizationResult
-from .gepa import GEPA, GEPAResult
 from .agent import Agent, Event
 
 # Global LM context
