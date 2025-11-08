@@ -56,22 +56,6 @@ class LM:
         tasks = [self._single_async(msgs, **params) for msgs in messages_batch]
         return await asyncio.gather(*tasks, return_exceptions=True)
 
-    def _call_vllm(self, messages, **params):
-        """Legacy sync method - deprecated, kept for compatibility"""
-        url = f"{self.api_base}/v1/chat/completions"
-        if isinstance(messages, str):
-            messages = [{"role": "user", "content": messages}]
-        body = {
-            "model": self.model,
-            "messages": messages,
-            **params
-        }
-
-        resp = requests.post(url, json=body)
-        resp.raise_for_status()
-        data = resp.json()
-        return data
-
 
 """
 {
