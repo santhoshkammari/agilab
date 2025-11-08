@@ -1,96 +1,81 @@
-# """
-# vllm serve Qwen/Qwen3-4B-Instruct-2507 --gpu-memory-utilization 0.4 --max-model-len 10k
-#
-#
-# #
-# # prompt created via XML tagging + dspy signature to prompt style. + followed by output + inputfields.
-# # example:
-# # <system_prompt>
-# # </system_prompt>
-# # <output_format>
-# # </output_format>
-# # <static_input_fields>
-# # <static_input_fields>
-# # <dynamic_user_level_input_fields>
-# # </dynamic_user_level_input_fields>
-# # '''
-#
-#
-
-import aspy as a
-
-lm = a.LM(api_base="http://192.168.170.76:8000")
-a.configure(lm=lm)
-
-math = a.Predict("q -> think,answer:float")
-res = math(q="2+3?")
-print(type(res),res)
+"""
+Example class for aspy evaluation
+"""
+from typing import Dict, Any
 
 
-# print("\n=== Testing Predict ===")
-# predictor = a.Predict("query -> two_lines")
-# result = predictor(query="What is the capital of France?")
-# print(result)
-#
-# print("\n=== Testing Multi-stage Module ===")
-#
-#
-# class DraftArticle(a.Module):
-#     def __init__(self):
-#         super().__init__()
-#         self.build_outline = a.ChainOfThought("topic -> title, two_sections:[str]")
-#         self.draft_section = a.ChainOfThought("topic, section_heading -> content")
-#
-#     def forward(self, topic):
-#         outline = self.build_outline(topic=topic)
-#         sections = []
-#
-#         # Handle sections list
-#         if hasattr(outline, 'two_sections') and outline.two_sections:
-#             for heading in outline.two_sections:
-#                 section = self.draft_section(topic=outline.title, section_heading=f"## {heading}")
-#                 sections.append(section.content)
-#
-#         return a.Prediction(title=outline.title, sections=sections)
-#
-#
-# # Zero configuration needed - everything just works!
-# draft_article = DraftArticle()
-# article = draft_article(topic="World Cup 2002")
-# print(article)
+class Example:
+    """
+    Simple example class similar to dspy.Example but simplified.
 
+    Usage:
+        example = Example(question="What is 2+2?", answer="4")
+        inputs = example.inputs()  # Returns dict with input fields
 
-# import aspy
-#
-# # Setup
-# lm = aspy.LM(api_base="http://192.168.170.76:8000")
-# aspy.configure(lm=lm)
-#
-# # Create some test examples
-# examples = [
-#   aspy.Example(question="What is 2+2?", answer="4"),
-#   aspy.Example(question="Capital of France?", answer="Paris"),
-# ]
-#
-# # Create a module to evaluate
-# math_qa = aspy.Predict("question -> answer")
-#
-# # Evaluate with progress bar and nice scoring
-# evaluator = aspy.Evaluate(
-#   devset=examples,
-#   metric=aspy.exact_match,
-#   display_progress=True,
-#   save_as_json="results.json"
-# )
-#
-# result = evaluator(math_qa)
-# print(f"Final score: {result.score}%")
+        # Or specify explicit input fields:
+        example = Example(question="What is 2+2?", context="Math problem", answer="4")
+        example_with_inputs = example.with_inputs("question", "context")
+        inputs = example_with_inputs.inputs()  # Only returns question and context
+    """
 
-#
-# import aspy
-#
-# # Setup
-# lm = aspy.LM(api_base="http://192.168.170.76:8000")
-# response = lm("""what is 2+3/""")
-# content = response['choices'][0]['message']['content']
-# print(content)
+    def __init__(self, **kwargs):
+        """Initialize example with keyword arguments."""
+        self._input_keys = None
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+    def with_inputs(self, *keys):
+        """
+        Set which fields should be treated as inputs.
+
+        Args:
+            *keys: Field names to treat as inputs
+
+        Returns:
+            A new Example instance with input keys set
+        """
+        copied = self.copy()
+        copied._input_keys = set(keys)
+        return copied
+
+    def inputs(self) -> Dict[str, Any]:
+        """
+        Return a dictionary of input fields.
+
+        If with_inputs() was called, returns only those specified fields.
+        Otherwise, excludes common target fields like 'answer', 'output', etc.
+        """
+        all_attrs = {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
+
+        if self._input_keys is not None:
+            # Return only explicitly specified input keys
+            return {k: v for k, v in all_attrs.items() if k in self._input_keys}
+        else:
+            # Default behavior: exclude common target fields
+            target_fields = {'answer', 'output', 'target', 'label'}
+            return {k: v for k, v in all_attrs.items() if k not in target_fields}
+
+    def copy(self, **kwargs):
+        """
+        Create a copy of this Example with optional additional kwargs.
+
+        Returns:
+            A new Example instance with the same data
+        """
+        # Copy all non-private attributes
+        data = self.model_dump()
+        data.update(kwargs)
+
+        new_example = Example(**data)
+        new_example._input_keys = self._input_keys
+        return new_example
+
+    def model_dump(self) -> Dict[str, Any]:
+        """Return all attributes as a dictionary for JSON serialization."""
+        return {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
+
+    def __repr__(self):
+        attrs = self.model_dump()
+        attr_str = ", ".join([f"{k}={repr(v)}" for k, v in attrs.items()])
+        input_keys_str = f" (input_keys={self._input_keys})" if self._input_keys else ""
+        return f"Example({attr_str}){input_keys_str}"
