@@ -1,6 +1,7 @@
 import asyncio
 import aiohttp
 import requests
+import json
 
 class LM:
     def __init__(self, model: str="", api_base="http://localhost:11434", api_key: str = "-"):
@@ -17,6 +18,44 @@ class LM:
                 return asyncio.run(self._single_async(messages, **params))
         else:
             raise ValueError(f"Unknown provider: {self.provider}")
+          
+    async def stream(self, messages, tools=None, **params):
+      """Streaming interface for LLM"""
+      
+      # Handle string input
+      if isinstance(messages, str):
+          messages = [{"role": "user", "content": messages}]
+      
+      async with aiohttp.ClientSession() as session:
+          # Build request body
+          body = {
+              "model": self.model,
+              "messages": messages,
+              "stream": True,
+              **params
+          }
+          
+          # Add tools if provided
+          if tools:
+              body["tools"] = tools
+          
+          # Stream response
+          async with session.post(
+              f"{self.api_base}/v1/chat/completions",
+              json=body
+          ) as resp:
+              async for line in resp.content:
+                  line = line.decode().strip()
+                  
+                  # Skip empty lines and done marker
+                  if not line or line == "data: [DONE]":
+                      continue
+                  
+                  # Parse SSE format
+                  if line.startswith("data: "):
+                      data = json.loads(line[6:])
+                      yield data
+                      
 
     def _is_batch(self, messages) -> bool:
         """Intelligently detect if input is batch or single conversation"""
