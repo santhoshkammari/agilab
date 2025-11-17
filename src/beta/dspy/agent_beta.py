@@ -49,21 +49,42 @@ class Agent:
 
         # Stream response from LLM
         full_content = ""
-        async for chunk in self.llm.stream(self.messages, tools=tool_schemas):
+        tool_calls = []
+        stream_params = {}
+        if tool_schemas:
+            stream_params['tool_choice'] = 'required'
+
+        async for chunk in self.llm.stream(self.messages, tools=tool_schemas, **stream_params):
             yield chunk
 
-            # Collect content for state tracking
+            # Collect content and tool_calls for state tracking
             if 'choices' in chunk and len(chunk['choices']) > 0:
                 delta = chunk['choices'][0].get('delta', {})
                 if 'content' in delta:
                     full_content += delta['content']
+                if 'tool_calls' in delta:
+                    # Accumulate tool call arguments
+                    for tc in delta['tool_calls']:
+                        idx = tc.get('index', 0)
+                        # Ensure we have space for this tool call
+                        while len(tool_calls) <= idx:
+                            tool_calls.append({'id': '', 'type': 'function', 'function': {'name': '', 'arguments': ''}})
+
+                        if 'id' in tc:
+                            tool_calls[idx]['id'] = tc['id']
+                        if 'type' in tc:
+                            tool_calls[idx]['type'] = tc['type']
+                        if 'function' in tc:
+                            if tc['function'].get('name'):
+                                tool_calls[idx]['function']['name'] = tc['function']['name']
+                            if tc['function'].get('arguments'):
+                                tool_calls[idx]['function']['arguments'] += tc['function']['arguments']
 
         # Add complete assistant response to state
-        if full_content:
-            self.messages.append({
-                "role": "assistant",
-                "content": full_content
-            })
+        assistant_msg = {"role": "assistant", "content": full_content}
+        if tool_calls:
+            assistant_msg['tool_calls'] = tool_calls
+        self.messages.append(assistant_msg)
 
 
 if __name__ == "__main__":
