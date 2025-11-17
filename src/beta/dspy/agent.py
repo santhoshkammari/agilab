@@ -2,6 +2,7 @@ import json
 import asyncio
 
 from dataclasses import dataclass
+from typing import Callable
 from transformers.utils import get_json_schema
 
 from lm import LM
@@ -15,6 +16,34 @@ class ToolCall:
     id:str
     name:str
     arguments:str
+
+@dataclass
+class StepResult:
+    """Result from one LLM generation with async tool execution"""
+    message: dict                           # The assistant's message
+    tool_calls: list[dict]                  # Tool calls made
+    usage: dict | None                      # Token usage if available
+    _tool_futures: dict[str, asyncio.Future]  # Futures for tool results
+
+    async def tool_results(self) -> list["ToolResult"]:
+        """Wait for and return all tool execution results"""
+        if not self._tool_futures:
+            return []
+
+        results = []
+        for tool_call in self.tool_calls:
+            future = self._tool_futures[tool_call["id"]]
+            result = await future
+            results.append(result)
+
+        return results
+
+@dataclass
+class ToolResult:
+    """Result from executing a single tool"""
+    tool_call_id: str
+    output: str
+    is_error: bool = False
 
 async def gen(
     lm,
@@ -31,13 +60,157 @@ async def gen(
                 tool_call_id = tool_call['id']
                 tool_call_name = tool_call['function']['name']
 
-            if 'arguments' in tool_call['function']:    
+            if 'arguments' in tool_call['function']:
                 yield ToolCall(id=tool_call_id,name=tool_call_name,arguments=tool_call['function']['arguments'])
         elif 'content' in delta:
             yield AssistantResponse(content=delta['content'])
         else:
             raise ValueError("Unknown delta format")
-        
+
+
+async def _execute_tool(
+    tool_name: str,
+    tool_args_str: str,
+    tool_id: str,
+    tool_registry: dict,
+) -> ToolResult:
+    """Execute a single tool asynchronously"""
+    try:
+        # Parse arguments
+        tool_args = json.loads(tool_args_str) if tool_args_str else {}
+
+        # Get tool function
+        if tool_name not in tool_registry:
+            result = ToolResult(
+                tool_call_id=tool_id,
+                output=f"Error: Tool '{tool_name}' not found",
+                is_error=True
+            )
+        else:
+            tool_fn = tool_registry[tool_name]
+
+            # Call tool (sync or async)
+            if asyncio.iscoroutinefunction(tool_fn):
+                output = await tool_fn(**tool_args)
+            else:
+                output = tool_fn(**tool_args)
+
+            result = ToolResult(
+                tool_call_id=tool_id,
+                output=str(output),
+                is_error=False
+            )
+
+    except Exception as e:
+        result = ToolResult(
+            tool_call_id=tool_id,
+            output=f"Error executing tool: {str(e)}",
+            is_error=True
+        )
+
+    return result
+
+
+def tool_result_to_message(result: ToolResult) -> dict:
+    """Convert ToolResult to message format for history"""
+    return {
+        "role": "tool",
+        "tool_call_id": result.tool_call_id,
+        "content": result.output
+    }
+
+
+async def step(
+    lm,
+    history: list[dict],
+    tools: list[Callable] = None,
+) -> StepResult:
+    """
+    Execute ONE LLM generation with async tool execution.
+
+    This function:
+    1. Calls gen() once to get LLM response
+    2. Spawns async tasks for any tool calls (runs in parallel)
+    3. Returns immediately with StepResult (tools still running)
+    4. Call await result.tool_results() to get tool outputs
+
+    Args:
+        lm: Language model instance
+        history: Conversation history
+        tools: List of callable tools (functions with docstrings)
+
+    Returns:
+        StepResult with message and tool futures
+    """
+    tools = tools or []
+
+    # Build tool registry and schemas
+    tool_registry = {tool.__name__: tool for tool in tools}
+    tool_schemas = [get_json_schema(t) if callable(t) else t for t in tools]
+
+    # Accumulate the assistant message
+    assistant_message = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": []
+    }
+
+    tool_call_buffer = {}  # id -> partial tool call data
+
+    # Stream LLM response
+    async for chunk in gen(lm=lm, history=history, tools=tool_schemas):
+        if isinstance(chunk, AssistantResponse):
+            # Text content
+            assistant_message["content"] += chunk.content
+
+        elif isinstance(chunk, ToolCall):
+            # Tool call streaming
+            if chunk.id and chunk.id not in tool_call_buffer:
+                # New tool call starting
+                tool_call_buffer[chunk.id] = {
+                    "id": chunk.id,
+                    "type": "function",
+                    "function": {
+                        "name": chunk.name,
+                        "arguments": chunk.arguments or ""
+                    }
+                }
+            else:
+                # Continue accumulating arguments
+                if chunk.id in tool_call_buffer:
+                    tool_call_buffer[chunk.id]["function"]["arguments"] += chunk.arguments or ""
+
+    # Finalize tool calls
+    tool_calls = list(tool_call_buffer.values())
+
+    # Clean up message
+    if not assistant_message["content"]:
+        del assistant_message["content"]
+
+    if tool_calls:
+        assistant_message["tool_calls"] = tool_calls
+
+    # Spawn async tool execution tasks
+    tool_futures = {}
+
+    for tool_call in tool_calls:
+        tool_id = tool_call["id"]
+        tool_name = tool_call["function"]["name"]
+        tool_args_str = tool_call["function"]["arguments"]
+
+        # Create async task for this tool
+        future = asyncio.create_task(
+            _execute_tool(tool_name, tool_args_str, tool_id, tool_registry)
+        )
+        tool_futures[tool_id] = future
+
+    return StepResult(
+        message=assistant_message,
+        tool_calls=tool_calls,
+        usage=None,
+        _tool_futures=tool_futures
+    )
+
 
 def get_weather(city: str, unit: str = "celsius"):
     """
@@ -51,14 +224,64 @@ def get_weather(city: str, unit: str = "celsius"):
 
 
 async def main():
-    # llm = LM(model="vllm:/home/ng6309/datascience/santhosh/models/Qwen3-14B",api_base="http://localhost:8000")
-    # llm = LM(model="vllm:/home/ng6309/datascience/santhosh/models/Qwen3-14B")
+    lm = LM()
+
+    # Initial user message
+    history = [
+        {"role": "user", "content": "what is weather in london and canada?, do two parallel tool calls to get the weather in both cities /no_think"}
+    ]
+
+    tools = [get_weather]
+
+    print("=== Multi-turn Agent Loop Demo ===\n")
+
+    # Multi-turn loop: keep calling step until no more tool calls
+    iteration = 0
+    while True:
+        iteration += 1
+        print(f"\n--- Iteration {iteration} ---")
+
+        # Call step() - does ONE LLM generation
+        result = await step(lm=lm, history=history, tools=tools)
+
+        print(f"Assistant message: {result.message}")
+        print(f"Tool calls: {len(result.tool_calls)}")
+
+        # Wait for tool execution
+        tool_results = await result.tool_results()
+
+        # Add assistant message to history
+        history.append(result.message)
+
+        # Add tool results to history
+        for tr in tool_results:
+            print(f"Tool result: {tr}")
+            history.append(tool_result_to_message(tr))
+
+        # If no tool calls, we're done
+        if not result.tool_calls:
+            print(f"\nFinal response: {result.message.get('content', '')}")
+            break
+
+        # Prevent infinite loops
+        if iteration > 10:
+            print("\nMax iterations reached!")
+            break
+
+    print("\n=== Conversation History ===")
+    for i, msg in enumerate(history):
+        print(f"{i}: {msg}")
+
+
+async def demo_streaming():
+    """Demo of the original streaming gen() function"""
     lm = LM()
     messages = [{"role": "user", "content": "what is weather in london and canada?, do two parallel tool calls to get the weather in both cities /no_think"}]
     tools = [get_weather]
 
-    async for x in gen(lm=lm,history=messages,tools=tools):
-        print(x,flush=True)
+    print("=== Streaming Demo ===\n")
+    async for x in gen(lm=lm, history=messages, tools=tools):
+        print(x, flush=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
