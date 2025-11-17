@@ -4,8 +4,8 @@ import requests
 import json
 
 class LM:
-    def __init__(self, model: str="", api_base="http://localhost:11434", api_key: str = "-"):
-        self.provider, self.model = model.split(":", 1) if model else ("vllm","")
+    def __init__(self, model: str="", api_base="http://localhost:8000", api_key: str = "-"):
+        self.provider, self.model = model.split(":", 1) if ":" in model else ("vllm","")
         self.api_base = api_base
         self.api_key = api_key
 
