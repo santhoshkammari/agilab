@@ -9,90 +9,62 @@ class LM:
         self.api_base = api_base
         self.api_key = api_key
 
-    def __call__(self, messages, **params):
-        if self.provider == "vllm":
-            # Smart detection of input type
-            if self._is_batch(messages):
-                return asyncio.run(self._batch_async(messages, **params))
-            else:
-                return asyncio.run(self._single_async(messages, **params))
-        else:
-            raise ValueError(f"Unknown provider: {self.provider}")
-          
     async def stream(self, messages, tools=None, **params):
-      """Streaming interface for LLM"""
-      
-      # Handle string input
-      if isinstance(messages, str):
-          messages = [{"role": "user", "content": messages}]
-      
-      async with aiohttp.ClientSession() as session:
-          # Build request body
-          body = {
-              "model": self.model,
-              "messages": messages,
-              "stream": True,
-              **params
-          }
-          
-          # Add tools if provided
-          if tools:
-              body["tools"] = tools
-          
-          # Stream response
-          async with session.post(
-              f"{self.api_base}/v1/chat/completions",
-              json=body
-          ) as resp:
-              async for line in resp.content:
-                  line = line.decode().strip()
-                  
-                  # Skip empty lines and done marker
-                  if not line or line == "data: [DONE]":
-                      continue
-                  
-                  # Parse SSE format
-                  if line.startswith("data: "):
-                      data = json.loads(line[6:])
-                      yield data
-                      
+        """Streaming interface for LLM"""
 
-    def _is_batch(self, messages) -> bool:
-        """Intelligently detect if input is batch or single conversation"""
-        # Case 1: List of conversations (each is a list of messages)
-        if isinstance(messages, list) and len(messages) > 0:
-            if isinstance(messages[0], list):
-                return True  # [[msg1, msg2], [msg3, msg4]] - batch
-            elif isinstance(messages[0], dict) and 'role' in messages[0]:
-                return False  # [{"role": "user", "content": "hi"}] - single
-
-        # Case 2: String input (convert to single message)
-        if isinstance(messages, str):
-            return False
-
-        return False
-
-    async def _single_async(self, messages, **params):
-        """Handle single conversation asynchronously"""
         # Handle string input
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
 
         async with aiohttp.ClientSession() as session:
-            body = {"model": self.model, "messages": messages, **params}
-            async with session.post(f"{self.api_base}/v1/chat/completions", json=body) as resp:
-                data = await resp.json()
-                if resp.status >= 400:
-                    print(f"DEBUG: Error response: {data}")
-                    resp.raise_for_status()
-                # Debug: print response structure if it doesn't have expected format
-                if "choices" not in data:
-                    print(f"DEBUG: Unexpected response structure: {data}")
-                return data
+            # Build request body
+            body = {
+                "model": self.model,
+                "messages": messages,
+                "stream": True,
+                **params
+            }
 
-    async def _batch_async(self, messages_batch, **params):
+            # Add tools if provided
+            if tools:
+                body["tools"] = tools
+
+            # Stream response
+            async with session.post(
+                f"{self.api_base}/v1/chat/completions",
+                json=body
+            ) as resp:
+                async for line in resp.content:
+                    line = line.decode().strip()
+
+                    # Skip empty lines and done marker
+                    if not line or line == "data: [DONE]":
+                        continue
+
+                    # Parse SSE format
+                    if line.startswith("data: "):
+                        data = json.loads(line[6:])
+                        yield data
+
+    async def batch(self, messages_batch, **params):
         """Handle batch of conversations asynchronously"""
-        tasks = [self._single_async(msgs, **params) for msgs in messages_batch]
+        async def _single(messages):
+            # Handle string input
+            if isinstance(messages, str):
+                messages = [{"role": "user", "content": messages}]
+
+            async with aiohttp.ClientSession() as session:
+                body = {"model": self.model, "messages": messages, **params}
+                async with session.post(f"{self.api_base}/v1/chat/completions", json=body) as resp:
+                    data = await resp.json()
+                    if resp.status >= 400:
+                        print(f"DEBUG: Error response: {data}")
+                        resp.raise_for_status()
+                    if "choices" not in data:
+                        print(f"DEBUG: Unexpected response structure: {data}")
+                    return data
+
+        tasks = [_single(msgs) for msgs in messages_batch]
         return await asyncio.gather(*tasks, return_exceptions=True)
 
 
