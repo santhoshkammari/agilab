@@ -34,10 +34,6 @@ class Agent:
 
     async def run(self, messages):
         """Async streaming agent that yields chunks"""
-        # Convert string input to message format
-        if isinstance(messages, str):
-            messages = [{"role": "user", "content": messages}]
-
         # Add user messages to state
         self.messages.extend(messages)
 
@@ -66,7 +62,8 @@ if __name__ == "__main__":
         agent = Agent()
 
         # Stream response
-        async for chunk in agent.run("hi"):
+        messages = [{"role": "user", "content": "hi"}]
+        async for chunk in agent.run(messages):
             # Print only content from chunks
             if 'choices' in chunk and len(chunk['choices']) > 0:
                 delta = chunk['choices'][0].get('delta', {})
