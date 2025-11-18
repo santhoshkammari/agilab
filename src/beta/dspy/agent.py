@@ -238,7 +238,7 @@ async def step(
 
 async def agent(
     lm,
-    initial_message: str,
+    history: list[dict],
     tools: list[Callable] = None,
     max_iterations: int = 10,
     early_tool_execution: bool = True,
@@ -252,7 +252,7 @@ async def agent(
 
     Args:
         lm: Language model instance
-        initial_message: User's initial message
+        history: Conversation history (list of messages)
         tools: List of callable tools (functions with docstrings)
         max_iterations: Maximum number of agent steps
         early_tool_execution: If True, execute tools while LLM is streaming
@@ -265,7 +265,6 @@ async def agent(
             "tool_calls_total": int # Total tool calls made
         }
     """
-    history = [{"role": "user", "content": initial_message}]
     tools = tools or []
     iteration = 0
     total_tool_calls = 0

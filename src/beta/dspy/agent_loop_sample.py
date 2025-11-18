@@ -46,9 +46,10 @@ async def demo_simple_loop():
     lm = LM()
     tools = [get_weather, search]
 
+    history = [{"role": "user", "content": "What is the weather in London and Paris? /no_think"}]
     result = await agent(
         lm=lm,
-        initial_message="What is the weather in London and Paris? /no_think",
+        history=history,
         tools=tools,
         max_iterations=5
     )
@@ -80,9 +81,10 @@ async def demo_multi_turn():
     lm = LM()
     tools = [get_weather, search]
 
+    history = [{"role": "user", "content": "Search for Paris tourism info and check weather there /no_think"}]
     result = await agent(
         lm=lm,
-        initial_message="Search for Paris tourism info and check weather there /no_think",
+        history=history,
         tools=tools,
         max_iterations=5,
         early_tool_execution=True
@@ -102,9 +104,10 @@ async def demo_max_iterations():
     lm = LM()
     tools = [get_weather, search]
 
+    history = [{"role": "user", "content": "Get weather for London, Paris, Tokyo, and Sydney /no_think"}]
     result = await agent(
         lm=lm,
-        initial_message="Get weather for London, Paris, Tokyo, and Sydney /no_think",
+        history=history,
         tools=tools,
         max_iterations=2  # Limit to 2 iterations
     )
