@@ -134,14 +134,11 @@ lm = a.LM(api_base="http://your-llm-server:8000", model="vllm:")
 
 ### 🔄 In Development
 - [ ] Synthetic data generation tools
-- [ ] Auto-prompt optimization
 - [ ] MCP (Model Communication Protocol) integration
-- [ ] Advanced optimization algorithms (MIPROv2, GEPA)
 - [ ] More evaluation metrics and visualization tools
 
 ### 🚧 Planned Features
 - [ ] Automated testing framework
-- [ ] More optimization algorithms
 - [ ] Enhanced batching with dynamic scheduling
 - [ ] Model fine-tuning integration
 - [ ] Distributed execution support
@@ -222,9 +219,6 @@ dspy/
 ├── batch_orchestrator.py # Batch execution and dependency management
 ├── evaluate/             # Evaluation framework
 │   └── __init__.py       # Evaluation utilities and metrics
-├── optimize/             # Optimization algorithms
-│   ├── mipro.py          # MIPROv2 optimization
-│   └── gepa.py           # GEPA optimization
 ├── predict/              # Prediction modules
 │   └── predict.py        # Module and Predict classes
 ├── signature/            # Signature parsing
