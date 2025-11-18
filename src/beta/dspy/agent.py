@@ -124,13 +124,14 @@ async def step(
     lm,
     history: list[dict],
     tools: list[Callable] = None,
+    early_tool_execution: bool = True,
 ) -> StepResult:
     """
     Execute ONE LLM generation with async tool execution.
 
     This function:
     1. Calls gen() once to get LLM response
-    2. Spawns async tasks for any tool calls (runs in parallel)
+    2. Spawns async tasks for tool calls (runs in parallel)
     3. Returns immediately with StepResult (tools still running)
     4. Call await result.tool_results() to get tool outputs
 
@@ -138,6 +139,9 @@ async def step(
         lm: Language model instance
         history: Conversation history
         tools: List of callable tools (functions with docstrings)
+        early_tool_execution: If True, execute tools as soon as they are complete
+                             while LLM is still streaming. If False, execute all
+                             tools only after LLM finishes streaming.
 
     Returns:
         StepResult with message and tool futures
@@ -156,6 +160,8 @@ async def step(
     }
 
     tool_call_buffer = {}  # id -> partial tool call data
+    tool_futures = {}      # id -> future (for early execution)
+    last_tool_id = None    # Track the last tool call being streamed
 
     # Stream LLM response
     async for chunk in gen(lm=lm, history=history, tools=tool_schemas):
@@ -167,6 +173,20 @@ async def step(
             # Tool call streaming
             if chunk.id and chunk.id not in tool_call_buffer:
                 # New tool call starting
+                # If early execution enabled and previous tool is complete, execute it
+                if early_tool_execution and last_tool_id and last_tool_id in tool_call_buffer:
+                    prev_tool_call = tool_call_buffer[last_tool_id]
+                    tool_id = prev_tool_call["id"]
+                    tool_name = prev_tool_call["function"]["name"]
+                    tool_args_str = prev_tool_call["function"]["arguments"]
+
+                    # Spawn previous tool immediately
+                    future = asyncio.create_task(
+                        _execute_tool(tool_name, tool_args_str, tool_id, tool_registry)
+                    )
+                    tool_futures[tool_id] = future
+
+                # Start new tool call
                 tool_call_buffer[chunk.id] = {
                     "id": chunk.id,
                     "type": "function",
@@ -175,6 +195,7 @@ async def step(
                         "arguments": chunk.arguments or ""
                     }
                 }
+                last_tool_id = chunk.id
             else:
                 # Continue accumulating arguments
                 if chunk.id in tool_call_buffer:
@@ -190,11 +211,14 @@ async def step(
     if tool_calls:
         assistant_message["tool_calls"] = tool_calls
 
-    # Spawn async tool execution tasks
-    tool_futures = {}
-
+    # Execute remaining tools that haven't been spawned yet
     for tool_call in tool_calls:
         tool_id = tool_call["id"]
+
+        # Skip if already spawned (early execution)
+        if tool_id in tool_futures:
+            continue
+
         tool_name = tool_call["function"]["name"]
         tool_args_str = tool_call["function"]["arguments"]
 
