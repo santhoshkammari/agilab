@@ -1,5 +1,9 @@
 """
 Minimal evaluation framework - parallel to LM.stream() and LM.batch()
+
+Supports two evaluation modes:
+1. Direct module evaluation: eval_example(module_fn, example, metric)
+2. Agent-based evaluation: eval_example(module_fn, example, metric, use_step=True, lm=..., tools=...)
 """
 
 import asyncio
@@ -25,16 +29,26 @@ async def eval_example(
     module_fn: Callable,
     example: Any,
     metric: Callable,
+    use_step: bool = False,
+    lm: Any = None,
+    tools: List[Callable] = None,
     **kwargs
 ) -> EvalResult:
     """
     Evaluate ONE example.
 
+    Two modes:
+    1. Direct: Just call module_fn with example inputs
+    2. Agent (use_step=True): Use agent.step() for tool-based evaluation
+
     Args:
         module_fn: Callable(**example.inputs()) → prediction
         example: Single Example to evaluate
         metric: Callable(example, prediction) → float [0-1]
-        **kwargs: Extra params (temperature, top_p, etc) passed to module
+        use_step: If True, use agent.step() instead of direct call
+        lm: LM instance (required if use_step=True)
+        tools: List of tools (optional for step mode)
+        **kwargs: Extra params passed to module
 
     Returns:
         EvalResult with prediction and score
@@ -44,17 +58,47 @@ async def eval_example(
         if hasattr(example, 'inputs'):
             inputs = example.inputs()
         elif isinstance(example, dict):
-            # If example is dict, use it directly
             inputs = {k: v for k, v in example.items() if k not in ['answer', 'output', 'target', 'label']}
         else:
             inputs = {}
 
-        # Call module with example inputs
-        pred = module_fn(**inputs, **kwargs)
+        # Agent-based evaluation mode
+        if use_step:
+            if not lm:
+                raise ValueError("lm is required for use_step=True")
 
-        # Handle async functions
-        if asyncio.iscoroutine(pred):
-            pred = await pred
+            from .agent import step
+
+            # Build message from inputs
+            user_content = " ".join([f"{k}: {v}" for k, v in inputs.items()])
+            history = [{"role": "user", "content": user_content}]
+
+            # Single step evaluation
+            result = await step(lm=lm, history=history, tools=tools)
+
+            # Extract content as prediction
+            pred = result.message.get("content", "")
+
+            # If there are tool calls, wait for results and include them
+            if result.tool_calls:
+                try:
+                    tool_results = await result.tool_results()
+                    # Combine content and tool results
+                    tool_outputs = [f"{tr.tool_call_id}: {tr.output}" for tr in tool_results]
+                    if pred:
+                        pred = f"{pred}\n" + "\n".join(tool_outputs)
+                    else:
+                        pred = "\n".join(tool_outputs)
+                except Exception as tool_err:
+                    # If tool execution fails, just use content
+                    pass
+        else:
+            # Direct module evaluation
+            pred = module_fn(**inputs, **kwargs)
+
+            # Handle async functions
+            if asyncio.iscoroutine(pred):
+                pred = await pred
 
         # Calculate metric
         score = metric(example, pred)
@@ -78,6 +122,9 @@ async def eval_stream(
     module_fn: Callable,
     examples: List[Any],
     metric: Callable,
+    use_step: bool = False,
+    lm: Any = None,
+    tools: List[Callable] = None,
     **kwargs
 ) -> AsyncIterator[EvalResult]:
     """
@@ -90,6 +137,9 @@ async def eval_stream(
         module_fn: Callable(**example.inputs()) → prediction
         examples: List of Examples
         metric: Callable(example, prediction) → float
+        use_step: If True, use agent.step()
+        lm: LM instance (required if use_step=True)
+        tools: List of tools (optional for step mode)
         **kwargs: Extra params passed to module
 
     Yields:
@@ -102,7 +152,11 @@ async def eval_stream(
                 break  # Early stop
     """
     for example in examples:
-        result = await eval_example(module_fn, example, metric, **kwargs)
+        result = await eval_example(
+            module_fn, example, metric,
+            use_step=use_step, lm=lm, tools=tools,
+            **kwargs
+        )
         yield result
 
 
@@ -113,6 +167,9 @@ async def eval_batch(
     batch_size: int = 4,
     parallel: bool = False,
     progress: bool = True,
+    use_step: bool = False,
+    lm: Any = None,
+    tools: List[Callable] = None,
     **kwargs
 ) -> dict:
     """
@@ -128,6 +185,9 @@ async def eval_batch(
         batch_size: Size for concurrent batches (if parallel=True)
         parallel: If True, evaluate batch_size examples concurrently
         progress: Show progress bar
+        use_step: If True, use agent.step()
+        lm: LM instance (required if use_step=True)
+        tools: List of tools (optional for step mode)
         **kwargs: Extra params passed to module
 
     Returns:
@@ -155,7 +215,9 @@ async def eval_batch(
         # Process in concurrent batches
         async def process_batch(batch):
             tasks = [
-                eval_example(module_fn, ex, metric, **kwargs)
+                eval_example(module_fn, ex, metric,
+                           use_step=use_step, lm=lm, tools=tools,
+                           **kwargs)
                 for ex in batch
             ]
             return await asyncio.gather(*tasks)
@@ -176,7 +238,9 @@ async def eval_batch(
         # Sequential processing
         iterator = tqdm.tqdm(examples, desc="Evaluating") if progress else examples
         for example in iterator:
-            result = await eval_example(module_fn, example, metric, **kwargs)
+            result = await eval_example(module_fn, example, metric,
+                                      use_step=use_step, lm=lm, tools=tools,
+                                      **kwargs)
             results.append(result)
             scores.append(result.score)
 
