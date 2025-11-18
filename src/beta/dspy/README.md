@@ -147,83 +147,143 @@ lm = a.LM(api_base="http://your-llm-server:8000", model="vllm:")
 
 ## Agent Framework
 
-The `agent.py` module provides a streaming-based agent framework inspired by kosong's LLM abstraction layer.
+The `agent.py` module provides a streaming-based agent framework with three levels of abstraction.
+
+### Three-Level API
+
+1. **`gen()`** - Low-level streaming (yields text chunks and tool calls)
+2. **`step()`** - Single LLM generation with async tool execution
+3. **`agent()`** - Multi-turn loop with max iterations (NEW)
 
 ### Key Features
 
-- **Single-turn LLM generation** with async tool execution
-- **Early tool execution optimization** - tools start executing while LLM streams remaining tool calls
 - **Parallel tool execution** - multiple tools run concurrently
-- **Deferred results** - tools execute asynchronously, results awaited on-demand
+- **Early tool execution optimization** - tools start executing while LLM streams
+- **Async/await throughout** - fully asynchronous
+- **Multi-turn loops** - agent() handles iteration automatically
 - **Production-optimized** - ~0.5-1s latency reduction for multi-tool scenarios
 
-### Core Components
+### Quick Example
 
-- `gen()` - Streaming function for low-level LLM response generation
-- `step()` - High-level agent step with automatic async tool execution
-- `StepResult` - Result container with async tool futures
-- `ToolResult` - Individual tool execution result
-- `_execute_tool()` - Internal async tool execution handler
+```python
+from agent import agent
+from lm import LM
 
-### Usage Example
+def calculator(expr: str) -> str:
+    """Calculate expression"""
+    return str(eval(expr))
+
+result = await agent(
+    lm=LM(),
+    initial_message="What is 2+2? Then multiply by 5.",
+    tools=[calculator],
+    max_iterations=5
+)
+
+print(result['final_response'])
+```
+
+### Multi-Turn Manual Loop
 
 ```python
 from agent import step, tool_result_to_message
 
-def get_weather(city: str, unit: str = "celsius"):
-    """Get current weather for a city"""
-    return f"Weather in {city}: 22 degrees {unit}"
+history = [{"role": "user", "content": "..."}]
+tools = [calculator]
 
-# Multi-turn agent loop
-history = [{"role": "user", "content": "What's the weather in London?"}]
-tools = [get_weather]
+for i in range(max_iterations):
+    result = await step(lm, history, tools)
+    history.append(result.message)
 
-# Turn 1: LLM decides to use tool
-result = await step(lm, history, tools)
-print(result.message)
-
-# Wait for tool execution
-tool_results = await result.tool_results()
-history.append(result.message)
-for tr in tool_results:
-    history.append(tool_result_to_message(tr))
-
-# Turn 2: LLM processes tool results and responds
-result2 = await step(lm, history, tools)
-# No more tool calls, conversation complete
+    if result.tool_calls:
+        tool_results = await result.tool_results()
+        for tr in tool_results:
+            history.append(tool_result_to_message(tr))
+    else:
+        break  # Done, no more tool calls
 ```
 
-### Performance Optimization
+See `AgentReadme.md` for full API documentation.
 
-**Early Tool Execution** (enabled by default):
-- Tools spawn immediately when arguments are complete
-- First tool can execute while LLM streams second tool
-- Reduces total latency by 5-20% for multi-tool requests
+---
 
+## Evaluation Framework
+
+The `eval.py` module provides a minimal, async evaluation system with three levels.
+
+### Three-Level API
+
+1. **`eval_example()`** - Single example evaluation
+2. **`eval_stream()`** - Streaming results (real-time monitoring)
+3. **`eval_batch()`** - Batch processing (sequential or parallel)
+
+### Two Evaluation Modes
+
+**Mode 1: Direct Evaluation**
 ```python
-# Use default behavior (early execution enabled)
-result = await step(lm, history, tools)
+from eval import eval_batch
+from example import Example
 
-# Disable if needed
-result = await step(lm, history, tools, early_tool_execution=False)
+examples = [
+    Example(question="2+2?", answer="4"),
+    Example(question="5*5?", answer="25"),
+]
+
+def exact_match(example, prediction):
+    return 1.0 if str(prediction) == example.answer else 0.0
+
+result = await eval_batch(
+    module_fn=my_module,
+    examples=examples,
+    metric=exact_match,
+    parallel=True
+)
+print(f"Score: {result['score']:.1f}%")
 ```
+
+**Mode 2: Agent Evaluation** (NEW)
+```python
+from eval import eval_batch
+from lm import LM
+
+# Evaluate an agent end-to-end
+result = await eval_batch(
+    module_fn=lambda: None,  # Not used with use_step=True
+    examples=examples,
+    metric=metric,
+    use_step=True,
+    lm=LM(),
+    tools=[calculator, search],
+    parallel=True
+)
+```
+
+### Key Features
+
+- **Flexible metrics** - any function(example, prediction) → float
+- **Real-time monitoring** - stream results for early stopping
+- **Parallel evaluation** - concurrent batch processing
+- **Agent support** - evaluate agentic systems with tools
+- **Progress tracking** - built-in progress bars
+
+See `EvalReadme.md` for full API documentation.
 
 ## Project Structure
 
 ```
 dspy/
-├── __init__.py           # Main imports and configuration
-├── agent.py              # Streaming agent framework with async tool execution
-├── lm.py                 # Language model interface
-├── agent_run_sample.py   # Example usage and integration patterns
-├── batch_orchestrator.py # Batch execution and dependency management
-├── evaluate/             # Evaluation framework
-│   └── __init__.py       # Evaluation utilities and metrics
-├── predict/              # Prediction modules
-│   └── predict.py        # Module and Predict classes
-├── signature/            # Signature parsing
-│   └── signature.py      # Signature compiler
-└── README.md             # This file
+├── agent.py                     # Agent framework (gen, step, agent)
+├── agent_run_sample.py          # Agent examples (gen, step)
+├── agent_loop_sample.py         # Agent loop examples (agent function)
+├── eval.py                      # Evaluation framework
+├── eval_run_sample.py           # Direct evaluation examples
+├── eval_run_sample_with_step.py # Agent evaluation examples
+├── example.py                   # Example data structure
+├── lm.py                        # Language model interface
+├── AgentReadme.md               # Agent framework documentation
+├── EvalReadme.md                # Evaluation framework documentation
+├── README.md                    # This file (main documentation)
+└── predict.py                   # Legacy: Module and Predict classes
 ```
 
 ## Contributing
