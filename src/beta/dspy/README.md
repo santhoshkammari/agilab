@@ -173,9 +173,10 @@ def calculator(expr: str) -> str:
     """Calculate expression"""
     return str(eval(expr))
 
+history = [{"role": "user", "content": "What is 2+2? Then multiply by 5."}]
 result = await agent(
     lm=LM(),
-    initial_message="What is 2+2? Then multiply by 5.",
+    history=history,
     tools=[calculator],
     max_iterations=5
 )

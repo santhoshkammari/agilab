@@ -73,19 +73,19 @@ if result.tool_calls:
 
 ---
 
-### `agent(lm, initial_message, tools=None, max_iterations=10, early_tool_execution=True)`
+### `agent(lm, history, tools=None, max_iterations=10, early_tool_execution=True)`
 
 Execute a complete multi-turn agent loop.
 
 **Features:**
 - Automatically loops with `step()` until no more tool calls
-- Handles tool result collection
+- Handles tool result collection and history management
 - Stops at max_iterations
 - Returns full history and statistics
 
 **Args:**
 - `lm`: Language model instance
-- `initial_message`: User's starting message
+- `history`: Conversation history (list of messages)
 - `tools`: List of callable tools
 - `max_iterations`: Maximum steps to execute
 - `early_tool_execution`: Execute tools while streaming
@@ -93,7 +93,7 @@ Execute a complete multi-turn agent loop.
 **Returns:**
 ```python
 {
-    "history": [...],        # Full conversation
+    "history": [...],        # Full conversation (updated)
     "iterations": int,       # Number of steps
     "final_response": str,   # Last assistant message
     "tool_calls_total": int  # Total tool calls made
@@ -102,15 +102,25 @@ Execute a complete multi-turn agent loop.
 
 **Usage:**
 ```python
+history = [
+    {"role": "user", "content": "Solve this problem and verify the answer"}
+]
+
 result = await agent(
     lm=lm,
-    initial_message="Solve this problem and verify the answer",
+    history=history,
     tools=[calculator, verifier],
     max_iterations=5
 )
 
 print(f"Solved in {result['iterations']} steps")
 print(result['final_response'])
+
+# Can reuse and extend conversation
+history = result['history']
+history.append({"role": "user", "content": "Now solve another problem"})
+
+result2 = await agent(lm=lm, history=history, tools=tools, max_iterations=5)
 ```
 
 ---
