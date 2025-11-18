@@ -201,6 +201,60 @@ class EvalResult:
 
 ---
 
+## Evaluation Modes
+
+### Mode 1: Direct Module Evaluation
+
+Use any callable that takes `**inputs` and returns a prediction:
+
+```python
+async def my_module(question: str) -> str:
+    lm = LM()
+    response = await lm.stream(...)
+    return response
+
+result = await eval_batch(
+    module_fn=my_module,
+    examples=examples,
+    metric=exact_match
+)
+```
+
+### Mode 2: Agent-Based Evaluation (use_step=True)
+
+Evaluate using `agent.step()` with tool support:
+
+```python
+from agent import step
+from lm import LM
+
+# Tools
+def calculator(expr: str) -> str:
+    return str(eval(expr))
+
+lm = LM()
+tools = [calculator]
+
+# Evaluate with step
+result = await eval_batch(
+    module_fn=lambda **inputs: None,  # Not used
+    examples=examples,
+    metric=exact_match,
+    use_step=True,
+    lm=lm,
+    tools=tools
+)
+```
+
+The framework will:
+1. Build message from example inputs
+2. Call `agent.step(lm, history, tools)`
+3. Wait for tool execution
+4. Collect results into prediction
+5. Apply metric
+
+---
+
 ## Design Principles
 
 1. **Minimal** - No classes, just functions
@@ -208,12 +262,14 @@ class EvalResult:
 3. **Flexible** - Works with any callable module and metric
 4. **Observable** - Streaming for real-time monitoring
 5. **Production-ready** - Error handling, progress bars, parallelization
+6. **Dual-mode** - Direct evaluation OR agent-based with tools
 
 ---
 
 ## See Also
 
-- `eval_run_sample.py` - Working examples with real LM
-- `agent.py` - Agent framework for agentic evaluation
+- `eval_run_sample.py` - Working examples with real LM (direct mode)
+- `eval_run_sample_with_step.py` - Agent-based evaluation with tools
+- `agent.py` - Agent framework with step() and streaming
 - `example.py` - Example data structure
 - `lm.py` - Language model interface
