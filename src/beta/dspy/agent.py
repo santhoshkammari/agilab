@@ -236,3 +236,80 @@ async def step(
     )
 
 
+async def agent(
+    lm,
+    initial_message: str,
+    tools: list[Callable] = None,
+    max_iterations: int = 10,
+    early_tool_execution: bool = True,
+) -> dict:
+    """
+    Execute a multi-turn agent loop with max iterations.
+
+    This function repeatedly calls step() until:
+    - No more tool calls are made, OR
+    - max_iterations is reached
+
+    Args:
+        lm: Language model instance
+        initial_message: User's initial message
+        tools: List of callable tools (functions with docstrings)
+        max_iterations: Maximum number of agent steps
+        early_tool_execution: If True, execute tools while LLM is streaming
+
+    Returns:
+        {
+            "history": list[dict],  # Full conversation history
+            "iterations": int,      # Number of iterations executed
+            "final_response": str,  # Last assistant message
+            "tool_calls_total": int # Total tool calls made
+        }
+    """
+    history = [{"role": "user", "content": initial_message}]
+    tools = tools or []
+    iteration = 0
+    total_tool_calls = 0
+
+    while iteration < max_iterations:
+        iteration += 1
+
+        # Single LLM generation step
+        result = await step(
+            lm=lm,
+            history=history,
+            tools=tools,
+            early_tool_execution=early_tool_execution
+        )
+
+        # Add assistant message to history
+        history.append(result.message)
+
+        # Count and execute tool calls
+        if result.tool_calls:
+            total_tool_calls += len(result.tool_calls)
+
+            # Wait for tool results
+            tool_results = await result.tool_results()
+
+            # Add tool results to history
+            for tr in tool_results:
+                history.append(tool_result_to_message(tr))
+        else:
+            # No tool calls, agent is done
+            break
+
+    # Extract final response
+    final_response = ""
+    for msg in reversed(history):
+        if msg.get("role") == "assistant" and msg.get("content"):
+            final_response = msg["content"]
+            break
+
+    return {
+        "history": history,
+        "iterations": iteration,
+        "final_response": final_response,
+        "tool_calls_total": total_tool_calls
+    }
+
+
