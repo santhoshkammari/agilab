@@ -1,11 +1,10 @@
 export ANTHROPIC_BASE_URL=https://api.moonshot.ai/anthropic
 export ANTHROPIC_AUTH_TOKEN=sk-ArRIp1kADxmmpL7KFMFBjO4KVW0GGohkV6qwHItBRbLt7J3a
-export ANTHROPIC_MODEL=kimi-k2-turbo-preview
-export ANTHROPIC_DEFAULT_OPUS_MODEL=kimi-k2-turbo-preview
-export ANTHROPIC_DEFAULT_SONNET_MODEL=kimi-k2-turbo-preview
-export ANTHROPIC_DEFAULT_HAIKU_MODEL=kimi-k2-turbo-preview
-export CLAUDE_CODE_SUBAGENT_MODEL=kimi-k2-turbo-preview
-
+export ANTHROPIC_MODEL=kimi-k2-thinking-turbo
+export ANTHROPIC_DEFAULT_OPUS_MODEL=kimi-k2-thinking-turbo
+export ANTHROPIC_DEFAULT_SONNET_MODEL=kimi-k2-thinking-turbo
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=kimi-k2-thinking-turbo
+export CLAUDE_CODE_SUBAGENT_MODEL=kimi-k2-thinking-turbo
 
 /home/ng6309/datascience/santhosh/products/agi/agilab/src/mcp/fetch.py
 /home/ng6309/datascience/santhosh/products/agi/agilab/src/mcp/web.py
