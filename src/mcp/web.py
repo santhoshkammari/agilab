@@ -298,11 +298,12 @@ async def web_search(query: str, max_results: int = 5) -> dict:
     """Perform web search and return results"""
     try:
         results = await async_web_search(query, max_results)
-        result ={"query": query, "results": json.dumps(results,indent=2)}
+        result ={"query": query, "results": results}
     except Exception as e:
         result= {"error": str(e)}
+        
+    return result
 
-    return json.dumps(result,indent=2)
 
 tool_functions = {
     "async_web_search": async_web_search,
