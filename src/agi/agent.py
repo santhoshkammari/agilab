@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Callable
 from transformers.utils import get_json_schema
 
-from lm import LM
+from .lm import LM
 
 @dataclass
 class AssistantResponse:

@@ -1,11 +1,14 @@
 import contextvars
 
 from .lm import LM
-from .signature import Signature, register_type, get_registered_types
-from .predict import Module, Predict, ChainOfThought, Prediction
-from .evaluate import Evaluate, EvaluationResult, exact_match, contains_match
-from .evaluate_example import Example
-from .agent import Agent, Event
+from .agent import (
+    gen, step, agent,
+    AssistantResponse, ToolCall, StepResult, ToolResult
+)
+from .eval import (
+    eval_example, eval_stream, eval_batch,
+    EvalResult
+)
 
 # Global LM context
 _current_lm = contextvars.ContextVar('lm', default=None)

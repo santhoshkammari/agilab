@@ -6,6 +6,9 @@ with async tool calling and early execution optimization.
 """
 
 import asyncio
+import sys
+sys.path.insert(0, __file__.rsplit('/', 1)[0])
+
 from agent import step, gen, AssistantResponse, ToolCall, agent
 from lm import LM
 
