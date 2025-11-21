@@ -1,9 +1,0 @@
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-.idea/
-../.idea/
-.claudecode/
-app.log
