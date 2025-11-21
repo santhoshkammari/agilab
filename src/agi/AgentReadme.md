@@ -67,8 +67,7 @@ history.append(result.message)
 
 if result.tool_calls:
     tool_results = await result.tool_results()
-    for tr in tool_results:
-        history.append(tool_result_to_message(tr))
+    history.extend([tr.message for tr in tool_results])
 ```
 
 ---
@@ -163,6 +162,11 @@ class ToolResult:
     tool_call_id: str  # ID from tool call
     output: str        # Result/output
     is_error: bool     # True if execution failed
+
+    @property
+    def message(self) -> dict:
+        """Convert to message format for history"""
+        # Returns: {"role": "tool", "tool_call_id": ..., "content": ...}
 ```
 
 ---
@@ -191,7 +195,7 @@ print(result['final_response'])
 
 ### Pattern 2: Manual Step-by-Step Loop
 ```python
-from agent import step, tool_result_to_message
+from agent import step
 from lm import LM
 
 lm = LM()
@@ -204,8 +208,7 @@ for i in range(max_iterations):
 
     if result.tool_calls:
         tool_results = await result.tool_results()
-        for tr in tool_results:
-            history.append(tool_result_to_message(tr))
+        history.extend([tr.message for tr in tool_results])
     else:
         break  # Done
 ```
