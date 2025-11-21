@@ -73,50 +73,6 @@ async def example_multi_turn_agent_loop():
         print(f"{i}: {msg}")
 
 
-async def example_disabled_early_execution():
-    """
-    Example 2: Multi-turn agent loop with early execution disabled
-
-    Demonstrates:
-    - How to disable early tool execution optimization
-    - Tools execute only after LLM finishes streaming
-    - Useful for debugging or when tool ordering matters
-    """
-    lm = LM()
-    history = [
-        {"role": "user", "content": "what is weather in london and canada?, do two parallel tool calls to get the weather in both cities /no_think"}
-    ]
-    tools = [get_weather]
-
-    print("\n\n=== Multi-turn Agent Loop Demo (Early Tool Execution Disabled) ===\n")
-
-    iteration = 0
-    while True:
-        iteration += 1
-        print(f"\n--- Iteration {iteration} ---")
-
-        # Disable early tool execution
-        result = await step(lm=lm, history=history, tools=tools, early_tool_execution=False)
-
-        print(f"Assistant message: {result.message}")
-        print(f"Tool calls: {len(result.tool_calls)}")
-
-        tool_results = await result.tool_results()
-
-        history.append(result.message)
-        for tr in tool_results:
-            print(f"Tool result: {tr}")
-            history.append(tool_result_to_message(tr))
-
-        if not result.tool_calls:
-            print(f"\nFinal response: {result.message.get('content', '')}")
-            break
-
-        if iteration > 10:
-            print("\nMax iterations reached!")
-            break
-
-
 async def example_streaming_gen():
     """
     Example 3: Low-level streaming generation
@@ -144,9 +100,6 @@ async def main():
     """Run all examples"""
     # Example 1: Multi-turn with early execution (recommended)
     await example_multi_turn_agent_loop()
-
-    # Example 2: Multi-turn with early execution disabled
-    await example_disabled_early_execution()
 
     # Example 3: Low-level streaming
     await example_streaming_gen()
