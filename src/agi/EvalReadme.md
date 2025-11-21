@@ -12,31 +12,42 @@ Three-level evaluation API:
 
 ## Core Design
 
-Evaluates a module on a dataset using custom metrics:
+Evaluates conversation histories on a dataset using custom metrics:
 
 ```python
-# Define your module
-async def my_module(question: str) -> str:
-    response = await lm.stream(...)
-    return response
+from lm import LM
 
 # Define your metric
-def exact_match(example, prediction):
-    return 1.0 if prediction == example.answer else 0.0
+def exact_match(target, prediction):
+    return 1.0 if prediction == target else 0.0
+
+# Dataset with histories and targets
+data = [
+    {
+        "history": [{"role": "user", "content": "What is 2+2?"}],
+        "target": "4"
+    }
+]
+
+histories = [d["history"] for d in data]
+targets = [d["target"] for d in data]
+
+lm = LM()
 
 # Single evaluation
-result = await eval_example(my_module, example, exact_match)
+result = await eval_example(histories[0], targets[0], exact_match, lm=lm)
 print(result)  # EvalResult(score=1.0, prediction="4", ...)
 
 # Streaming (real-time)
-async for result in eval_stream(my_module, examples, exact_match):
+async for result in eval_stream(histories, targets, exact_match, lm=lm):
     print(f"Running avg: {result.score}")
 
 # Batch (sequential or parallel)
 result = await eval_batch(
-    module_fn=my_module,
-    examples=dev_set,
+    histories=histories,
+    targets=targets,
     metric=exact_match,
+    lm=lm,
     batch_size=4,
     parallel=True,
     progress=True
@@ -46,20 +57,23 @@ print(f"Final: {result['score']:.1f}% ({result['passed']}/{result['total']})")
 
 ## API Reference
 
-### `eval_example(module_fn, example, metric, **kwargs)`
+### `eval_example(history, target, metric, lm, tools=None, use_agent=False, **kwargs)`
 
-Evaluate a single example.
+Evaluate a single conversation history.
 
 **Args:**
-- `module_fn`: Callable that takes `**inputs` and returns prediction
-- `example`: Example object with `.inputs()` method
-- `metric`: Callable(example, prediction) → float [0-1]
-- `**kwargs`: Extra params passed to module_fn
+- `history`: List of message dicts (conversation history)
+- `target`: Expected answer/output
+- `metric`: Callable(target, prediction) → float [0-1]
+- `lm`: Language model instance
+- `tools`: Optional list of tool functions
+- `use_agent`: If `True`, use full agent loop; else single step
+- `**kwargs`: Extra params (e.g., `max_iterations`)
 
 **Returns:**
 ```python
 EvalResult(
-    example=example,
+    history=history,
     prediction=pred,
     score=float,
     metadata=dict
@@ -68,21 +82,24 @@ EvalResult(
 
 ---
 
-### `eval_stream(module_fn, examples, metric, **kwargs)`
+### `eval_stream(histories, targets, metric, lm, tools=None, use_agent=False, **kwargs)`
 
 Stream evaluation results one-by-one.
 
 **Args:**
-- `module_fn`: Callable that takes `**inputs` and returns prediction
-- `examples`: List of examples
-- `metric`: Callable(example, prediction) → float
-- `**kwargs`: Extra params passed to module_fn
+- `histories`: List of conversation histories
+- `targets`: List of expected answers
+- `metric`: Callable(target, prediction) → float
+- `lm`: Language model instance
+- `tools`: Optional list of tool functions
+- `use_agent`: If `True`, use full agent loop; else single step
+- `**kwargs`: Extra params
 
 **Yields:** `EvalResult` for each example
 
 **Usage:**
 ```python
-async for result in eval_stream(module, examples, metric):
+async for result in eval_stream(histories, targets, metric, lm=lm):
     print(f"Score: {result.score}")
     if result.score < 0.5:
         break  # Early stopping
@@ -90,18 +107,21 @@ async for result in eval_stream(module, examples, metric):
 
 ---
 
-### `eval_batch(module_fn, examples, metric, batch_size=4, parallel=False, progress=True, **kwargs)`
+### `eval_batch(histories, targets, metric, lm, tools=None, use_agent=False, batch_size=4, parallel=False, progress=True, **kwargs)`
 
-Batch evaluate examples.
+Batch evaluate conversation histories.
 
 **Args:**
-- `module_fn`: Callable that takes `**inputs` and returns prediction
-- `examples`: List of examples
-- `metric`: Callable(example, prediction) → float
+- `histories`: List of conversation histories
+- `targets`: List of expected answers
+- `metric`: Callable(target, prediction) → float
+- `lm`: Language model instance
+- `tools`: Optional list of tool functions
+- `use_agent`: If `True`, use full agent loop; else single step
 - `batch_size`: Size for concurrent batches (if `parallel=True`)
 - `parallel`: If `True`, evaluate batches concurrently
 - `progress`: Show progress bar
-- `**kwargs`: Extra params passed to module_fn
+- `**kwargs`: Extra params (e.g., `max_iterations`)
 
 **Returns:**
 ```python
@@ -121,31 +141,39 @@ Batch evaluate examples.
 
 ```python
 from eval import eval_batch
-from example import Example
 from lm import LM
 
-# Module
-async def qa_module(question: str) -> str:
+# Module - uses history-based evaluation
+async def qa_module(history: list) -> str:
     lm = LM()
-    messages = [{"role": "user", "content": f"Q: {question}"}]
-    response = await lm.stream(messages)
+    response = await lm.stream(history)
     return response
 
 # Metric
-def exact_match(example, prediction):
-    return 1.0 if prediction == example.answer else 0.0
+def exact_match(target, prediction):
+    return 1.0 if prediction == target else 0.0
 
 # Dataset
-examples = [
-    Example(question="2+2?", answer="4"),
-    Example(question="5+5?", answer="10"),
+data = [
+    {
+        "history": [{"role": "user", "content": "Q: What is 2+2?"}],
+        "target": "4"
+    },
+    {
+        "history": [{"role": "user", "content": "Q: What is 5+5?"}],
+        "target": "10"
+    },
 ]
+
+histories = [d["history"] for d in data]
+targets = [d["target"] for d in data]
 
 # Evaluate
 result = await eval_batch(
-    module_fn=qa_module,
-    examples=examples,
-    metric=exact_match
+    histories=histories,
+    targets=targets,
+    metric=exact_match,
+    lm=LM()
 )
 
 print(result)  # {'score': 85.0, 'passed': 2, 'total': 2, ...}
@@ -154,15 +182,15 @@ print(result)  # {'score': 85.0, 'passed': 2, 'total': 2, ...}
 ### Example 2: Multiple Metrics
 
 ```python
-def exact_match(example, prediction):
-    return 1.0 if prediction == example.answer else 0.0
+def exact_match(target, prediction):
+    return 1.0 if prediction == target else 0.0
 
-def contains_match(example, prediction):
-    return 1.0 if example.answer in prediction else 0.0
+def contains_match(target, prediction):
+    return 1.0 if target in prediction else 0.0
 
 # Compare metrics
-result1 = await eval_batch(module, examples, exact_match)
-result2 = await eval_batch(module, examples, contains_match)
+result1 = await eval_batch(histories, targets, exact_match, lm=LM())
+result2 = await eval_batch(histories, targets, contains_match, lm=LM())
 
 print(f"Exact: {result1['score']:.1f}%")
 print(f"Contains: {result2['score']:.1f}%")
@@ -179,7 +207,10 @@ def extract_number(prediction):
     match = re.search(r'\d+', prediction)
     return match.group(0) if match else "unknown"
 
-result = await eval_example(module, example, metric)
+history = [{"role": "user", "content": "What is 2+2?"}]
+target = "4"
+
+result = await eval_example(history, target, exact_match, lm=LM())
 # Postprocess if needed
 result.prediction = extract_number(result.prediction)
 ```
@@ -193,7 +224,7 @@ result.prediction = extract_number(result.prediction)
 ```python
 @dataclass
 class EvalResult:
-    example: Any           # Original example
+    history: list          # Original conversation history
     prediction: Any        # Module's prediction
     score: float           # Metric score [0-1]
     metadata: dict         # Additional info (errors, etc)
@@ -203,29 +234,41 @@ class EvalResult:
 
 ## Evaluation Modes
 
-### Mode 1: Direct Module Evaluation
+### Mode 1: History-Based Evaluation (Default)
 
-Use any callable that takes `**inputs` and returns a prediction:
+Evaluate using conversation histories with `agent.step()`:
 
 ```python
-async def my_module(question: str) -> str:
-    lm = LM()
-    response = await lm.stream(...)
-    return response
+from lm import LM
 
+lm = LM()
+
+# Dataset with histories and targets
+data = [
+    {
+        "history": [{"role": "user", "content": "What is 2+2?"}],
+        "target": "4"
+    }
+]
+
+histories = [d["history"] for d in data]
+targets = [d["target"] for d in data]
+
+# Evaluate
 result = await eval_batch(
-    module_fn=my_module,
-    examples=examples,
-    metric=exact_match
+    histories=histories,
+    targets=targets,
+    metric=exact_match,
+    lm=lm,
+    use_agent=False  # Single step mode
 )
 ```
 
-### Mode 2: Agent-Based Evaluation (use_step=True)
+### Mode 2: Agent-Based Evaluation with Tools
 
-Evaluate using `agent.step()` with tool support:
+Evaluate using `agent.step()` or full agent loop with tool support:
 
 ```python
-from agent import step
 from lm import LM
 
 # Tools
@@ -235,21 +278,32 @@ def calculator(expr: str) -> str:
 lm = LM()
 tools = [calculator]
 
-# Evaluate with step
+# Single step evaluation
 result = await eval_batch(
-    module_fn=lambda **inputs: None,  # Not used
-    examples=examples,
+    histories=histories,
+    targets=targets,
     metric=exact_match,
-    use_step=True,
     lm=lm,
-    tools=tools
+    tools=tools,
+    use_agent=False  # Single step with tools
+)
+
+# Or full agent loop for multi-step tasks
+result = await eval_batch(
+    histories=histories,
+    targets=targets,
+    metric=exact_match,
+    lm=lm,
+    tools=tools,
+    use_agent=True,  # Full agent loop
+    max_iterations=5
 )
 ```
 
 The framework will:
-1. Build message from example inputs
-2. Call `agent.step(lm, history, tools)`
-3. Wait for tool execution
+1. Use conversation history directly
+2. Call `agent.step(lm, history, tools)` or `agent.agent(lm, history, tools)`
+3. Execute tool calls if needed
 4. Collect results into prediction
 5. Apply metric
 
@@ -268,8 +322,6 @@ The framework will:
 
 ## See Also
 
-- `eval_run_sample.py` - Working examples with real LM (direct mode)
-- `eval_run_sample_with_step.py` - Agent-based evaluation with tools
-- `agent.py` - Agent framework with step() and streaming
-- `example.py` - Example data structure
+- `eval_run_sample.py` - Working examples with real LM (includes basic and tool-based demos)
+- `agent.py` - Agent framework with step() and agent() for multi-turn conversations
 - `lm.py` - Language model interface
