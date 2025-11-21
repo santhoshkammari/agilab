@@ -45,6 +45,15 @@ class ToolResult:
     output: str
     is_error: bool = False
 
+    @property
+    def message(self) -> dict:
+        """Convert to message format for history"""
+        return {
+            "role": "tool",
+            "tool_call_id": self.tool_call_id,
+            "content": self.output
+        }
+
 async def gen(
     lm,
     history,
@@ -109,15 +118,6 @@ async def _execute_tool(
         )
 
     return result
-
-
-def tool_result_to_message(result: ToolResult) -> dict:
-    """Convert ToolResult to message format for history"""
-    return {
-        "role": "tool",
-        "tool_call_id": result.tool_call_id,
-        "content": result.output
-    }
 
 
 async def step(
@@ -291,8 +291,7 @@ async def agent(
             tool_results = await result.tool_results()
 
             # Add tool results to history
-            for tr in tool_results:
-                history.append(tool_result_to_message(tr))
+            history.extend([tr.message for tr in tool_results])
         else:
             # No tool calls, agent is done
             break
