@@ -6,7 +6,7 @@ with async tool calling and early execution optimization.
 """
 
 import asyncio
-from agent import step, gen, tool_result_to_message, AssistantResponse, ToolCall, agent
+from agent import step, gen, AssistantResponse, ToolCall, agent
 from lm import LM
 
 
@@ -102,7 +102,7 @@ async def example_multi_turn_agent_loop():
         history.append(result.message)
         for tr in tool_results:
             print(f"Tool result: {tr}")
-            history.append(tool_result_to_message(tr))
+            history.append(tr.message)
 
         # Stop if no more tool calls
         if not result.tool_calls:
