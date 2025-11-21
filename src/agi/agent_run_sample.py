@@ -6,7 +6,7 @@ with async tool calling and early execution optimization.
 """
 
 import asyncio
-from agent import step, gen, tool_result_to_message, AssistantResponse, ToolCall
+from agent import step, gen, tool_result_to_message, AssistantResponse, ToolCall, agent
 from lm import LM
 
 
@@ -19,6 +19,51 @@ def get_weather(city: str, unit: str = "celsius"):
         unit: Temperature unit (choices: ["celsius", "fahrenheit"])
     """
     return f"Weather in {city}: 22 degrees {unit}"
+
+
+def search(query: str) -> str:
+    """
+    Search for information
+
+    Args:
+        query: Search query
+    """
+    return f"Search results for '{query}': [mock results]"
+
+
+async def demo_simple_loop():
+    """Demo 1: Simple agent loop"""
+    print("\n" + "="*60)
+    print("DEMO 1: Simple Agent Loop")
+    print("="*60)
+
+    lm = LM()
+    tools = [get_weather, search]
+
+    history = [{"role": "user", "content": "What is the weather in London and Paris? /no_think"}]
+    result = await agent(
+        lm=lm,
+        history=history,
+        tools=tools,
+        max_iterations=5
+    )
+
+    print(f"Iterations: {result['iterations']}")
+    print(f"Total tool calls: {result['tool_calls_total']}")
+    print(f"\nFinal Response: {result['final_response'][:200]}...")
+
+    print(f"\nConversation History ({len(result['history'])} messages):")
+    for i, msg in enumerate(result['history']):
+        role = msg.get("role", "unknown")
+        if role == "assistant":
+            content = msg.get("content", "")[:50] if msg.get("content") else "[no content]"
+            print(f"  {i}: {role:10} → {content}...")
+        elif role == "tool":
+            content = msg.get("content", "")[:50]
+            print(f"  {i}: {role:10} → {content}...")
+        else:
+            content = msg.get("content", "")[:50]
+            print(f"  {i}: {role:10} → {content}...")
 
 
 async def example_multi_turn_agent_loop():
@@ -98,6 +143,9 @@ async def example_streaming_gen():
 
 async def main():
     """Run all examples"""
+    # Demo 1: Simple agent loop
+    await demo_simple_loop()
+
     # Example 1: Multi-turn with early execution (recommended)
     await example_multi_turn_agent_loop()
 
