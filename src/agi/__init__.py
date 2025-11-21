@@ -1,5 +1,6 @@
 import contextvars
 
+# Core classes and functions
 from .lm import LM
 from .agent import (
     gen, step, agent,
@@ -9,6 +10,16 @@ from .eval import (
     eval_example, eval_stream, eval_batch,
     EvalResult
 )
+
+# Exports
+__all__ = [
+    'LM',
+    'gen', 'step', 'agent',
+    'AssistantResponse', 'ToolCall', 'StepResult', 'ToolResult',
+    'eval_example', 'eval_stream', 'eval_batch',
+    'EvalResult',
+    'configure', 'get_lm'
+]
 
 # Global LM context
 _current_lm = contextvars.ContextVar('lm', default=None)

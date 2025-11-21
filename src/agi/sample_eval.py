@@ -6,12 +6,10 @@ Combines basic demos and advanced tool-based evaluation demos.
 """
 
 import asyncio
-import sys
 import re
-sys.path.insert(0, __file__.rsplit('/', 1)[0])
 
-from eval import eval_example, eval_stream, eval_batch
-from lm import LM
+from .eval import eval_example, eval_stream, eval_batch
+from .lm import LM
 
 
 # Metric functions

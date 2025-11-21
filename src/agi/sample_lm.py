@@ -5,10 +5,8 @@ Demonstrates the lm.py interface for streaming and batch LLM operations.
 """
 
 import asyncio
-import sys
-sys.path.insert(0, __file__.rsplit('/', 1)[0])
 
-from lm import LM
+from .lm import LM
 
 
 async def demo_stream_basic():
