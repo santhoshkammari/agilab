@@ -285,6 +285,15 @@ def search_web(query: str, max_results: int = 5) -> str:
 
 
 async def async_web_search(query: str, max_results: int = 5):
+    """Perform an async web search using Bing search engine.
+
+    Args:
+        query: The search query string
+        max_results: Maximum number of results to return (default: 5)
+
+    Returns:
+        A list of search results with url, title, and description
+    """
     browser = await _get_browser()
     search_tool = WebSearchTool(browser)
     return await search_tool.web_search(query, 'bing', max_results)
