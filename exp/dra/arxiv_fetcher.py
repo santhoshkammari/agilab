@@ -462,7 +462,7 @@ def fetch_latest_arxiv_cs_papers(
     df_with_categories = handle_category(df)
     df_with_categories['github_url'] = df_with_categories['abstract'].apply(find_github_url)
     df_cleaned = df_with_categories.drop_duplicates(subset=['title'], keep='first')
-    return df_cleaned.to_dict(orient='records')
+    return df_cleaned
 
 import time
 
@@ -471,3 +471,8 @@ if __name__ == '__main__':
     df = fetch_latest_arxiv_cs_papers()
     end = time.time()
     print(f"Runtime: {end - start:.2f} seconds")
+
+    # Save dataframe to CSV
+    output_file = "arxiv_papers.csv"
+    df.to_csv(output_file, index=False)
+    print(f"Dataframe saved to {output_file}")
