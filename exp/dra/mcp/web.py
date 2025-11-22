@@ -206,7 +206,7 @@ class WebSearchTool:
 
         except Exception as e:
             logger.error(f"Search error after {time.time() - search_start:.3f}s: {str(e)}")
-            return json.dumps([])
+            return []
         
     @staticmethod
     def decode_bing_url(bing_url):
@@ -298,9 +298,12 @@ async def web_search(query: str, max_results: int = 5) -> dict:
     """Perform web search and return results"""
     try:
         results = await async_web_search(query, max_results)
-        return {"query": query, "results": results}
+        result ={"query": query, "results": results}
     except Exception as e:
-        return {"error": str(e)}
+        result= {"error": str(e)}
+        
+    return result
+
 
 tool_functions = {
     "async_web_search": async_web_search,
