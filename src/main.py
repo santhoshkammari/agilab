@@ -1,5 +1,6 @@
 import ai
 from mcp_tools.web import async_web_search
+from mcp_tools.fetch import scrapling_get
 from logger.logger import get_logger
 
 # Initialize logger and LM
@@ -11,7 +12,7 @@ log = get_logger(
     subdir="main"
 )
 lm = ai.LM()
-tools = [async_web_search]
+tools = [async_web_search, scrapling_get]
 history = [{"role": "user", "content": "What is the weather in London /no_think"}]
 
 async def main():

@@ -23,7 +23,21 @@ def scrapling_get(
     retries: Optional[int] = 3,
     retry_delay: Optional[int] = 1,
 ) -> Dict:
-    """Make a simple GET request and extract content (internal helper)."""
+    """Make a simple GET request and extract content.
+
+    Args:
+        url: The URL to fetch
+        impersonate: Browser to impersonate (default: chrome)
+        extraction_type: Type of content extraction (default: markdown)
+        css_selector: CSS selector for specific content extraction
+        main_content_only: Extract only main content (default: True)
+        timeout: Request timeout in seconds (default: 30)
+        retries: Number of retry attempts (default: 3)
+        retry_delay: Delay between retries in seconds (default: 1)
+
+    Returns:
+        Dict with status, content, and url
+    """
     try:
         page = Fetcher.get(
             url,
