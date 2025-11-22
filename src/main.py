@@ -3,7 +3,13 @@ from mcp_tools.web import async_web_search
 from logger.logger import get_logger
 
 # Initialize logger and LM
-log = get_logger("main", level="DEBUG", subdir="main")
+log = get_logger(
+    name="main",
+    level="DEBUG",
+    enable_rich=True,
+    enable_files=True,
+    subdir="main"
+)
 lm = ai.LM()
 tools = [async_web_search]
 history = [{"role": "user", "content": "What is the weather in London /no_think"}]
