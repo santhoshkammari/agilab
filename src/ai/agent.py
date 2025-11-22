@@ -2,11 +2,10 @@ import json
 import asyncio
 
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable
 from transformers.utils import get_json_schema
 
 from .lm import LM
-from logger.logger import UniversalLogger
 
 @dataclass
 class AssistantResponse:
@@ -83,7 +82,7 @@ async def _execute_tool(
     tool_args_str: str,
     tool_id: str,
     tool_registry: dict,
-    logger: Optional[UniversalLogger] = None,
+    logger=None,
 ) -> ToolResult:
     """Execute a single tool asynchronously"""
     try:
@@ -133,7 +132,7 @@ async def step(
     history: list[dict],
     tools: list[Callable] = None,
     early_tool_execution: bool = True,
-    logger: Optional[UniversalLogger] = None,
+    logger=None,
 ) -> StepResult:
     """
     Execute ONE LLM generation with async tool execution.
@@ -251,7 +250,7 @@ async def agent(
     tools: list[Callable] = None,
     max_iterations: int = 10,
     early_tool_execution: bool = True,
-    logger: Optional[UniversalLogger] = None,
+    logger=None,
 ) -> dict:
     """
     Execute a multi-turn agent loop with max iterations.
