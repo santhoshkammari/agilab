@@ -2,10 +2,11 @@ import json
 import asyncio
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Optional
 from transformers.utils import get_json_schema
 
 from .lm import LM
+from logger.logger import UniversalLogger
 
 @dataclass
 class AssistantResponse:
@@ -82,6 +83,7 @@ async def _execute_tool(
     tool_args_str: str,
     tool_id: str,
     tool_registry: dict,
+    logger: Optional[UniversalLogger] = None,
 ) -> ToolResult:
     """Execute a single tool asynchronously"""
     try:
@@ -95,6 +97,8 @@ async def _execute_tool(
                 output=f"Error: Tool '{tool_name}' not found",
                 is_error=True
             )
+            if logger:
+                logger.error({"tool": tool_name, "error": "not found"})
         else:
             tool_fn = tool_registry[tool_name]
 
@@ -109,6 +113,8 @@ async def _execute_tool(
                 output=str(output),
                 is_error=False
             )
+            if logger:
+                logger.debug({"tool": tool_name, "status": "success"})
 
     except Exception as e:
         result = ToolResult(
@@ -116,6 +122,8 @@ async def _execute_tool(
             output=f"Error executing tool: {str(e)}",
             is_error=True
         )
+        if logger:
+            logger.error({"tool": tool_name, "error": str(e)})
 
     return result
 
@@ -125,6 +133,7 @@ async def step(
     history: list[dict],
     tools: list[Callable] = None,
     early_tool_execution: bool = True,
+    logger: Optional[UniversalLogger] = None,
 ) -> StepResult:
     """
     Execute ONE LLM generation with async tool execution.
@@ -182,7 +191,7 @@ async def step(
 
                     # Spawn previous tool immediately
                     future = asyncio.create_task(
-                        _execute_tool(tool_name, tool_args_str, tool_id, tool_registry)
+                        _execute_tool(tool_name, tool_args_str, tool_id, tool_registry, logger)
                     )
                     tool_futures[tool_id] = future
 
@@ -224,7 +233,7 @@ async def step(
 
         # Create async task for this tool
         future = asyncio.create_task(
-            _execute_tool(tool_name, tool_args_str, tool_id, tool_registry)
+            _execute_tool(tool_name, tool_args_str, tool_id, tool_registry, logger)
         )
         tool_futures[tool_id] = future
 
@@ -242,6 +251,7 @@ async def agent(
     tools: list[Callable] = None,
     max_iterations: int = 10,
     early_tool_execution: bool = True,
+    logger: Optional[UniversalLogger] = None,
 ) -> dict:
     """
     Execute a multi-turn agent loop with max iterations.
@@ -277,7 +287,8 @@ async def agent(
             lm=lm,
             history=history,
             tools=tools,
-            early_tool_execution=early_tool_execution
+            early_tool_execution=early_tool_execution,
+            logger=logger
         )
 
         # Add assistant message to history
@@ -286,6 +297,8 @@ async def agent(
         # Count and execute tool calls
         if result.tool_calls:
             total_tool_calls += len(result.tool_calls)
+            if logger:
+                logger.info({"iteration": iteration, "tool_calls": len(result.tool_calls)})
 
             # Wait for tool results
             tool_results = await result.tool_results()
@@ -302,6 +315,9 @@ async def agent(
         if msg.get("role") == "assistant" and msg.get("content"):
             final_response = msg["content"]
             break
+
+    if logger:
+        logger.info({"status": "completed", "iterations": iteration, "total_tool_calls": total_tool_calls})
 
     return {
         "history": history,
