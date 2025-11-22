@@ -278,6 +278,12 @@ async def agent(
     iteration = 0
     total_tool_calls = 0
 
+    # Log user messages at start
+    if logger:
+        for msg in history:
+            if msg.get("role") == "user":
+                logger.ai(msg.get("content", ""), "user")
+
     while iteration < max_iterations:
         iteration += 1
 
@@ -292,6 +298,10 @@ async def agent(
 
         # Add assistant message to history
         history.append(result.message)
+
+        # Log assistant message
+        if logger and result.message.get("content"):
+            logger.ai(result.message["content"], "assistant")
 
         # Count and execute tool calls
         if result.tool_calls:
