@@ -7,7 +7,7 @@ log = get_logger(
     name="main",
     level="DEBUG",
     enable_rich=True,
-    enable_files=True,
+    enable_files=False,
     subdir="main"
 )
 lm = ai.LM()
