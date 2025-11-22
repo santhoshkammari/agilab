@@ -5,15 +5,15 @@ Minimal async framework for LLM operations, agent execution, and evaluation.
 ## Quick Start
 
 ```python
-import metis
+import ai
 
-lm = metis.LM()
+lm = ai.LM()
 ```
 
 Then use:
-- `metis.LM` - Language model interface
-- `metis.step()`, `metis.agent()` - Agent framework
-- `metis.eval_batch()`, `metis.eval_stream()`, `metis.eval_example()` - Evaluation
+- `ai.LM` - Language model interface
+- `ai.step()`, `ai.agent()` - Agent framework
+- `ai.eval_batch()`, `ai.eval_stream()`, `ai.eval_example()` - Evaluation
 
 ---
 
@@ -24,9 +24,9 @@ Async LLM interface with streaming and batch support.
 ### API
 
 ```python
-import metis
+import ai
 
-lm = metis.LM()
+lm = ai.LM()
 
 # Streaming
 async for chunk in lm.stream(messages):
@@ -39,9 +39,9 @@ results = await lm.batch([messages1, messages2, messages3])
 ### Example
 
 ```python
-import metis
+import ai
 
-lm = metis.LM()
+lm = ai.LM()
 messages = [{"role": "user", "content": "What is 2+2?"}]
 
 async for chunk in lm.stream(messages):
@@ -59,44 +59,44 @@ Async agent framework with streaming, tool calling, and multi-turn loops.
 
 ### Three Levels
 
-1. **`metis.gen()`** - Low-level streaming (yields text chunks and tool calls)
-2. **`metis.step()`** - Single LLM generation with async tool execution
-3. **`metis.agent()`** - Multi-turn loop with max iterations
+1. **`ai.gen()`** - Low-level streaming (yields text chunks and tool calls)
+2. **`ai.step()`** - Single LLM generation with async tool execution
+3. **`ai.agent()`** - Multi-turn loop with max iterations
 
 ### API
 
 ```python
-import metis
+import ai
 
-lm = metis.LM()
+lm = ai.LM()
 
 # Full agent loop
-result = await metis.agent(lm=lm, history=history, tools=tools, max_iterations=5)
+result = await ai.agent(lm=lm, history=history, tools=tools, max_iterations=5)
 
 # Single step
-result = await metis.step(lm=lm, history=history, tools=tools)
+result = await ai.step(lm=lm, history=history, tools=tools)
 history.append(result.message)
 if result.tool_calls:
     tool_results = await result.tool_results()
     history.extend([tr.message for tr in tool_results])
 
 # Low-level streaming
-async for chunk in metis.gen(lm=lm, history=history, tools=tools):
-    if isinstance(chunk, metis.AssistantResponse):
+async for chunk in ai.gen(lm=lm, history=history, tools=tools):
+    if isinstance(chunk, ai.AssistantResponse):
         print(chunk.content, end="")
-    elif isinstance(chunk, metis.ToolCall):
+    elif isinstance(chunk, ai.ToolCall):
         print(f"[Tool] {chunk.name}")
 ```
 
 ### Data Structures
 
 ```python
-metis.StepResult
+ai.StepResult
     message: dict              # Assistant message
     tool_calls: list[dict]     # Tool calls made
-    async def tool_results() -> list[metis.ToolResult]
+    async def tool_results() -> list[ai.ToolResult]
 
-metis.ToolResult
+ai.ToolResult
     tool_call_id: str
     output: str
     is_error: bool = False
@@ -125,26 +125,26 @@ Async evaluation framework with streaming and batch support.
 
 ### Three Levels
 
-1. **`metis.eval_example()`** - Evaluate single example
-2. **`metis.eval_stream()`** - Stream results one-by-one
-3. **`metis.eval_batch()`** - Batch evaluate with parallelization
+1. **`ai.eval_example()`** - Evaluate single example
+2. **`ai.eval_stream()`** - Stream results one-by-one
+3. **`ai.eval_batch()`** - Batch evaluate with parallelization
 
 ### API
 
 ```python
-import metis
+import ai
 
-lm = metis.LM()
+lm = ai.LM()
 
 # Single
-result = await metis.eval_example(history, target, metric, lm=lm)
+result = await ai.eval_example(history, target, metric, lm=lm)
 
 # Streaming
-async for result in metis.eval_stream(histories, targets, metric, lm=lm):
+async for result in ai.eval_stream(histories, targets, metric, lm=lm):
     print(f"Score: {result.score}")
 
 # Batch
-result = await metis.eval_batch(
+result = await ai.eval_batch(
     histories=histories,
     targets=targets,
     metric=exact_match,
@@ -168,7 +168,7 @@ def contains_match(target, prediction):
 ### With Tools
 
 ```python
-result = await metis.eval_batch(
+result = await ai.eval_batch(
     histories=histories,
     targets=targets,
     metric=exact_match,
@@ -184,25 +184,25 @@ result = await metis.eval_batch(
 ## All Exports
 
 ```python
-import metis
+import ai
 
 # LM
-metis.LM
+ai.LM
 
 # Agent
-metis.gen
-metis.step
-metis.agent
-metis.AssistantResponse
-metis.ToolCall
-metis.StepResult
-metis.ToolResult
+ai.gen
+ai.step
+ai.agent
+ai.AssistantResponse
+ai.ToolCall
+ai.StepResult
+ai.ToolResult
 
 # Eval
-metis.eval_example
-metis.eval_stream
-metis.eval_batch
-metis.EvalResult
+ai.eval_example
+ai.eval_stream
+ai.eval_batch
+ai.EvalResult
 ```
 
 ## Sample Files
