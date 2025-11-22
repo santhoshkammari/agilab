@@ -305,6 +305,11 @@ async def agent(
         if result.tool_calls:
             total_tool_calls += len(result.tool_calls)
 
+            # Log tool calls
+            if logger:
+                for tc in result.tool_calls:
+                    logger.ai(f"Tool: {tc['function']['name']}\nArgs: {tc['function']['arguments']}", "tool")
+
             # Wait for tool results
             tool_results = await result.tool_results()
 
