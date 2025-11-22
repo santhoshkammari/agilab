@@ -13,7 +13,7 @@ log = get_logger(
 )
 lm = ai.LM()
 tools = [async_web_search, scrapling_get]
-history = [{"role": "user", "content": "Search the web for current weather in London"}]
+history = [{"role": "user", "content": input(">")}]
 
 async def main():
     result = await ai.agent(
