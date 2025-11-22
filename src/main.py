@@ -22,9 +22,6 @@ async def main():
     max_iterations=5,
     logger=log
 )
-    print(f"Iterations: {result['iterations']}")
-    print(f"Total tool calls: {result['tool_calls_total']}")
-    print(f"\nFinal Response: {result['final_response']}...")
 
 
 import asyncio
