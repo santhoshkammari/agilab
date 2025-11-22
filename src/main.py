@@ -5,9 +5,9 @@ from logger.logger import get_logger
 # Initialize logger and LM
 log = get_logger(
     name="main",
-    level="DEBUG",
+    level="INFO",
     enable_rich=True,
-    enable_files=False,
+    enable_files=True,
     subdir="main"
 )
 lm = ai.LM()

@@ -126,15 +126,16 @@ class UniversalLogger:
         log_file = log_path / f"{self.name}.log"
         self.file_logger = logging.getLogger(f"file_{self.name}")
         self.file_logger.setLevel(logging.DEBUG)  # File gets everything
-        
+        self.file_logger.propagate = False  # Don't propagate to root logger (prevents console output)
+
         # Remove existing handlers
         self.file_logger.handlers.clear()
-        
+
         # Add rotating file handler
         file_handler = logging.handlers.RotatingFileHandler(
             log_file, maxBytes=max_bytes, backupCount=backup_count
         )
-        
+
         # JSON formatter for structured logging
         formatter = logging.Formatter(
             '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": %(message)s}'

@@ -112,8 +112,6 @@ async def _execute_tool(
                 output=str(output),
                 is_error=False
             )
-            if logger:
-                logger.debug({"tool": tool_name, "status": "success"})
 
     except Exception as e:
         result = ToolResult(
@@ -306,23 +304,9 @@ async def agent(
         # Count and execute tool calls
         if result.tool_calls:
             total_tool_calls += len(result.tool_calls)
-            if logger:
-                logger.info({"iteration": iteration, "tool_calls": len(result.tool_calls)})
 
             # Wait for tool results
             tool_results = await result.tool_results()
-
-            # Log tool results as table
-            if logger and tool_results:
-                results_table = [
-                    {
-                        "tool_id": tr.tool_call_id[:8],
-                        "status": "error" if tr.is_error else "success",
-                        "output": tr.output[:100] if len(tr.output) > 100 else tr.output
-                    }
-                    for tr in tool_results
-                ]
-                logger.rich(results_table)
 
             # Add tool results to history
             history.extend([tr.message for tr in tool_results])
