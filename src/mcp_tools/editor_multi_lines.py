@@ -2,26 +2,6 @@ from fastmcp import FastMCP
 import os
 from typing import Optional, List, Dict, Any
 
-def read_file_with_line_numbers(file_path: str) -> str:
-    """Read file content and return with line numbers"""
-    if not os.path.exists(file_path):
-        return f"Error: File '{file_path}' does not exist"
-    if not os.path.isfile(file_path):
-        return f"Error: '{file_path}' is not a file"
-    
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        # Format with line numbers starting from 1
-        numbered_lines = []
-        for i, line in enumerate(lines, 1):
-            # Add line number followed by content, preserving line breaks
-            numbered_lines.append(f"{i:3d}→{line}")
-        
-        return ''.join(numbered_lines)
-    except Exception as e:
-        return f"Error reading file '{file_path}': {str(e)}"
 
 def replace_str_in_file(file_path: str, edits: List[Dict[str, Any]]) -> str:
     """
@@ -97,10 +77,6 @@ def replace_str_in_file(file_path: str, edits: List[Dict[str, Any]]) -> str:
 # Create FastMCP server
 mcp = FastMCP("File Tools Optimized Server")
 
-@mcp.tool
-def read_file(file_path: str) -> str:
-    """Read file content and return with line numbers starting from index 1."""
-    return read_file_with_line_numbers(file_path)
 
 @mcp.tool
 def replace_str(file_path: str, edits: List[Dict[str, Any]]) -> str:
@@ -123,7 +99,6 @@ def replace_str(file_path: str, edits: List[Dict[str, Any]]) -> str:
     return replace_str_in_file(file_path, edits)
 
 tool_functions = {
-    "read_file": read_file,
     "replace_str": replace_str,
 }
 
