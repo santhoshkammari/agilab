@@ -2,8 +2,6 @@
 
 optimization experiments. building what's missing.
 
-Frameworks don't work for real stuff. Built simple versions that do.
-
 ---
 
 ## What Got Built
