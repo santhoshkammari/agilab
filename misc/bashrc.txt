@@ -87,7 +87,88 @@ fi
 # colored GCC warnings and errors
 #export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'
 
+
+#Example:
+
+#ancp pull /home/ng6309/data ~/Downloads/
+
+
+#or local → gpu
+
+#ancp push model.pt ~/work/model_deploy/
+
 # some more ls aliases
+ancp() {
+    mode="$1"
+    shift
+
+    azure_host="azureuser@4.213.120.199"
+    gpu_host="ng6309@192.168.170.76"
+    azure_tmp="/datadrive/transfer_data"
+
+    pw_azure=$(cat ~/.pw_azure)
+    pw_gpu=$(cat ~/.pw_gpu)
+
+    cleanup=false
+    dryrun=false
+
+    while [[ "$1" == -* ]]; do
+        case "$1" in
+            --clean) cleanup=true ;;
+            --dry) dryrun=true ;;
+        esac
+        shift
+    done
+
+    if [[ "$mode" == "pull" ]]; then
+        gpu_paths=("$@")
+        local_dest="${@: -1}"
+        unset 'gpu_paths[${#gpu_paths[@]}-1]'
+
+        echo "📥 GPU → Local"
+
+        for src in "${gpu_paths[@]}"; do
+            echo "🔹 GPU → Azure"
+            sshpass -p "$pw_azure" ssh -o StrictHostKeyChecking=no $azure_host \
+                "sshpass -p '$pw_gpu' rsync -avhz --progress $gpu_host:'$src' $azure_tmp/" \
+                $([ "$dryrun" = true ] && echo "--dry-run")
+
+            echo "🔹 Azure → Local"
+            sshpass -p "$pw_azure" rsync -avhz --progress $azure_host:$azure_tmp/ "$local_dest" \
+                $([ "$dryrun" = true ] && echo "--dry-run")
+        done
+
+    elif [[ "$mode" == "push" ]]; then
+        local_paths=("$@")
+        gpu_dest="${@: -1}"
+        unset 'local_paths[${#local_paths[@]}-1]'
+
+        echo "📤 Local → GPU"
+
+        for src in "${local_paths[@]}"; do
+            echo "🔹 Local → Azure"
+            sshpass -p "$pw_azure" rsync -avhz --progress "$src" $azure_host:$azure_tmp/ \
+                $([ "$dryrun" = true ] && echo "--dry-run")
+
+            echo "🔹 Azure → GPU"
+            sshpass -p "$pw_azure" ssh -o StrictHostKeyChecking=no $azure_host \
+                "sshpass -p '$pw_gpu' rsync -avhz --progress $azure_tmp/ $gpu_host:\"$gpu_dest\"" \
+                $([ "$dryrun" = true ] && echo "--dry-run")
+        done
+    else
+        echo "Usage:"
+        echo "  ancp pull <gpu_paths...> <local_dest>"
+        echo "  ancp push <local_paths...> <gpu_dest>"
+        echo "Options: --clean --dry"
+        return
+    fi
+
+    if [ "$cleanup" = true ]; then
+        echo "🧹 Cleaning Azure Temp"
+        sshpass -p "$pw_azure" ssh $azure_host "rm -rf $azure_tmp/*"
+    fi
+}
+
 alias cca="claude --dangerously-skip-permissions"
 ai() { cca -p "$*"; }
 gai() { gemini -y -p "$*"; }
