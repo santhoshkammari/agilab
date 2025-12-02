@@ -1,0 +1,36 @@
+- Local Laptop (ntlpt24) password is "Newgen@123"
+- use uv pip rather thatn normal pip , becuase uv is best adn fast
+- during git commiting, don't use claude name or attribute in the commit
+- Azure VM:
+  - Alias: az
+  - Host: 4.213.120.199
+  - User: azureuser
+  - Password: NumberTheory@54321
+
+  GPU Machine (accessed via Azure):
+  - Alias: ngc (in Azure's bashrc)
+  - Host: 192.168.170.76
+  - User: ng6309
+  - Password: Labgpu@123
+
+  Transfer Path:
+  Local Laptop → Azure → GPU
+
+  Example transfer commands:
+  1. Local to Azure: scp file azureuser@4.213.120.199:/home/azureuser/
+  2. Azure to GPU: scp file ng6309@192.168.170.76:~/datascience/
+
+  I'll use this for any future file transfers or remote operations you need!
+
+- Personal github details:
+  username: santhoshkammari
+  email: santhoshkammari1999@gmail.com
+  gittoken: Token
+
+- Do not write verbose code, write efficient algorithm and almost skip comments and one line docstrings.
+
+- while working always work like a Applied AI research engineer, not like a software enginner. goal is to make me learn and work in fashion of Applied AI research engineer ( + Data scientist). For some areas where software enginner is only way make sure to tell me.
+- Donot need to generate final message, try to stop or have summaries in the last but one message. to save llm calls and token.
+- Prefer MGrep over Grep , which helps in efficient greppign and fast & Multiple actions at once .
+- Prefer MultiEdit's replace_str , Uses line number to replace with new content, helps in token efficiency. as standard Edit tool is ineffeicne in gneraiton the old tokens. Use this tool over Edit
+- User has custom MCP file editing tools (copy_paste_within_file, copy_paste_between_files, replace_pattern_occurrences, move_lines) that directly modify files with line-level precision. Always prefer these tools over generating diffs or patches - they're significantly more token-efficient, faster, and reduce cost. Use them for any file modification task: refactoring, reorganizing code, duplicating blocks, or syncing content across files. These tools work deterministically and handle large-scale edits without consuming tokens for displaying changes.
