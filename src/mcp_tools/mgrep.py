@@ -12,13 +12,9 @@ RG_PATH = shutil.which('rg') or '/usr/bin/rg'
 
 def execute_grep(search_config: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Execute a single grep search using ripgrep.
-
-    Args:
-        search_config: Dictionary containing search parameters
-
-    Returns:
-        Dictionary with search results and metadata
+    Execute single grep search using ripgrep.
+    
+    Returns dict with pattern, path, output, error, matches_found keys.
     """
     pattern = search_config.get('pattern')
     if not pattern:
@@ -69,6 +65,7 @@ def execute_grep(search_config: Dict[str, Any]) -> Dict[str, Any]:
             "pattern": pattern,
             "path": path,
             "output": result.stdout.strip(),
+            "stderr": result.stderr.strip(),
             "error": result.stderr.strip() if result.returncode != 0 and result.returncode != 1 else None,
             "matches_found": result.returncode == 0
         }
@@ -76,6 +73,7 @@ def execute_grep(search_config: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "pattern": pattern,
             "path": path,
+            "output": "",
             "error": "Search timed out after 30 seconds",
             "matches_found": False
         }
@@ -83,6 +81,7 @@ def execute_grep(search_config: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "pattern": pattern,
             "path": path,
+            "output": "",
             "error": str(e),
             "matches_found": False
         }
