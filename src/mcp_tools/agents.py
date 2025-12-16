@@ -11,20 +11,41 @@ mcp = FastMCP("Run-Agents")
 
 
 @mcp.tool
-def run_agents_manifest(path: str) -> Dict[str, Any]:
+def run_multiple_qwen_agents_in_parallel(path: str) -> Dict[str, Any]:
     """
-    Load and execute agents from agents.json file in parallel (max 4 at a time).
+    Execute multiple independent Qwen agents in parallel from a JSON manifest file.
+
+    Runs up to 4 Qwen agents concurrently, each in YOLO mode (-y flag). This is useful
+    for running multiple independent tasks simultaneously (e.g., git operations,
+    file processing, code generation) without waiting for sequential completion.
 
     Args:
-        path: Path to agents.json file containing list of agent dicts
+        path: Absolute path to JSON file containing array of agent configurations.
+              Each agent config must have:
+                - system_prompt (required): The prompt/instructions for the Qwen agent
+                - task (optional): Additional task description appended to system_prompt
+                - id (optional): Custom identifier for the agent (defaults to "agent-N")
 
-    Each agent dict should have:
-        - system_prompt (required): The prompt for the agent
-        - task (optional): Additional task to append to system_prompt
-        - id (optional): Agent identifier
+              Example agents.json:
+              [
+                {
+                  "id": "git-committer",
+                  "system_prompt": "You are a git expert",
+                  "task": "Create a commit for the CSS changes and push to origin/dev"
+                },
+                {
+                  "id": "code-formatter",
+                  "system_prompt": "Format all TypeScript files",
+                  "task": "Run prettier on src/**/*.ts"
+                }
+              ]
 
     Returns:
-        Dict with run_id, status, agents (execution results), and errors
+        Dict containing:
+          - run_id: Unique identifier for this parallel execution
+          - status: "completed" | "completed_with_errors" | "validation_failed"
+          - agents: List of execution results (stdout, stderr, returncode per agent)
+          - errors: List of error messages if any agents failed
     """
     run_id = f"run-{uuid.uuid4().hex[:12]}"
     errors: List[str] = []
