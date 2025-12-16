@@ -3,6 +3,9 @@ import os
 from typing import Optional, List, Dict, Any
 
 
+mcp = FastMCP("File Tools Optimized Server")
+
+@mcp.tool
 def replace_str_in_file(file_path: str, edits: List[Dict[str, Any]]) -> str:
     """
     Replace multiple sections in a file with new content.
@@ -15,6 +18,12 @@ def replace_str_in_file(file_path: str, edits: List[Dict[str, Any]]) -> str:
             - new_string(str): New content to replace with
     
     Edits are applied from bottom to top to maintain line number validity.
+
+    Example:
+        edits = [
+            {"line_start": 5, "line_end": 7, "new_string": "new content for lines 5-7\\n"},
+            {"line_start": 10, "line_end": 10, "new_string": "replacement for line 10\\n"}
+        ]
     """
     if not os.path.exists(file_path):
         return f"Error: File '{file_path}' does not exist"
@@ -74,33 +83,6 @@ def replace_str_in_file(file_path: str, edits: List[Dict[str, Any]]) -> str:
     except Exception as e:
         return f"Error replacing content in file '{file_path}': {str(e)}"
 
-# Create FastMCP server
-mcp = FastMCP("File Tools Optimized Server")
-
-
-@mcp.tool
-def replace_str(file_path: str, edits: List[Dict[str, Any]]) -> str:
-    """
-    Replace multiple sections in a file with new content in one operation.
-    
-    Args:
-        file_path: Path to the file to edit
-        edits: List of edit operations, each containing:
-            - line_start: Starting line number (1-indexed)
-            - line_end: Ending line number (1-indexed, inclusive)
-            - new_string: New content to replace with
-    
-    Example:
-        edits = [
-            {"line_start": 5, "line_end": 7, "new_string": "new content for lines 5-7\\n"},
-            {"line_start": 10, "line_end": 10, "new_string": "replacement for line 10\\n"}
-        ]
-    """
-    return replace_str_in_file(file_path, edits)
-
-tool_functions = {
-    "replace_str": replace_str,
-}
 
 if __name__ == "__main__":
     mcp.run()
