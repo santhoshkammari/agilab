@@ -14,8 +14,7 @@ from pathlib import Path
 from typing import List, Dict
 import json
 
-from .agent import agent
-from .lm import LM
+from src.ai import agent,LM
 from src.mcp_tools.web import async_web_search
 from src.logger.logger import get_logger
 
@@ -23,7 +22,7 @@ from src.logger.logger import get_logger
 from scrapling import Fetcher, DynamicFetcher, StealthyFetcher
 from scrapling.core.shell import Convertor
 
-logger = get_logger(__name__,level="DEBUG")
+logger = get_logger(__name__,level="CRITICAL")
 
 # Configuration
 MAX_SEARCH_RESULTS = 4
@@ -137,13 +136,6 @@ Structural & Navigation:
 Intro & Narrative Content:
 - get_intro
 → Extracts abstract / introduction / inferred opening section
-
-- get_paragraphs
-→ All paragraphs with line numbers
-
-Lists & Bullet Content:
-- get_lists
-→ Ordered and unordered lists with line numbers and items
 
 Tables:
 - get_tables_metadata
