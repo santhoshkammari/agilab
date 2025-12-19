@@ -60,17 +60,17 @@ async def gen(
     tools=None
 ):
     tools = [get_json_schema(x) if callable(x) else x for x in tools] if tools else []
+    tool_call_id = None
+    tool_call_name = None
+
     async for x in lm.stream(messages=history,tools=tools):
         delta = x['choices'][0]['delta']
-
         if 'tool_calls' in delta:
             tool_call = delta['tool_calls'][0]
             if 'id' in tool_call:
                 tool_call_id = tool_call['id']
                 tool_call_name = tool_call['function']['name']
-
-            if 'arguments' in tool_call['function']:
-                yield ToolCall(id=tool_call_id,name=tool_call_name,arguments=tool_call['function']['arguments'])
+            yield ToolCall(id=tool_call_id,name=tool_call_name,arguments=tool_call['function'].get('arguments',""))
         elif 'content' in delta:
             yield AssistantResponse(content=delta['content'])
         else:
@@ -224,6 +224,7 @@ async def step(
         # Skip if already spawned (early execution)
         if tool_id in tool_futures:
             continue
+
 
         tool_name = tool_call["function"]["name"]
         tool_args_str = tool_call["function"]["arguments"]
