@@ -9,7 +9,7 @@ import asyncio
 import re
 
 from .eval import eval_example, eval_stream, eval_batch
-from .lm import LM
+from .agent import LM
 
 
 # Metric functions
