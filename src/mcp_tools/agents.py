@@ -4,6 +4,7 @@ import uuid
 import os
 import subprocess
 import sys
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastmcp import FastMCP
 
@@ -98,16 +99,52 @@ def run_multiple_qwen_agents_in_parallel(path: str) -> Dict[str, Any]:
         full_prompt = f"{system_prompt}\n\nTask: {task}" if task else system_prompt
 
         try:
-            # Run qwen with the prompt in yolo mode
-            cmd = ["qwen", "-p", full_prompt, "-y"]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=os.getcwd())
+            # Run qwen with the prompt in yolo mode with JSON streaming output
+            cmd = ["qwen", "-p", full_prompt, "-y", "--output-format", "stream-json"]
+
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                bufsize=1,
+                cwd=os.getcwd()
+            )
+
+            final_result = None
+            stderr_output = ""
+
+            # Read stdout line by line to parse JSON stream
+            for stdout_line in iter(process.stdout.readline, ''):
+                line = stdout_line.strip()
+                if line:
+                    try:
+                        chunk = json.loads(line)
+                        if chunk.get('type') == 'result':
+                            final_result = chunk.get('result', 'No result found in response')
+                    except json.JSONDecodeError:
+                        # Skip invalid JSON lines
+                        continue
+
+            # Capture any remaining stderr
+            process.stdout.close()
+            stderr_output = process.stderr.read() if process.stderr else ""
+            return_code = process.wait()
+
+            # If no result chunk was found, return an error message
+            if final_result is None:
+                return {
+                    "id": agent_id,
+                    "state": "failed",
+                    "returncode": return_code,
+                    "error": f"Error: No result received from Qwen. Stderr: {stderr_output}"
+                }
 
             return {
                 "id": agent_id,
-                "state": "completed" if result.returncode == 0 else "failed",
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr
+                "state": "completed" if return_code == 0 else "failed",
+                "returncode": return_code,
+                "result": final_result
             }
         except subprocess.TimeoutExpired:
             return {"id": agent_id, "state": "failed", "error": "Execution timed out (300s)"}

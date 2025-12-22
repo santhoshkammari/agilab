@@ -63,16 +63,19 @@ def replace_str_in_file(file_path: str, edits: List[Dict[str, Any]]) -> str:
             # Check if line numbers are within bounds
             if start_idx >= len(lines) or end_idx >= len(lines):
                 return f"Error: Lines {line_start}-{line_end} out of range. File has {len(lines)} lines."
+
             # Split new_string into lines, preserving EXACTLY as provided
             if new_string:
+                # Ensure new_string ends with newline if it doesn't already
+                if not new_string.endswith('\n'):
+                    new_string = new_string + '\n'
                 new_lines = new_string.splitlines(keepends=True)
             else:
                 new_lines = []
-            
-            # Replace the lines
+
+            # Replace the lines (only once!)
             lines = lines[:start_idx] + new_lines + lines[end_idx+1:]
-            lines = lines[:start_idx] + new_lines + lines[end_idx+1:]
-            
+
             results.append(f"Replaced lines {line_start}-{line_end}")
         
         # Write back to file
