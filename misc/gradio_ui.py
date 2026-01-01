@@ -5,7 +5,17 @@ from gradio import ChatMessage
 
 client = OpenAI(base_url="http://0.0.0.0:8077/v1", api_key="sk-hdsfjbd")
 
+def load_files(files): 
+    contents = []
+    for file in files:
+        if file.endswith('.text'):
+            with open(file, 'r') as f:
+                contents.append(f.read())
+    return "\n".join(contents)
+
 def generate(prompt, messages):
+    if prompt.get("files"):
+        prompt['text'] = load_files(prompt['files']) + "\n" + prompt['text']   
     response = client.chat.completions.create(
         model="",
         messages=messages+ [{"role":"user","content":prompt["text"]}],
