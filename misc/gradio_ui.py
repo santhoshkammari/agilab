@@ -47,9 +47,8 @@ def generate(prompt, messages):
 
 demo = gr.ChatInterface(
     generate,
-    type='messages',
+    chatbot=gr.Chatbot(allow_tags=True,height=750,editable='all',show_label=False,buttons= ["copy_all"]),
     multimodal=True,
-    theme=gr.themes.Glass(),
     fill_height=True,
     fill_width=True,
     flagging_mode="manual",
@@ -58,4 +57,4 @@ demo = gr.ChatInterface(
 )
 
 if __name__=="__main__":
-    demo.launch()
+    demo.launch(theme=gr.themes.Glass())
