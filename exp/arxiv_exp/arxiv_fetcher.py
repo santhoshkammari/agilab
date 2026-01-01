@@ -10,6 +10,7 @@ License: MIT
 
 import json
 import re
+import glob
 
 import pandas as pd
 import requests
@@ -24,6 +25,7 @@ from tqdm import tqdm
 import os
 import shutil
 from dataclasses import dataclass
+import tempfile
 
 
 @dataclass
@@ -37,6 +39,7 @@ class CSTag:
 CS_CATEGORIES = {
     "AI": CSTag("cs.AI", "Artificial Intelligence"),
     "MA": CSTag("cs.MA", "Multiagent Systems"),
+    "CV": CSTag("cs.CV","Computer vision and pattern recognition"),
     # "LG": CSTag("cs.LG", "Machine Learning"),
     "CL": CSTag("cs.CL", "Computation and Language"),
     "IR": CSTag("cs.IR", "Information Retrieval"),
@@ -156,27 +159,20 @@ def find_github_url(text):
     url = match.group(0) if match else ""
     return url[:-1] if url.endswith(".") else url
 
-def fetch_latest_arxiv_cs_papers(
-    categories: List[Union[str, CSTag]] = None,
-    max_results_per_category: int = 1000,
-    download_pdfs: bool = False,
-    pdf_dir: Optional[str] = None,
-    user_timezone: str = "Asia/Kolkata",
-    days: int = 5
-) -> List[Dict]:
+def fetch_arxiv_papers_batch(start_date, end_date, categories=None, max_results_per_category=5000, download_pdfs=False, pdf_dir=None, user_timezone="Asia/Kolkata"):
     """
-    Fetch the latest arXiv papers from selected Computer Science categories.
-
-    This function queries the arXiv API, retrieves metadata for recent papers,
-    assigns content-based categories (via keyword matching), extracts GitHub URLs,
-    and optionally downloads PDFs. Duplicate titles are removed.
+    Fetch arXiv papers for a specific date range.
 
     Parameters
     ----------
+    start_date : datetime
+        Start date for the search
+    end_date : datetime
+        End date for the search
     categories : list of str or CSTag, optional
         Category codes (e.g., "cs.AI") or `CSTag` objects.
         If None, all predefined CS categories are used.
-    max_results_per_category : int, default=1000
+    max_results_per_category : int, default=5000
         Maximum number of results to fetch per category.
     download_pdfs : bool, default=False
         Whether to download PDF files for each paper.
@@ -185,34 +181,12 @@ def fetch_latest_arxiv_cs_papers(
         Only used if `download_pdfs=True`.
     user_timezone : str, default="Asia/Kolkata"
         Timezone for aligning daily arXiv updates (IANA format).
-    days : int, default=5
-        Number of past days to include in the search.
 
     Returns
     -------
-    papers : list of dict
-        A list of paper metadata dictionaries, one per paper, with keys:
-        - arxiv_id (str): Unique arXiv identifier.
-        - title (str): Paper title.
-        - abstract (str): Paper abstract.
-        - authors (list[str]): Author names.
-        - categories (list[str]): arXiv category codes.
-        - published (str): Publication datetime (ISO format).
-        - updated (str): Last updated datetime (ISO format).
-        - pdf_url (str): Direct PDF download link.
-        - url (str): Abstract page URL.
-        - tag (str): Primary category tag (e.g., "cs.AI").
-        - category (str): Auto-assigned content category (keyword-based).
-        - github_url (str): Extracted GitHub URL from abstract (if found).
-        - local_pdf_path (str, optional): Path to local PDF file if downloaded.
-
-    Examples
-    --------
-    >>> papers = fetch_latest_arxiv_cs_papers(["cs.AI"], days=3)
-    >>> print(f"Found {len(papers)} papers")
-    >>> print(papers[0]["title"])
+    df : pandas.DataFrame
+        DataFrame with paper information for the date range
     """
-
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("arxiv_fetcher")
 
@@ -247,31 +221,14 @@ def fetch_latest_arxiv_cs_papers(
             # Assume it's already a CSTag
             category_tags.append(cat)
 
-    # Get current datetime in user's timezone
-    user_tz = pytz.timezone(user_timezone)
-    now_in_user_tz = datetime.now(user_tz)
+    # Generate dates for the range
+    search_dates = []
+    current_date = end_date
+    while current_date >= start_date:
+        search_dates.append(current_date.strftime("%Y%m%d"))
+        current_date -= timedelta(days=1)
 
-    # arXiv typically announces new papers at 8 PM ET (5:30 AM IST next day)
-    et_tz = pytz.timezone("US/Eastern")
-    arxiv_update_time_et = datetime.now(et_tz).replace(hour=20, minute=0, second=0, microsecond=0)
-
-    # Convert arXiv update time to user timezone
-    arxiv_update_time_user_tz = arxiv_update_time_et.astimezone(user_tz)
-
-    # Determine which dates to search for papers
-    # Determine base offset depending on release time
-    if now_in_user_tz.hour < 6:
-        start_offset = 1  # before daily update → start from yesterday
-    else:
-        start_offset = 0  # after daily update → start from today
-
-    # Generate last N days
-    search_dates = [
-        (now_in_user_tz - timedelta(days=i + start_offset)).strftime("%Y%m%d")
-        for i in range(days)
-    ]
-
-    logger.info(f"Searching for papers from these dates: {', '.join(search_dates)}")
+    logger.info(f"Searching for papers from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}: {', '.join(search_dates)}")
 
     # Dictionary to hold results for each category
     results = {}
@@ -365,10 +322,10 @@ def fetch_latest_arxiv_cs_papers(
                                     authors.append(author_elem.text)
 
                             # Get categories/tags
-                            categories = []
+                            categories_list = []
                             for cat_elem in entry.findall('./atom:category', namespace):
                                 if cat_elem.get('term'):
-                                    categories.append(cat_elem.get('term'))
+                                    categories_list.append(cat_elem.get('term'))
 
                             # Get PDF link
                             pdf_link = None
@@ -382,7 +339,7 @@ def fetch_latest_arxiv_cs_papers(
                                 'title': title,
                                 'abstract': abstract,
                                 'authors': authors,
-                                'categories': categories,
+                                'categories': categories_list,
                                 'published': published,
                                 'updated': updated,
                                 'pdf_url': pdf_link,
@@ -464,15 +421,229 @@ def fetch_latest_arxiv_cs_papers(
     df_cleaned = df_with_categories.drop_duplicates(subset=['title'], keep='first')
     return df_cleaned
 
+
+def merge_batch_csv_files(output_file="final.csv", batch_pattern="arxiv_papers_batch_*.csv"):
+    """
+    Merges all batch CSV files into a single final CSV file.
+
+    Parameters
+    ----------
+    output_file : str, default="final.csv"
+        Name of the final merged CSV file
+    batch_pattern : str, default="arxiv_papers_batch_*.csv"
+        Pattern to match batch CSV files
+
+    Returns
+    -------
+    str : Path to the merged CSV file
+    """
+
+    # Find all batch CSV files
+    batch_files = glob.glob(batch_pattern)
+
+    if not batch_files:
+        print(f"No batch files found matching pattern: {batch_pattern}")
+        return None
+
+    print(f"Found {len(batch_files)} batch files to merge: {batch_files}")
+
+    # Read and concatenate all batch files
+    dataframes = []
+    for batch_file in batch_files:
+        df = pd.read_csv(batch_file)
+        dataframes.append(df)
+        print(f"Loaded {len(df)} rows from {batch_file}")
+
+    # Concatenate all dataframes
+    if dataframes:
+        merged_df = pd.concat(dataframes, ignore_index=True)
+        print(f"Total rows before deduplication: {len(merged_df)}")
+
+        # Remove duplicates based on title
+        merged_df = merged_df.drop_duplicates(subset=['title'], keep='first')
+        print(f"Total rows after deduplication: {len(merged_df)}")
+
+        # Save to final CSV
+        merged_df.to_csv(output_file, index=False)
+        print(f"Merged data saved to {output_file}")
+
+        return output_file
+    else:
+        print("No dataframes to merge")
+        return None
+
+
+def fetch_latest_arxiv_cs_papers(
+    categories: List[Union[str, CSTag]] = None,
+    max_results_per_category: int = 5000,
+    download_pdfs: bool = False,
+    pdf_dir: Optional[str] = None,
+    user_timezone: str = "Asia/Kolkata",
+    days: int = 90,
+    batch_size_days: int = 30
+) -> List[Dict]:
+    """
+    Fetch the latest arXiv papers from selected Computer Science categories.
+
+    This function queries the arXiv API, retrieves metadata for recent papers,
+    assigns content-based categories (via keyword matching), extracts GitHub URLs,
+    and optionally downloads PDFs. Duplicate titles are removed.
+
+    For large date ranges (>30 days), the function processes data in batches
+    and saves each batch to a separate CSV file before merging.
+
+    Parameters
+    ----------
+    categories : list of str or CSTag, optional
+        Category codes (e.g., "cs.AI") or `CSTag` objects.
+        If None, all predefined CS categories are used.
+    max_results_per_category : int, default=1000
+        Maximum number of results to fetch per category.
+    download_pdfs : bool, default=False
+        Whether to download PDF files for each paper.
+    pdf_dir : str, optional
+        Directory to save downloaded PDFs. Defaults to "./arxiv_pdfs".
+        Only used if `download_pdfs=True`.
+    user_timezone : str, default="Asia/Kolkata"
+        Timezone for aligning daily arXiv updates (IANA format).
+    days : int, default=30
+        Number of past days to include in the search.
+    batch_size_days : int, default=30
+        Number of days to process in each batch to prevent memory overload.
+
+    Returns
+    -------
+    papers : list of dict
+        A list of paper metadata dictionaries, one per paper, with keys:
+        - arxiv_id (str): Unique arXiv identifier.
+        - title (str): Paper title.
+        - abstract (str): Paper abstract.
+        - authors (list[str]): Author names.
+        - categories (list[str]): arXiv category codes.
+        - published (str): Publication datetime (ISO format).
+        - updated (str): Last updated datetime (ISO format).
+        - pdf_url (str): Direct PDF download link.
+        - url (str): Abstract page URL.
+        - tag (str): Primary category tag (e.g., "cs.AI").
+        - category (str): Auto-assigned content category (keyword-based).
+        - github_url (str): Extracted GitHub URL from abstract (if found).
+        - local_pdf_path (str, optional): Path to local PDF file if downloaded.
+
+    Examples
+    --------
+    >>> papers = fetch_latest_arxiv_cs_papers(["cs.AI"], days=3)
+    >>> print(f"Found {len(papers)} papers")
+    >>> print(papers[0]["title"])
+    """
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("arxiv_fetcher")
+
+    # Get current datetime in user's timezone
+    user_tz = pytz.timezone(user_timezone)
+    now_in_user_tz = datetime.now(user_tz)
+
+    # arXiv typically announces new papers at 8 PM ET (5:30 AM IST next day)
+    et_tz = pytz.timezone("US/Eastern")
+    arxiv_update_time_et = datetime.now(et_tz).replace(hour=20, minute=0, second=0, microsecond=0)
+
+    # Convert arXiv update time to user timezone
+    arxiv_update_time_user_tz = arxiv_update_time_et.astimezone(user_tz)
+
+    # Determine which dates to search for papers
+    # Determine base offset depending on release time
+    if now_in_user_tz.hour < 6:
+        start_offset = 1  # before daily update → start from yesterday
+    else:
+        start_offset = 0  # after daily update → start from today
+
+    # Calculate start and end dates for the full range
+    end_date = now_in_user_tz - timedelta(days=start_offset)
+    start_date = end_date - timedelta(days=days-1)  # -1 to make it inclusive
+
+    logger.info(f"Fetching papers for {days} days from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+
+    # If days <= batch_size_days, process directly without batching
+    if days <= batch_size_days:
+        df = fetch_arxiv_papers_batch(
+            start_date=start_date,
+            end_date=end_date,
+            categories=categories,
+            max_results_per_category=max_results_per_category,
+            download_pdfs=download_pdfs,
+            pdf_dir=pdf_dir,
+            user_timezone=user_timezone
+        )
+        df_cleaned = df.drop_duplicates(subset=['title'], keep='first')
+        return df_cleaned
+    else:
+        batch_dfs = []
+        current_start = start_date
+        batch_num = 1
+
+        while current_start <= end_date:
+            # Calculate the end date for this batch
+            current_end = min(current_start + timedelta(days=batch_size_days-1), end_date)
+
+            logger.info(f"Processing batch {batch_num}: {current_start.strftime('%Y-%m-%d')} to {current_end.strftime('%Y-%m-%d')}")
+
+            # Fetch papers for this batch
+            batch_df = fetch_arxiv_papers_batch(
+                start_date=current_start,
+                end_date=current_end,
+                categories=categories,
+                max_results_per_category=max_results_per_category,
+                download_pdfs=download_pdfs,
+                pdf_dir=pdf_dir,
+                user_timezone=user_timezone
+            )
+
+            # Save this batch to a CSV file named with the date range
+            batch_filename = f"arxiv_papers_batch_{current_start.strftime('%Y%m%d')}_{current_end.strftime('%Y%m%d')}.csv"
+            batch_df.to_csv(batch_filename, index=False)
+            logger.info(f"Saved batch to {batch_filename}")
+
+            batch_dfs.append(batch_df)
+
+            # Move to the next batch
+            current_start = current_end + timedelta(days=1)
+            batch_num += 1
+
+        # Combine all batches
+        if batch_dfs:
+            combined_df = pd.concat(batch_dfs, ignore_index=True)
+            df_cleaned = combined_df.drop_duplicates(subset=['title'], keep='first')
+            logger.info(f"Combined {len(batch_dfs)} batches with a total of {len(df_cleaned)} unique papers")
+            return df_cleaned
+        else:
+            # Return empty dataframe if no batches were processed
+            return pd.DataFrame()
+
 import time
 
 if __name__ == '__main__':
     start = time.time()
-    df = fetch_latest_arxiv_cs_papers()
+
+    # Fetch papers with default 30 days, but can be changed to any number
+    days_to_fetch = 90  # Change this to any number of days you want to fetch
+
+    df = fetch_latest_arxiv_cs_papers(days=days_to_fetch, batch_size_days=30)
+
     end = time.time()
     print(f"Runtime: {end - start:.2f} seconds")
 
-    # Save dataframe to CSV
-    output_file = "arxiv_papers.csv"
-    df.to_csv(output_file, index=False)
-    print(f"Dataframe saved to {output_file}")
+    # Determine output file name based on days fetched
+    if days_to_fetch <= 30:
+        output_file = "final.csv"
+        df.to_csv(output_file, index=False)
+        print(f"Dataframe saved to {output_file}")
+    else:
+        # For larger date ranges, batch files are already saved during processing
+        # Now merge all batch files into final.csv
+        final_file = merge_batch_csv_files(output_file="final.csv")
+        if final_file:
+            print(f"All batches merged into {final_file}")
+        else:
+            print("No batch files to merge, saving directly to final.csv")
+            df.to_csv("final.csv", index=False)
+            print("Dataframe saved to final.csv")
