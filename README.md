@@ -86,10 +86,23 @@ agilab/
 │   ├── grpo_slm/      # tool model training
 │   └── dra/           # arxiv fetcher
 ├── src/
-│   ├── ai/            # metis framework
+│   ├── ai/            # metis - minimal async LLM/agent/eval framework (~1000 lines)
 │   ├── logger/        # universal logger
 │   └── mcp_tools/     # mcp tools
 └── misc/              # analysis docs
 ```
+
+### What's in `src/ai/`?
+
+**Metis** - Minimal async framework for LLM operations, agent execution, and evaluation (~1000 lines, no dependencies).
+
+**Key Components:**
+- `ai.LM` - Async language model interface with streaming and batch support
+- `ai.step()`, `ai.agent()` - Agent framework with tool calling and multi-turn loops
+- `ai.eval_batch()`, `ai.eval_stream()` - Evaluation framework with parallelization
+
+**Why built:** Frameworks like LangChain/LangGraph are too complex. This gives you simple async LLM calls, works with vLLM batching (23x speedup), and you can understand all the code.
+
+See [src/ai/README.md](/src/ai/README.md) for full documentation and examples.
 
 ---
