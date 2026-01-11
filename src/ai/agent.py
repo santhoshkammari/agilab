@@ -364,20 +364,10 @@ class LM:
 
     # ---------- lifecycle ----------
 
-    async def start(self):
-        """Initialize shared HTTP session."""
+    async def _ensure_session(self):
+        """Lazily create session on first use."""
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(timeout=self._timeout)
-
-    async def close(self):
-        """Close shared HTTP session."""
-        if self._session and not self._session.closed:
-            await self._session.close()
-
-    def _require_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            raise RuntimeError("LM session not started. Call `await lm.start()` first.")
-        return self._session
 
     # ---------- streaming ----------
 
@@ -387,7 +377,8 @@ class LM:
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
 
-        session = self._require_session()
+        await self._ensure_session()
+        session = self._session
 
         body = {
             "model": self.model,
