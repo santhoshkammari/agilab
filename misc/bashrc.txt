@@ -170,6 +170,8 @@ ancp() {
 }
 
 alias cca="claude --dangerously-skip-permissions"
+alias ccab="claude --dangerously-skip-permissions --disallowed-tools Task,TaskOutput,Skill,EnterPlanMode,ExitPlanMode,AskUserQuestion,SlashCommand,BashOutput,KillBash,NotebookEdit,WebFetch,WebSearch,TodoWrite,ListMcpResources,ReadMcpResource"
+alias ccac='claude --dangerously-skip-permissions --continue'
 ai() { cca -p "$*"; }
 gai() { gemini -y -p "$*"; }
 qai() { qwen -y -p "$*"; }
@@ -183,7 +185,63 @@ alias v4="cd /home/ntlpt59/master/products/dss/src/multihop/v4 && source /home/n
 alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
+
+# Tensorboard management aliases
+alias tb="tensorboard --logdir runs/ --host 0.0.0.0 --port 6007"
+alias ntb="nohup tensorboard --logdir runs/ --host 0.0.0.0 --port 6007 > tensorboard.log 2>&1 &"
+alias ktb="pkill -f tensorboard"
+
+# API management
+alias api='cd /home/ng6309/datascience/santhosh/RBI_DSS/release && source /home/ng6309/datascience/santhosh/rbi_env/bin/activate && nohup python api.py > nohup_api.out 2>&1 & sleep 5 && curl --location "http://0.0.0.0:8000/load" --header "Content-Type: application/json" --data "{\"model_path\": \"/home/ng6309/datascience/santhosh/models/qwen_14b_bf16.gguf\", \"tokenizer_name\": \"Qwen/Qwen3-14B\", \"options\": {\"n_gpu_layers\": -1, \"n_ctx\": 40000, \"n_batch\": 256}}"'
+
+# Bashrc quick edit aliases
+alias vib="vi ~/.bashrc"
+alias vis="source ~/.bashrc"
+
+# Auto-run Python files without python3 prefix
+command_not_found_handle() {
+  if [[ "$1" == *.py && -f "$1" ]]; then
+    python3 "$@"
+    return $?
+  fi
+  printf "bash: %s: command not found\n" "$1" >&2
+  return 127
+}
+
 alias main='source ~/main/bin/activate'
+
+# Python environment aliases
+alias envrbi="source /home/ng6309/datascience/santhosh/rbi_env/bin/activate"
+alias tablet='cd /home/ng6309/datascience/anand/vllm/bin/activate && source /home/ng6309/datascience/santhosh/rbi_env/bin/activate'
+alias mainvllm='source /home/ng6309/datascience/anand/vllm/bin/activate'
+
+# Tail file monitoring
+alias tf='tail -f'
+alias ttf='tail -f /home/ng6309/datascience/santhosh/experiments/tablet/train_full.log'
+
+# NVIDIA GPU monitoring
+alias nvs='nvidia-smi'
+alias wnvs='watch nvidia-smi'
+
+# Development directory shortcuts
+alias mh='cd /home/ng6309/datascience/santhosh/eval_mh/experiments'
+alias sk="cd datascience/santhosh"
+
+# vLLM server management
+alias svllm='nohup /home/ng6309/datascience/hridesh/llm_env/bin/vllm serve /home/ng6309/datascience/santhosh/models/Qwen3-14B --host 0.0.0.0 --port 8000 --rope-scaling '\''{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}'\'' --max-model-len 50000 --gpu-memory-utilization 0.8 --enable-prefix-caching --enable-auto-tool-choice --tool-call-parser hermes > ~/vllm_server.log 2>&1 &'
+alias s4vllm='nohup /home/ng6309/datascience/hridesh/llm_env/bin/vllm serve Qwen/Qwen3-4B-Instruct-2507 --host 0.0.0.0 --port 8000 --rope-scaling '\''{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}'\'' --max-model-len 50000 --gpu-memory-utilization 0.8 --enable-prefix-caching > ~/vllm_server.log 2>&1 &'
+alias s4tvllm='nohup /home/ng6309/datascience/hridesh/llm_env/bin/vllm serve Qwen/Qwen3-4B-Instruct-2507 --host 0.0.0.0 --port 8000 --rope-scaling '\''{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}'\'' --max-model-len 50000 --gpu-memory-utilization 0.8 --enable-prefix-caching --enable-auto-tool-choice --tool-call-parser hermes > ~/vllm_server.log 2>&1 &'
+alias svllm_niharika='nohup /home/ng6309/datascience/hridesh/llm_env/bin/vllm serve /home/ng6309/datascience/santhosh/models/Qwen3-14B --host 0.0.0.0 --port 8000  --max-model-len 26000 --gpu-memory-utilization 0.7 > ~/vllm_server_niharika.log 2>&1 &'
+alias kvllm='pkill -f "vllm serve"'
+alias lvllm='tail -f ~/vllm_server.log'
+alias lnvllm='tail -f ~/vllm_server_niharika.log'
+
+# AGI project directory
+alias agi='cd /home/ng6309/datascience/santhosh/products/agi/agilab && source /home/ng6309/datascience/anand/vllm/bin/activate'
+
+# Utility alias
+alias rp='realpath'
+
 alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
@@ -300,7 +358,16 @@ alias gs='git status'
 alias gco='git checkout'
 alias gcb='git checkout -b'
 alias gl='git log --oneline'
-alias gd='git diff'
+
+# Git diff with optional file paths
+gd() {
+  if [ $# -eq 0 ]; then
+    git diff
+  else
+    git diff -- "$@"
+  fi
+}
+
 alias gst='git stash'
 alias gstp='git stash pop'
 alias grm='git remote -v'
@@ -322,12 +389,24 @@ alias gup='f() { git add . && git commit -m "update: $@"; }; f'        # Update 
 alias gupp='f() { git add . && git commit -m "update: $@" && git push; }; f'  # Update + push
 
 # Smart gg aliases - commit with message and push
-gg() { 
+gg() {
     if [ "$#" -eq 0 ]; then
         echo "Usage: gg <commit message>"
         return 1
     fi
     git commit -m "$*" && git push
+}
+
+# Git commit and push specific files
+gcp() {
+    if [ $# -lt 2 ]; then
+        echo "Usage: gt <file/folder> <message>"
+        echo "Example: gt abc.py added some improvement"
+        return 1
+    fi
+    local target="$1"
+    shift
+    git add "$target" && git commit -m "$*" && git push
 }
 
 # Add an "alert" alias for long running commands.  Use like so:
