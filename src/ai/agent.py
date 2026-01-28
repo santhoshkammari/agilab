@@ -353,21 +353,12 @@ class LM:
         self.api_base = api_base
         self.api_key = api_key
 
-        self._session: Optional[aiohttp.ClientSession] = None
-
         # Default timeout suitable for streaming
         self._timeout = timeout or aiohttp.ClientTimeout(
             total=None,     # streaming: no global timeout
             connect=10,     # fail fast on connection issues
             sock_read=None  # allow long token streams
         )
-
-    # ---------- lifecycle ----------
-
-    async def _ensure_session(self):
-        """Lazily create session on first use."""
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(timeout=self._timeout)
 
     # ---------- streaming ----------
 
@@ -377,44 +368,42 @@ class LM:
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
 
-        await self._ensure_session()
-        session = self._session
+        # Create a fresh session for each request to avoid connection issues
+        async with aiohttp.ClientSession(timeout=self._timeout) as session:
+            body = {
+                "model": self.model,
+                "messages": messages,
+                "stream": True,
+                **params,
+            }
 
-        body = {
-            "model": self.model,
-            "messages": messages,
-            "stream": True,
-            **params,
-        }
+            if tools:
+                body["tools"] = tools
 
-        if tools:
-            body["tools"] = tools
+            try:
+                async with session.post(
+                    f"{self.api_base}/v1/chat/completions",
+                    json=body,
+                ) as resp:
+                    resp.raise_for_status()
 
-        try:
-            async with session.post(
-                f"{self.api_base}/v1/chat/completions",
-                json=body,
-            ) as resp:
-                resp.raise_for_status()
+                    async for line in resp.content:
+                        line = line.decode().strip()
 
-                async for line in resp.content:
-                    line = line.decode().strip()
+                        if not line or line == "data: [DONE]":
+                            continue
 
-                    if not line or line == "data: [DONE]":
-                        continue
+                        if line.startswith("data: "):
+                            yield json.loads(line[6:])
 
-                    if line.startswith("data: "):
-                        yield json.loads(line[6:])
-
-        except asyncio.CancelledError:
-            # Client disconnected / request cancelled
-            raise
+            except asyncio.CancelledError:
+                # Client disconnected / request cancelled
+                raise
 
     # ---------- batch ----------
 
     async def batch(self, messages_batch, **params):
         """Handle batch of conversations asynchronously."""
-        session = self._require_session()
 
         async def _single(messages):
             if isinstance(messages, str):
@@ -426,14 +415,16 @@ class LM:
                 **params,
             }
 
-            async with session.post(
-                f"{self.api_base}/v1/chat/completions",
-                json=body,
-            ) as resp:
-                data = await resp.json()
-                if resp.status >= 400:
-                    raise RuntimeError(f"LLM error: {data}")
-                return data
+            # Create fresh session for each request
+            async with aiohttp.ClientSession(timeout=self._timeout) as session:
+                async with session.post(
+                    f"{self.api_base}/v1/chat/completions",
+                    json=body,
+                ) as resp:
+                    data = await resp.json()
+                    if resp.status >= 400:
+                        raise RuntimeError(f"LLM error: {data}")
+                    return data
 
         tasks = [_single(msgs) for msgs in messages_batch]
         return await asyncio.gather(*tasks, return_exceptions=True)
@@ -442,13 +433,14 @@ class LM:
 async def gen(
     lm,
     history,
-    tools=None
+    tools=None,
+    **kwargs
 ):
     tools = [get_json_schema(x) if callable(x) else x for x in tools] if tools else []
     tool_call_id = None
     tool_call_name = None
 
-    async for x in lm.stream(messages=history,tools=tools):
+    async for x in lm.stream(messages=history, tools=tools, **kwargs):
         delta = x['choices'][0]['delta']
         if 'tool_calls' in delta:
             tool_call = delta['tool_calls'][0]
@@ -518,6 +510,7 @@ async def step(
     early_tool_execution: bool = True,
     execute_tools: bool = True,
     logger=None,
+    **kwargs
 ):
     """
     Execute ONE LLM generation.
@@ -547,7 +540,7 @@ async def step(
     last_tool_id = None
 
     # ---- stream LLM output ----
-    async for chunk in gen(lm=lm, history=history, tools=tool_schemas):
+    async for chunk in gen(lm=lm, history=history, tools=tool_schemas, **kwargs):
 
         if isinstance(chunk, AssistantResponse):
             assistant_message["content"] += chunk.content
