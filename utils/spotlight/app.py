@@ -1,6 +1,8 @@
 import sys
 import os
 import json
+import logging
+import time
 from datetime import datetime
 from PyQt5.QtWidgets import QApplication, QWidget, QLineEdit, QVBoxLayout, QTextEdit, QDesktopWidget, QHBoxLayout, QComboBox, QPushButton
 from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect, pyqtSignal, QObject
@@ -14,21 +16,49 @@ from qwen import qwen  # Import the qwen function from qwen.py
 
 QMetaType.type("QTextCursor")
 
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('spotlight_llm.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 
 class StreamHandler(QObject):
     new_token_signal = pyqtSignal(str)
-    
+
     def __init__(self, response_callback):
         super().__init__()
         self.response_callback = response_callback
-        self.full_response = ""
+        self.full_response = []  # Use list for efficient append
+        self.token_count = 0
+        self.first_token_time = None
+        self.start_time = time.time()
 
     def on_llm_new_token(self, token: str, **kwargs):
+        if self.token_count == 0:
+            self.first_token_time = time.time()
+            ttft = self.first_token_time - self.start_time
+            logger.debug(f"Time to first token: {ttft:.3f}s")
+
+        self.token_count += 1
         self.new_token_signal.emit(token)
-        self.full_response += token
+        self.full_response.append(token)
 
     def on_llm_end(self, response, **kwargs):
-        self.response_callback(self.full_response)
+        end_time = time.time()
+        total_time = end_time - self.start_time
+        if self.first_token_time:
+            streaming_time = end_time - self.first_token_time
+            logger.debug(f"Total tokens: {self.token_count}")
+            logger.debug(f"Streaming time: {streaming_time:.3f}s")
+            logger.debug(f"Tokens per second: {self.token_count / streaming_time:.2f}")
+        logger.debug(f"Total response time: {total_time:.3f}s")
+        self.response_callback(''.join(self.full_response))
 
 DEFAULT_MODELS: list = ["Qwen"]
 
@@ -40,11 +70,8 @@ class SpotlightLLM(QWidget):
         self.dragging = False
         self.offset = None
         self.initUI()
-        self.session_interactions = []
         self.response_complete = threading.Event()
         self.fireoff_enabled = False
-        self.data_dir = os.path.join(os.path.expanduser("~"), ".spotlight_data")
-        os.makedirs(self.data_dir, exist_ok=True)
 
 
     def initUI(self):
@@ -215,6 +242,9 @@ class SpotlightLLM(QWidget):
     def on_submit(self):
         query = self.search_bar.text()
         if query:
+            logger.debug(f"Query submitted: {query}")
+            submit_time = time.time()
+
             # Check if @fire is in the query and remove it
             if "@fire" in query:
                 query = query.replace("@fire", "").strip()
@@ -223,28 +253,52 @@ class SpotlightLLM(QWidget):
                     self.fireoff_button.setChecked(True)
                     self.toggle_fireoff()
 
+            ui_start = time.time()
             self.result_area.clear()
             self.result_area.show()
             self.animate_expand()
-            self.current_query = query
-            self.current_timestamp = datetime.now().isoformat()
+            ui_end = time.time()
+            logger.debug(f"UI setup time: {ui_end - ui_start:.3f}s")
+
             self.response_complete.clear()
+            logger.debug(f"Starting thread for query processing")
             threading.Thread(target=self.get_response, args=(query,), daemon=True).start()
 
     def update_result_area(self, token):
+        update_start = time.time()
+        # Batch updates for better performance
         cursor = self.result_area.textCursor()
         cursor.movePosition(QTextCursor.End)
+        cursor.beginEditBlock()  # Start atomic operation
         cursor.insertText(token)
+        cursor.endEditBlock()  # End atomic operation
         self.result_area.setTextCursor(cursor)
-        self.result_area.ensureCursorVisible()
+        # Only scroll if needed - reduces repaints
+        if self.result_area.verticalScrollBar().value() >= self.result_area.verticalScrollBar().maximum() - 10:
+            self.result_area.ensureCursorVisible()
+        update_end = time.time()
+        logger.debug(f"UI update time for token: {update_end - update_start:.4f}s")
 
     def get_response(self, prompt):
-        stream_handler = StreamHandler(self.save_interaction)
+        thread_start = time.time()
+        logger.debug(f"get_response thread started")
+
+        stream_handler = StreamHandler(self.on_response_complete)
         stream_handler.new_token_signal.connect(self.update_result_area)
 
         try:
+            qwen_start = time.time()
+            logger.debug(f"Calling qwen function")
+
+            chunk_count = 0
             # Call the qwen function and process the streamed response
             for chunk in qwen(['-p', prompt]):
+                chunk_count += 1
+                if chunk_count == 1:
+                    first_chunk_time = time.time()
+                    logger.debug(f"Time to first chunk from qwen: {first_chunk_time - qwen_start:.3f}s")
+
+                chunk_start = time.time()
                 chunk_type = chunk.get('type')
 
                 if chunk_type == 'assistant':
@@ -271,27 +325,26 @@ class SpotlightLLM(QWidget):
                             stream_handler.on_llm_new_token(result_info)
                 # Skip the 'result' chunk type to avoid duplicate final result display
 
+                chunk_end = time.time()
+                logger.debug(f"Chunk {chunk_count} ({chunk_type}) processing time: {chunk_end - chunk_start:.4f}s")
+
+            qwen_end = time.time()
+            logger.debug(f"Qwen call completed. Total chunks: {chunk_count}, Total qwen time: {qwen_end - qwen_start:.3f}s")
+
             stream_handler.on_llm_end(None)
         except Exception as e:
             error_message = f"An error occurred: {str(e)}"
+            logger.error(f"Error in get_response: {str(e)}", exc_info=True)
             QApplication.instance().postEvent(self.result_area, QTextCursor(self.result_area.document()))
             self.result_area.setPlainText(error_message)
-            self.save_interaction(error_message)
         finally:
             self.response_complete.set()
+            thread_end = time.time()
+            logger.debug(f"get_response thread completed. Total thread time: {thread_end - thread_start:.3f}s")
 
-    def save_interaction(self, response):
-        interaction_data = {
-            "timestamp": self.current_timestamp,
-            "model": self.current_model,
-            "query": self.current_query,
-            "response": response
-        }
-        self.session_interactions.append(interaction_data)
-
-        # If fireoff is enabled, close the app after saving the interaction
+    def on_response_complete(self, response):
+        # If fireoff is enabled, close the app after response is complete
         if self.fireoff_enabled:
-            self.save_session()
             QApplication.quit()
 
     def animate_expand(self):
@@ -306,17 +359,7 @@ class SpotlightLLM(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
-            self.save_session()
             self.close()
-
-    def save_session(self):
-        if self.session_interactions:
-            session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"session_{session_timestamp}.json"
-            filepath = os.path.join(self.data_dir, filename)
-
-            with open(filepath, 'w') as f:
-                json.dump(self.session_interactions, f, indent=2)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -334,7 +377,6 @@ class SpotlightLLM(QWidget):
             self.offset = None
 
     def closeEvent(self, event):
-        self.save_session()
         super().closeEvent(event)
 
 if __name__ == '__main__':

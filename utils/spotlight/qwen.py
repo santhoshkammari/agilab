@@ -6,12 +6,8 @@ from typing import List, Iterator, Dict, Any
 INCLUDE_DIRECTORIES = ['/home', '/tmp', '/etc', '/var', '/opt']
 
 def qwen(args: List[str]) -> Iterator[Dict[str, Any]]:
-    cmd = ['qwen', '-y', '--output-format', 'stream-json']
-
-    # Add default include directories
-    for directory in INCLUDE_DIRECTORIES:
-        cmd.extend(['--include-directories', directory])
-
+    dirs = ",".join(INCLUDE_DIRECTORIES)
+    cmd = ['qwen', '-y', '--include-directories',dirs,'--output-format', 'stream-json']
     cmd.extend(args)
 
     process = subprocess.Popen(
