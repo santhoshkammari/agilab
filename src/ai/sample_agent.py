@@ -28,7 +28,6 @@ async def demo_simple_loop():
     print("DEMO 1: Simple Agent Loop")
 
     lm = LM(api_base="http://192.168.170.76:8000")
-    await lm.start()
     tools = [get_weather, search]
     history = [{"role": "user", "content": "What is the weather in London and Paris? /no_think"}]
     async for chunk in  agent(lm=lm,history=history,tools=tools, max_iterations=5):
