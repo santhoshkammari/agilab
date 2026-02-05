@@ -1,6 +1,6 @@
 import asyncio
 
-from .agent import step, gen, AssistantResponse, ToolCall, agent,LM
+from ..agent import step, gen, AssistantResponse, ToolCall, agent,LM
 
 
 def get_weather(city: str, unit: str = "celsius"):

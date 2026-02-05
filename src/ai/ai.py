@@ -36,6 +36,84 @@ class AgentResult:
     tool_calls_count: int = 0
 
 
+class Prediction:
+    """DSPy-style prediction result with field access.
+
+    Allows accessing output fields by name:
+        pred = Predict("query -> answer")
+        result = pred(query="What is 2+2?")
+        print(result.answer)  # Access by field name
+        print(str(result))     # Or convert to string
+    """
+    def __init__(self, text: str, signature_obj=None):
+        self._text = text
+        self._signature_obj = signature_obj
+
+        # If we have a signature, parse output fields from text
+        if signature_obj:
+            self._parse_fields()
+        else:
+            # No signature, just store as generic text
+            self.text = text
+
+    def _parse_fields(self):
+        """Parse output fields from DSPy-formatted text."""
+        # DSPy formats outputs like:
+        # [[ ## field_name ## ]]
+        # value
+        # [[ ## completed ## ]]
+
+        import re
+
+        # Extract field values
+        output_fields = {}
+
+        # Get output field names from signature
+        if hasattr(self._signature_obj, 'output_fields'):
+            for field_name in self._signature_obj.output_fields.keys():
+                # Look for pattern: [[ ## field_name ## ]]\nvalue
+                pattern = rf'\[\[\s*##\s*{field_name}\s*##\s*\]\]\s*\n?(.*?)(?:\[\[|$)'
+                match = re.search(pattern, self._text, re.DOTALL)
+                if match:
+                    value = match.group(1).strip()
+                    # Remove trailing [[ ## completed ## ]] if present
+                    value = re.sub(r'\s*\[\[\s*##\s*completed\s*##\s*\]\]\s*$', '', value)
+                    output_fields[field_name] = value
+                    setattr(self, field_name, value)
+                else:
+                    # Field not found in DSPy format - use cleaned text as fallback
+                    # This handles cases where LLM doesn't follow exact format
+                    cleaned = re.sub(r'\[\[\s*##\s*\w+\s*##\s*\]\]\s*', '', self._text)
+                    cleaned = re.sub(r'\s*\[\[\s*##\s*completed\s*##\s*\]\]\s*', '', cleaned)
+                    setattr(self, field_name, cleaned.strip())
+                    output_fields[field_name] = cleaned.strip()
+
+        # If no fields were parsed, use the whole text
+        if not output_fields:
+            # Try to extract anything between first field marker and completed
+            pattern = r'\[\[\s*##\s*\w+\s*##\s*\]\]\s*\n?(.*?)\[\[\s*##\s*completed\s*##\s*\]\]'
+            match = re.search(pattern, self._text, re.DOTALL)
+            if match:
+                self.text = match.group(1).strip()
+            else:
+                self.text = self._text.strip()
+        else:
+            # Use the first output field as default text
+            self.text = list(output_fields.values())[0] if output_fields else self._text
+
+    def __str__(self):
+        """Return text representation."""
+        return self.text
+
+    def __repr__(self):
+        """Return representation."""
+        fields = [k for k in dir(self) if not k.startswith('_') and k != 'text']
+        if fields:
+            field_str = ', '.join(f"{k}={getattr(self, k)!r}" for k in fields if not callable(getattr(self, k)))
+            return f"Prediction({field_str})"
+        return f"Prediction(text={self.text!r})"
+
+
 class LM:
     """Language model client."""
 
@@ -432,7 +510,7 @@ class Predict:
         }
 
     async def _arun(self, input=None, system: str = "", history: Optional[list[dict]] = None, return_result: bool = False, **kwargs):
-        """Async runner that returns final response."""
+        """Async runner that returns final response as Prediction object."""
         response = ""
         iterations = 0
         tool_calls_count = 0
@@ -443,39 +521,35 @@ class Predict:
                 iterations = event.get('iterations', 0)
                 tool_calls_count = event.get('tool_calls_count', 0)
 
-        # Apply post-processing if provided
-        if self.postprocess and response:
-            try:
-                # Create a simple object with the response
-                class PredictionResult:
-                    def __init__(self, text):
-                        self.text = text
-                        self.answer = text
-                        self.result = text
+        # Create Prediction object (DSPy-style)
+        prediction = Prediction(response, self._signature_obj)
 
-                pred_obj = PredictionResult(response)
-                processed = self.postprocess(pred_obj)
+        # Apply post-processing if provided
+        if self.postprocess:
+            try:
+                processed = self.postprocess(prediction)
 
                 # Handle different return types from postprocess
                 if isinstance(processed, str):
-                    response = processed
+                    prediction = Prediction(processed, None)
+                elif isinstance(processed, Prediction):
+                    prediction = processed
                 elif hasattr(processed, 'text'):
-                    response = processed.text
-                elif hasattr(processed, 'answer'):
-                    response = processed.answer
+                    prediction = Prediction(processed.text, None)
                 else:
-                    response = str(processed)
+                    prediction = Prediction(str(processed), None)
             except Exception as e:
                 print(f"Warning: postprocess failed: {e}")
 
         if return_result:
             return AgentResult(
-                text=response,
+                text=str(prediction),
                 history=self._history.copy(),
                 iterations=iterations,
                 tool_calls_count=tool_calls_count
             )
-        return response
+
+        return prediction
 
     def __call__(self, input=None, system: str = "", history: Optional[list[dict]] = None, return_result: bool = False, **kwargs):
         """Call predict (sync or async based on context).
@@ -731,12 +805,12 @@ class Eval:
 # Re-export DSPy essentials for convenience
 if DSPY_AVAILABLE:
     __all__ = [
-        'LM', 'Predict', 'Module', 'Eval', 'AgentResult', 'configure',
+        'LM', 'Predict', 'Prediction', 'Module', 'Eval', 'AgentResult', 'configure',
         'Signature', 'InputField', 'OutputField'
     ]
 else:
     __all__ = [
-        'LM', 'Predict', 'Module', 'Eval', 'AgentResult', 'configure'
+        'LM', 'Predict', 'Prediction', 'Module', 'Eval', 'AgentResult', 'configure'
     ]
 
 

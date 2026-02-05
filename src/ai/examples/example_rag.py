@@ -81,30 +81,30 @@ Return ONLY: VALID, INVALID, or CONTEXT"""
         """
         print(f"\n🔍 Processing: '{query}'")
 
-        # Step 1: Classify
-        classification = self.classify(query=query)
-        print(f"  ├─ [Classify] {classification.strip()}")
+        # Step 1: Classify (DSPy-style field access)
+        c = self.classify(query=query)
+        print(f"  ├─ [Classify] {c.classification}")
 
-        # Step 2: Refine
-        refined = self.refine(
+        # Step 2: Refine (access .refined_query field)
+        r = self.refine(
             query=query,
-            classification=classification
+            classification=c.classification
         )
-        print(f"  ├─ [Refine] {refined.strip()}")
+        print(f"  ├─ [Refine] {r.refined_query}")
 
         # Step 3: Search (mock - replace with real search)
-        if "SQL" in classification.upper():
-            context = self._sql_search(refined)
+        if "SQL" in c.classification.upper():
+            context = self._sql_search(r.refined_query)
         else:
-            context = self._vector_search(refined)
+            context = self._vector_search(r.refined_query)
         print(f"  ├─ [Search] Retrieved {len(context)} chars")
 
-        # Step 4: Generate answer
-        answer = self.answer(
+        # Step 4: Generate answer (access .answer field)
+        ans = self.answer(
             context=context,
-            query=refined
+            query=r.refined_query
         )
-        print(f"  ├─ [Answer] {answer.strip()[:80]}...")
+        print(f"  ├─ [Answer] {ans.answer[:80]}...")
 
         # Step 5: Validate with history (optional)
         if chat_history:
@@ -113,20 +113,20 @@ Return ONLY: VALID, INVALID, or CONTEXT"""
                 for msg in chat_history
             )
 
-            validation = self.validate(
+            v = self.validate(
                 query=query,
-                answer=answer,
+                answer=ans.answer,
                 conversation_history=history_text,
                 history=chat_history  # Also pass as conversation context
             )
-            print(f"  └─ [Validate] {validation.strip()}")
+            print(f"  └─ [Validate] {v.validation}")
 
             # Handle validation result
-            if "INVALID" in validation.upper():
+            if "INVALID" in v.validation.upper():
                 print("  ⚠️  Validation failed! Regenerating...")
                 return self._fallback_answer(query, chat_history)
 
-        return answer.strip()
+        return ans.answer  # Return the field value
 
     def _sql_search(self, query: str) -> str:
         """Mock SQL search - replace with real DB query."""
