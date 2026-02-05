@@ -2,11 +2,11 @@
 Minimal dspy-style agent API with sync/async support.
 Simple, Pythonic, no fancy wrappers.
 """
-from .ai import LM, Agent, AgentResult, Eval
+from .ai import LM, Predict, AgentResult, Eval
 
 __all__ = [
     'LM',
-    'Agent',
+    'Predict',
     'AgentResult',
     'Eval',
     'configure',

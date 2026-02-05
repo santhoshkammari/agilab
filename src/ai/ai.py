@@ -126,8 +126,8 @@ class LM:
                 return data
 
 
-class Agent:
-    """Agent orchestrator with sync/async support."""
+class Predict:
+    """Predict orchestrator with sync/async support."""
 
     def __init__(
         self,
@@ -139,7 +139,7 @@ class Agent:
         self.lm = lm  # Can be None, will use default
         self._tools = {t.__name__: t for t in (tools or [])}
         self.max_iterations = max_iterations
-        self.defaults = defaults  # Agent-level overrides (temperature, etc.)
+        self.defaults = defaults  # Predict-level overrides (temperature, etc.)
         self._history: list[dict] = []
 
     @property
@@ -153,7 +153,7 @@ class Agent:
             return self.lm
         default = LM.get_default()
         if not default:
-            raise RuntimeError("No LM configured. Use LM.configure() or pass lm to Agent()")
+            raise RuntimeError("No LM configured. Use LM.configure() or pass lm to Predict()")
         return default
 
     def add_message(self, role: str, content: str) -> None:
@@ -330,7 +330,7 @@ class Agent:
         return response
 
     def __call__(self, input, system: str = "", return_result: bool = False, **kwargs):
-        """Call agent (sync or async based on context).
+        """Call predict (sync or async based on context).
 
         Args:
             input: Either a string prompt or list of message dicts [{"role": "user", "content": "..."}]
@@ -424,8 +424,8 @@ class Eval:
         """Create unique key for example."""
         return json.dumps(example.get('input', example), sort_keys=True)
 
-    def __call__(self, agent: Agent) -> dict:
-        """Evaluate agent on dataset with batching and caching."""
+    def __call__(self, predict: Predict) -> dict:
+        """Evaluate predict on dataset with batching and caching."""
         from concurrent.futures import ThreadPoolExecutor
         from tqdm import tqdm
 
@@ -440,8 +440,8 @@ class Eval:
                 return cached_keys[cache_key]
 
             try:
-                agent.clear_history()
-                prediction = agent(example['input'])
+                predict.clear_history()
+                prediction = predict(example['input'])
                 score = self.metric(example, prediction)
                 return {'example': example, 'prediction': prediction, 'score': float(score)}
             except Exception as e:
