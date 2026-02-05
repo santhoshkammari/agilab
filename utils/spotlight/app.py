@@ -85,14 +85,16 @@ class SpotlightLLM(QWidget):
         search_layout = QHBoxLayout()
 
         self.search_bar = QLineEdit(self)
+        self.search_bar.setPlaceholderText("Drop a prompt ")
         self.search_bar.setStyleSheet("""
             QLineEdit {
-                background-color: rgba(60, 60, 60, 200);
+                background-color: rgba(255, 255, 255, 0);
                 border: none;
-                border-radius: 20px;
-                padding: 10px;
-                color: white;
-                font-size: 20px;
+                padding: 5px;
+                color: #FFFFFF;
+                font-family: "Segoe UI", "SF Pro Display", sans-serif;
+                font-size: 24px;
+                font-weight: 350;
             }
         """)
         self.search_bar.returnPressed.connect(self.on_submit)
@@ -102,34 +104,35 @@ class SpotlightLLM(QWidget):
         self.model_selector.addItems(self.models)
         self.model_selector.setStyleSheet(self.get_combobox_style())
         self.model_selector.currentTextChanged.connect(self.on_model_change)
-        search_layout.addWidget(self.model_selector, 2)
+        self.model_selector.hide()
 
         # Fireoff button
         self.fireoff_button = QPushButton("Fireoff", self)
         self.fireoff_button.setStyleSheet("""
             QPushButton {
-                background-color: rgba(76, 175, 80, 150);  /* Green with transparency */
-                border: none;
-                border-radius: 15px;
-                padding: 8px;
-                color: white;
-                font-size: 14px;
-                font-weight: bold;
+                background-color: rgba(255, 255, 255, 10);
+                border: 1px solid rgba(255, 255, 255, 20);
+                border-radius: 6px;
+                padding: 4px 12px;
+                color: rgba(255, 255, 255, 180);
+                font-size: 13px;
+                font-weight: 500;
+                font-family: "Segoe UI", sans-serif;
             }
             QPushButton:hover {
-                background-color: rgba(69, 160, 73, 180);
-            }
-            QPushButton:pressed {
-                background-color: rgba(61, 139, 64, 200);
+                background-color: rgba(255, 255, 255, 30);
+                color: white;
             }
             QPushButton:checked {
-                background-color: rgba(139, 195, 74, 180);  /* Lighter green when active */
+                background-color: rgba(0, 120, 212, 180); /* Accent Color */
+                border: 1px solid rgba(0, 120, 212, 255);
+                color: white;
             }
         """)
         self.fireoff_button.setCheckable(True)
         self.fireoff_button.setChecked(False)
         self.fireoff_button.clicked.connect(self.toggle_fireoff)
-        search_layout.addWidget(self.fireoff_button, 1)
+        self.fireoff_button.hide()
 
         layout.addLayout(search_layout)
 
@@ -137,12 +140,24 @@ class SpotlightLLM(QWidget):
         self.result_area.setReadOnly(True)
         self.result_area.setStyleSheet("""
             QTextEdit {
-                background-color: rgba(60, 60, 60, 200);
+                background-color: transparent;
                 border: none;
-                border-radius: 10px;
-                padding: 10px;
-                color: white;
+                border-top: 1px solid rgba(255, 255, 255, 20);
+                padding-top: 15px;
+                margin-top: 5px;
+                color: #E0E0E0;
+                font-family: "Segoe UI", "SF Pro Text", sans-serif;
                 font-size: 16px;
+                line-height: 1.5;
+            }
+            QScrollBar:vertical {
+                width: 6px;
+                background: transparent;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(255, 255, 255, 40);
+                border-radius: 3px;
+                min-height: 20px;
             }
         """)
         self.result_area.hide()
@@ -161,26 +176,34 @@ class SpotlightLLM(QWidget):
     def get_combobox_style(self):
         return """
             QComboBox {
-                background-color: rgba(60, 60, 60, 200);
-                border: none;
-                border-radius: 20px;
-                padding: 10px;
-                color: white;
-                font-size: 16px;
+                background-color: rgba(255, 255, 255, 10);
+                border: 1px solid rgba(255, 255, 255, 20);
+                border-radius: 6px;
+                padding: 4px 10px;
+                color: rgba(255, 255, 255, 180);
+                font-family: "Segoe UI", sans-serif;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QComboBox:hover {
+                background-color: rgba(255, 255, 255, 20);
             }
             QComboBox::drop-down {
                 border: none;
+                width: 20px;
             }
-            QComboBox::down-arrow {
-                image: url(down_arrow.png);
-                width: 12px;
-                height: 12px;
+             QComboBox::down-arrow {
+                image: none;
+                border: none;
             }
             QComboBox QAbstractItemView {
-                background-color: rgba(60, 60, 60, 200);
-                border: none;
-                selection-background-color: rgba(80, 80, 80, 200);
+                background-color: rgba(30, 30, 30, 250);
+                border: 1px solid rgba(255, 255, 255, 30);
+                border-radius: 6px;
+                selection-background-color: rgba(0, 120, 212, 180);
                 color: white;
+                outline: none;
+                padding: 4px;
             }
         """
 
@@ -188,9 +211,16 @@ class SpotlightLLM(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QColor(30, 30, 30, 200))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(self.rect(), 20, 20)
+        
+        # Solid "Acrylic" Background
+        # Dark gray/black with only slight transparency
+        painter.setBrush(QColor(24, 24, 24, 245))
+        
+        # Subtle white border
+        painter.setPen(QColor(255, 255, 255, 25))
+        
+        rect = self.rect()
+        painter.drawRoundedRect(rect.adjusted(1,1,-1,-1), 16, 16)
 
     def on_model_change(self, model):
         self.current_model = model
@@ -201,41 +231,40 @@ class SpotlightLLM(QWidget):
             self.fireoff_button.setText("FIRED")
             self.fireoff_button.setStyleSheet("""
                 QPushButton {
-                    background-color: rgba(139, 195, 74, 180);  /* Lighter green with transparency when active */
-                    border: none;
-                    border-radius: 15px;
-                    padding: 8px;
+                    background-color: rgba(232, 17, 35, 200); /* Fluent Red */
+                    border: 1px solid rgba(232, 17, 35, 255);
+                    border-radius: 6px;
+                    padding: 4px 12px;
                     color: white;
-                    font-size: 14px;
-                    font-weight: bold;
+                    font-size: 13px;
+                    font-weight: 600;
+                    font-family: "Segoe UI", sans-serif;
                 }
                 QPushButton:hover {
-                    background-color: rgba(124, 179, 66, 200);
-                }
-                QPushButton:pressed {
-                    background-color: rgba(104, 159, 56, 220);
+                    background-color: rgba(232, 17, 35, 240);
                 }
             """)
         else:
             self.fireoff_button.setText("Fireoff")
             self.fireoff_button.setStyleSheet("""
                 QPushButton {
-                    background-color: rgba(76, 175, 80, 150);  /* Green with transparency */
-                    border: none;
-                    border-radius: 15px;
-                    padding: 8px;
-                    color: white;
-                    font-size: 14px;
-                    font-weight: bold;
+                    background-color: rgba(255, 255, 255, 10);
+                    border: 1px solid rgba(255, 255, 255, 20);
+                    border-radius: 6px;
+                    padding: 4px 12px;
+                    color: rgba(255, 255, 255, 180);
+                    font-size: 13px;
+                    font-weight: 500;
+                    font-family: "Segoe UI", sans-serif;
                 }
                 QPushButton:hover {
-                    background-color: rgba(69, 160, 73, 180);
-                }
-                QPushButton:pressed {
-                    background-color: rgba(61, 139, 64, 200);
+                    background-color: rgba(255, 255, 255, 30);
+                    color: white;
                 }
                 QPushButton:checked {
-                    background-color: rgba(139, 195, 74, 180);  /* Lighter green when active */
+                    background-color: rgba(0, 120, 212, 180); /* Accent Color */
+                    border: 1px solid rgba(0, 120, 212, 255);
+                    color: white;
                 }
             """)
 
