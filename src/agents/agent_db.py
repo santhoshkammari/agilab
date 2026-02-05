@@ -1,7 +1,7 @@
 # Import DB-based markdown tools
 import sqlite3
 from pathlib import Path
-from src.ai.agent import agent
+from past.agent import agent
 from src.ai.lm import LM
 from src.logger.logger import get_logger
 from src.mcp_tools.markdown.markdown_db import MarkdownTool

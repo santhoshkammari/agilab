@@ -43,7 +43,7 @@ Optimize for speed, relevance, and intent disambiguation over completeness.
 Current date and time (UTC): {now}
 """
 
-from src.ai.agent import agent,LM
+from past.agent import agent,LM
 from src.mcp_tools.web import async_web_search
 
 async def main():

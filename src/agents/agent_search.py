@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import List, Dict
 import json
 
-from src.ai import agent,LM
+from past import agent
+from src.ai import LM
 from src.mcp_tools.web import async_web_search
 from src.logger.logger import get_logger
 

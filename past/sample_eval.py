@@ -8,7 +8,7 @@ Combines basic demos and advanced tool-based evaluation demos.
 import asyncio
 import re
 
-from ..eval import eval_example, eval_stream, eval_batch
+from .eval import eval_example, eval_stream, eval_batch
 from .lm import LM
 
 
