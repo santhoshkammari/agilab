@@ -5,11 +5,23 @@ Simple, Pythonic, no fancy wrappers.
 import json
 import asyncio
 import inspect
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 from dataclasses import dataclass
 from contextvars import ContextVar
 from transformers.utils import get_json_schema
 import aiohttp
+
+# DSPy imports for Signature support
+try:
+    from dspy import Signature, InputField, OutputField
+    from dspy.adapters.chat_adapter import ChatAdapter
+    from dspy.signatures.signature import ensure_signature
+    DSPY_AVAILABLE = True
+except ImportError:
+    DSPY_AVAILABLE = False
+    Signature = None
+    InputField = None
+    OutputField = None
 
 # Global context for default LM
 _default_lm: ContextVar[Optional['LM']] = ContextVar('default_lm', default=None)
@@ -29,7 +41,7 @@ class LM:
 
     def __init__(
         self,
-        model: str,
+        model: str="",
         api_base: str = "http://localhost:8000",
         api_key: str = "-",
         timeout: Optional[aiohttp.ClientTimeout] = None,
@@ -126,21 +138,58 @@ class LM:
                 return data
 
 
+# Global configure (dspy-style)
+def configure(lm: LM):
+    """Configure default LM globally."""
+    LM.configure(lm)
+
+
 class Predict:
-    """Predict orchestrator with sync/async support."""
+    """Predict orchestrator with sync/async support (dspy-style).
+
+    Flexible predictor supporting multiple modes:
+
+    Mode 1: DSPy Signature
+        pred = Predict("query -> answer")
+        pred = Predict(CustomSignature)
+
+    Mode 2: Signature + System
+        pred = Predict("query -> answer", system="Be concise")
+
+    Mode 3: Raw System Prompt
+        pred = Predict(system="You are a classifier")
+
+    Mode 4: With Tools
+        pred = Predict("query -> answer", tools=[search, calculate])
+    """
 
     def __init__(
         self,
+        signature: Optional[Union[str, type]] = None,  # DSPy-style: "query -> answer" or Signature class
+        system: Optional[str] = None,           # Additional system prompt
+        instructions: Optional[str] = None,     # Override signature instructions
         lm: Optional[LM] = None,
         tools: Optional[list[Callable]] = None,
+        postprocess: Optional[Callable] = None,  # Post-processing function
         max_iterations: int = 10,
         **defaults
     ):
+        self.signature = signature
+        self.system = system
+        self.instructions = instructions
         self.lm = lm  # Can be None, will use default
         self._tools = {t.__name__: t for t in (tools or [])}
+        self.postprocess = postprocess
         self.max_iterations = max_iterations
         self.defaults = defaults  # Predict-level overrides (temperature, etc.)
         self._history: list[dict] = []
+
+        # Initialize DSPy adapter if signature provided
+        self._adapter = None
+        self._signature_obj = None
+        if signature and DSPY_AVAILABLE:
+            self._signature_obj = ensure_signature(signature)
+            self._adapter = ChatAdapter()
 
     @property
     def tool_schemas(self) -> list[dict]:
@@ -246,36 +295,110 @@ class Predict:
 
         yield {"type": "step_complete", "message": msg, "tool_futures": tool_futures}
 
-    async def run(self, input=None, system: str = "", **kwargs):
-        """Run agent loop, yielding events."""
-        # Prepare messages
-        if input is not None:
-            if isinstance(input, list) and system:
-                raise ValueError("Cannot use both message list and system prompt")
+    async def run(self, input=None, system: str = "", history: Optional[list[dict]] = None, **kwargs):
+        """Run agent loop, yielding events.
 
-            if isinstance(input, str):
-                if system:
-                    self.add_message("system", system)
-                self.add_message("user", input)
-            elif isinstance(input, list):
-                for msg in input:
-                    if isinstance(msg, dict):
-                        self._history.append({"role": msg['role'], "content": msg.get('content', '')})
+        Args:
+            input: String input or list of messages
+            system: Additional system prompt (overrides default)
+            history: Conversation history to inject [{"role": "user", "content": "..."}, ...]
+            **kwargs: Signature fields (query="...", context="...") or LLM params
+        """
+        # Prepare messages based on mode
+        messages = []
+
+        if self._adapter and self._signature_obj:
+            # Mode 1: DSPy Signature path
+            # Use adapter to format signature → messages
+            try:
+                # Separate signature fields from LLM params
+                signature_fields = {}
+                llm_params = {}
+                for key, value in kwargs.items():
+                    if key in ['temperature', 'seed', 'max_tokens', 'top_p', 'top_k']:
+                        llm_params[key] = value
                     else:
-                        self._history.append(msg)
-            else:
-                raise ValueError("Input must be str or list of messages")
+                        signature_fields[key] = value
 
-        history = self._history.copy()
+                # Format with DSPy adapter
+                formatted = self._adapter.format(self._signature_obj, [], signature_fields)
+                messages = formatted  # [{"role": "system", ...}, {"role": "user", ...}]
+
+                # Override with custom instructions if provided
+                if self.instructions and messages:
+                    messages[0]["content"] = messages[0]["content"].replace(
+                        self._signature_obj.instructions or "",
+                        self.instructions
+                    )
+
+                # Add extra system prompt if provided
+                if self.system and messages:
+                    messages[0]["content"] = self.system + "\n\n" + messages[0]["content"]
+                elif system and messages:
+                    messages[0]["content"] = system + "\n\n" + messages[0]["content"]
+
+                # Inject conversation history between system and user
+                if history and len(messages) >= 2:
+                    system_msg = messages[0]
+                    user_msg = messages[-1]
+                    messages = [system_msg] + history + [user_msg]
+
+            except Exception as e:
+                # Fallback to simple signature string
+                sig_str = str(self.signature)
+                system_prompt = self.system or system or f"Follow this task signature: {sig_str}"
+                messages.append({"role": "system", "content": system_prompt})
+
+                if history:
+                    messages.extend(history)
+
+                # Add user input
+                if signature_fields:
+                    user_content = "\n".join(f"{k}: {v}" for k, v in signature_fields.items())
+                    messages.append({"role": "user", "content": user_content})
+                elif input:
+                    messages.append({"role": "user", "content": str(input)})
+
+        else:
+            # Mode 2: Raw system prompt path
+            if self.system or system:
+                messages.append({"role": "system", "content": self.system or system})
+
+            if history:
+                messages.extend(history)
+
+            # Add current input
+            if input:
+                if isinstance(input, str):
+                    messages.append({"role": "user", "content": input})
+                elif isinstance(input, list):
+                    messages.extend(input)
+            elif kwargs.get('query'):
+                # Support query kwarg for raw mode
+                messages.append({"role": "user", "content": str(kwargs['query'])})
+
+        # Update internal history
+        self._history = messages.copy()
+
+        # Separate LLM params from signature fields
+        llm_params = {}
+        if self._signature_obj:
+            for key in ['temperature', 'seed', 'max_tokens', 'top_p', 'top_k']:
+                if key in kwargs:
+                    llm_params[key] = kwargs[key]
+        else:
+            llm_params = kwargs
+
         iterations = 0
         total_tools = 0
+        current_messages = messages.copy()
 
         for _ in range(self.max_iterations):
             iterations += 1
             assistant_msg = None
             tool_futures = {}
 
-            async for event in self._stream_step(history, **kwargs):
+            async for event in self._stream_step(current_messages, **llm_params):
                 if event['type'] == 'step_complete':
                     assistant_msg = event['message']
                     tool_futures = event['tool_futures']
@@ -283,7 +406,7 @@ class Predict:
                     yield event
 
             self._history.append(assistant_msg)
-            history.append(assistant_msg)
+            current_messages.append(assistant_msg)
 
             if assistant_msg.get("tool_calls"):
                 total_tools += len(assistant_msg["tool_calls"])
@@ -296,7 +419,7 @@ class Predict:
                         "content": result["output"]
                     }
                     self._history.append(tool_msg)
-                    history.append(tool_msg)
+                    current_messages.append(tool_msg)
                     yield {"type": "tool_result", "output": result["output"]}
             else:
                 break
@@ -308,17 +431,42 @@ class Predict:
             "tool_calls_count": total_tools
         }
 
-    async def _arun(self, input, system: str = "", return_result: bool = False, **kwargs):
+    async def _arun(self, input=None, system: str = "", history: Optional[list[dict]] = None, return_result: bool = False, **kwargs):
         """Async runner that returns final response."""
         response = ""
         iterations = 0
         tool_calls_count = 0
 
-        async for event in self.run(input, system, **kwargs):
+        async for event in self.run(input, system, history, **kwargs):
             if event['type'] == 'complete':
                 response = event['response']
                 iterations = event.get('iterations', 0)
                 tool_calls_count = event.get('tool_calls_count', 0)
+
+        # Apply post-processing if provided
+        if self.postprocess and response:
+            try:
+                # Create a simple object with the response
+                class PredictionResult:
+                    def __init__(self, text):
+                        self.text = text
+                        self.answer = text
+                        self.result = text
+
+                pred_obj = PredictionResult(response)
+                processed = self.postprocess(pred_obj)
+
+                # Handle different return types from postprocess
+                if isinstance(processed, str):
+                    response = processed
+                elif hasattr(processed, 'text'):
+                    response = processed.text
+                elif hasattr(processed, 'answer'):
+                    response = processed.answer
+                else:
+                    response = str(processed)
+            except Exception as e:
+                print(f"Warning: postprocess failed: {e}")
 
         if return_result:
             return AgentResult(
@@ -329,26 +477,39 @@ class Predict:
             )
         return response
 
-    def __call__(self, input, system: str = "", return_result: bool = False, **kwargs):
+    def __call__(self, input=None, system: str = "", history: Optional[list[dict]] = None, return_result: bool = False, **kwargs):
         """Call predict (sync or async based on context).
 
         Args:
-            input: Either a string prompt or list of message dicts [{"role": "user", "content": "..."}]
-            system: System prompt (only if input is string, not list)
+            input: Either a string prompt or list of message dicts (for raw mode)
+            system: System prompt (overrides default)
+            history: Conversation history [{"role": "user", "content": "..."}, ...]
             return_result: If True, return AgentResult object with metadata, else return string
-            **kwargs: Additional LLM parameters (temperature, seed, etc.)
+            **kwargs: Signature fields (query="...", context="...") or LLM parameters (temperature, seed, etc.)
 
         Returns:
             str or AgentResult (sync) or coroutine (async)
+
+        Examples:
+            # Signature mode
+            pred = Predict("query -> answer")
+            result = pred(query="What is 2+2?")
+
+            # With history
+            result = pred(query="What's my name?", history=[{"role": "user", "content": "I'm Alice"}])
+
+            # Raw system mode
+            pred = Predict(system="You are a classifier")
+            result = pred(input="Classify this text")
         """
         # Check if we're in async context
         try:
             asyncio.get_running_loop()
             # Already in async context - return coroutine
-            return self._arun(input, system, return_result, **kwargs)
+            return self._arun(input, system, history, return_result, **kwargs)
         except RuntimeError:
             # Not in async context - run sync
-            return asyncio.run(self._arun(input, system, return_result, **kwargs))
+            return asyncio.run(self._arun(input, system, history, return_result, **kwargs))
 
     @property
     def history(self) -> list[dict]:
@@ -358,6 +519,75 @@ class Predict:
     def clear_history(self) -> None:
         """Clear conversation history."""
         self._history.clear()
+
+
+class Module:
+    """Base class for building LLM pipelines (DSPy-style).
+
+    Enables composable multi-step pipelines with automatic history tracking.
+
+    Example:
+        class RAGPipeline(Module):
+            def __init__(self):
+                super().__init__()
+                self.classify = Predict("query -> classification")
+                self.answer = Predict("context, query -> answer")
+
+            def forward(self, query):
+                classification = self.classify(query=query)
+                context = self.retrieve(classification.text)
+                answer = self.answer(context=context, query=query)
+                return answer.text
+    """
+
+    def __init__(self):
+        self._compiled = False
+        self.call_history = []  # Track all LLM calls
+
+    def __call__(self, *args, **kwargs):
+        """Routes to forward() with automatic history tracking."""
+        result = self.forward(*args, **kwargs)
+        return result
+
+    def forward(self, **kwargs):
+        """Override this in subclasses to define pipeline logic."""
+        raise NotImplementedError("Subclasses must implement forward()")
+
+    def named_predictors(self):
+        """Get all Predict instances as (name, predictor) tuples."""
+        predictors = []
+        for name in dir(self):
+            if not name.startswith('_'):
+                attr = getattr(self, name)
+                if isinstance(attr, Predict):
+                    predictors.append((name, attr))
+        return predictors
+
+    def inspect_history(self, predictor_name: Optional[str] = None):
+        """Print history of LLM calls.
+
+        Args:
+            predictor_name: If provided, show only calls from that predictor
+        """
+        if predictor_name:
+            predictor = getattr(self, predictor_name, None)
+            if predictor and isinstance(predictor, Predict):
+                print(f"\n=== History for {predictor_name} ===")
+                for i, msg in enumerate(predictor.history):
+                    print(f"{i+1}. [{msg['role']}]: {msg.get('content', '')[:100]}...")
+        else:
+            # Show all predictors
+            for name, pred in self.named_predictors():
+                if pred.history:
+                    print(f"\n=== {name} ===")
+                    for i, msg in enumerate(pred.history):
+                        print(f"{i+1}. [{msg['role']}]: {msg.get('content', '')[:100]}...")
+
+    def reset(self):
+        """Clear history from all predictors."""
+        for _, pred in self.named_predictors():
+            pred.clear_history()
+        self.call_history.clear()
 
 
 class Eval:
@@ -498,55 +728,141 @@ class Eval:
         }
 
 
-if __name__ == "__main__":
-    """Minimal usage examples."""
+# Re-export DSPy essentials for convenience
+if DSPY_AVAILABLE:
+    __all__ = [
+        'LM', 'Predict', 'Module', 'Eval', 'AgentResult', 'configure',
+        'Signature', 'InputField', 'OutputField'
+    ]
+else:
+    __all__ = [
+        'LM', 'Predict', 'Module', 'Eval', 'AgentResult', 'configure'
+    ]
 
-    # Example 1: Basic usage with parameter inheritance
-    print("Example 1: Parameter inheritance")
+
+if __name__ == "__main__":
+    """Usage examples showcasing signature, system prompts, history, and Module pipelines."""
+
+    # Configure LM once
+    print("=== Configuring LM ===")
     lm = LM(
         model="Qwen/Qwen3-4B-Instruct-2507",
         api_base="http://192.168.170.76:8000",
-        temperature=0.7,  # LM-level default
-        seed=42
+        temperature=0.1
     )
-    agent = Agent(lm, temperature=0.0)  # Agent overrides to 0.0
-    result = agent("What is 2+2?", temperature=0.9)  # Call overrides to 0.9
+    configure(lm)  # Set global default
+
+    # Example 1: Simple Predict with signature
+    print("\n=== Example 1: Simple Predict with signature ===")
+    pred = Predict("query -> answer")
+    result = pred(query="What is 2+2?")
+    print(f"Result: {result}")
+
+    # Example 2: Signature + System Prompt
+    print("\n=== Example 2: Signature + System Prompt ===")
+    classifier = Predict(
+        "query -> classification",
+        system="You are an expert query classifier. Return only: SQL or VECTOR"
+    )
+    result = classifier(query="Show me sales data from last month")
+    print(f"Classification: {result}")
+
+    # Example 3: With Conversation History
+    print("\n=== Example 3: With Conversation History ===")
+    history = [
+        {"role": "user", "content": "My name is Alice"},
+        {"role": "assistant", "content": "Hello Alice! Nice to meet you."}
+    ]
+    pred = Predict("query -> answer")
+    result = pred(query="What's my name?", history=history)
+    print(f"Result: {result}")
+
+    # Example 4: With Post-processing
+    print("\n=== Example 4: With Post-processing ===")
+    def to_uppercase(pred):
+        return pred.text.upper()
+
+    pred_upper = Predict(
+        "query -> answer",
+        postprocess=to_uppercase
+    )
+    result = pred_upper(query="Say hello")
+    print(f"Result: {result}")
+
+    # Example 5: Raw System Prompt (no signature)
+    print("\n=== Example 5: Raw System Prompt ===")
+    raw_pred = Predict(system="You are a helpful assistant. Be concise.")
+    result = raw_pred(input="What is Python?")
     print(f"Result: {result[:100]}...")
 
-    # Example 2: Rich result object
-    print("\nExample 2: Rich result object")
-    result_obj = agent("Hello!", return_result=True)
-    print(f"Text: {result_obj.text[:50]}...")
-    print(f"Iterations: {result_obj.iterations}")
-    print(f"Tool calls: {result_obj.tool_calls_count}")
-    print(f"History length: {len(result_obj.history)}")
+    # Example 6: Module-based RAG Pipeline
+    print("\n=== Example 6: Module-based RAG Pipeline ===")
 
-    # Example 3: Simplified Eval
-    print("\nExample 3: Simplified Eval")
+    class SimpleRAG(Module):
+        def __init__(self):
+            super().__init__()
+
+            # Define pipeline steps
+            self.classify = Predict(
+                "query -> classification",
+                system="Classify as SQL or VECTOR"
+            )
+
+            self.refine = Predict(
+                "query, classification -> refined_query",
+                system="Refine the query for better retrieval"
+            )
+
+            self.answer = Predict(
+                "context, query -> answer",
+                system="Answer based on the provided context"
+            )
+
+        def forward(self, query):
+            # Step 1: Classify
+            c = self.classify(query=query)
+            print(f"[Classify] {c}")
+
+            # Step 2: Refine
+            r = self.refine(query=query, classification=c)
+            print(f"[Refine] {r}")
+
+            # Step 3: Mock retrieval (not LLM)
+            if "sql" in c.lower():
+                context = "Sales data: Q4 2023 revenue was $1.2M"
+            else:
+                context = "Customer reviews are generally positive"
+
+            # Step 4: Generate answer
+            ans = self.answer(context=context, query=r)
+            print(f"[Answer] {ans}")
+
+            return ans
+
+    pipeline = SimpleRAG()
+    answer = pipeline(query="Show me sales from Q4")
+    print(f"\nFinal Answer: {answer}")
+
+    # Inspect pipeline history
+    print("\n=== Pipeline History ===")
+    pipeline.inspect_history("classify")
+
+    # Example 7: Eval
+    print("\n=== Example 7: Eval ===")
     def exact_match(example, prediction):
-        return prediction.strip() == example['output'].strip()
+        return "4" in prediction.strip()
 
     dataset = [
         {'input': 'What is 2+2?', 'output': '4'},
-        {'input': 'What is 3+3?', 'output': '6'}
     ]
 
-    # Simple usage - auto-enables cache
     evaluator = Eval(
         metric=exact_match,
         dataset=dataset,
-        save_path="/tmp/eval_simple.json"  # Auto cache + save
+        save_path="/tmp/eval_simple.json"
     )
-    result = evaluator(agent)
+    pred_eval = Predict("query -> answer")
+    result = evaluator(pred_eval)
     print(f"Score: {result['score']}% ({result['correct']}/{result['total']})")
-
-    # Advanced usage
-    evaluator2 = Eval(
-        metric=exact_match,
-        dataset=dataset,
-        save_path="/tmp/eval_parallel.json",
-        parallel=4,      # 4 threads
-        batch_size=20    # Save every 20
-    )
 
     print("\n✅ All examples completed!")
