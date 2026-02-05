@@ -336,7 +336,7 @@ class SpotlightLLM(QWidget):
                     for item in content:
                         if item.get('type') == 'text':
                             text = item.get('text', '')
-                            stream_handler.on_llm_new_token(text)
+                            stream_handler.on_llm_new_token(f'\n{text}')
                         elif item.get('type') == 'tool_use':
                             # Handle tool use if needed
                             tool_name = item.get('name', '')
