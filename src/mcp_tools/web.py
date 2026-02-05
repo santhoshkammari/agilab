@@ -60,7 +60,7 @@ class PlaywrightBrowser:
         context_start = time.time()
         self.context = await self.browser.new_context(
             viewport={"width": 1280, "height": 800},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0"
         )
         logger.debug(f"Context creation took: {time.time() - context_start:.3f}s")
 
@@ -184,6 +184,7 @@ class WebSearchTool:
             navigation_start = time.time()
             await self.browser.navigate_to(search_url)
             logger.debug(f"Navigation to search page took: {time.time() - navigation_start:.3f}s")
+            time.sleep(4)  # Wait for dynamic content to load
 
             # Get the HTML content
             html_start = time.time()
