@@ -5,6 +5,7 @@ import pyperclip
 from typing import List, Dict
 from bs4 import BeautifulSoup
 import json
+from fastmcp import FastMCP
 
 
 def get_result_from_google_html(html: str, max_results: int = 10) -> List[Dict[str, str]]:
@@ -73,7 +74,7 @@ def get_result_from_google_html(html: str, max_results: int = 10) -> List[Dict[s
     return results
 
 
-def search_google(query: str, max_results: int = 5) -> List[Dict[str, str]]:
+def search(query: str, max_results: int = 5) -> List[Dict[str, str]]:
     """Perform Google search using pyautogui and return parsed results
 
     Args:
@@ -104,47 +105,21 @@ def search_google(query: str, max_results: int = 5) -> List[Dict[str, str]]:
     return get_result_from_google_html(html_content, max_results)
 
 
+mcp = FastMCP("Web Search")
+
+@mcp.tool
+def search_google(query: str, max_results: int = 5) -> List[Dict[str, str]]:
+    """Perform Google search using pyautogui and return parsed results
+
+    Args:
+        query: Search query string
+        max_results: Maximum number of results to return (default: 5)
+
+    Returns:
+        List of search results with url, title, and description
+    """
+    return search(query, max_results)
+
+
 if __name__ == '__main__':
-
-    queries = [
-        "Python programming",
-        "Machine learning basics",
-        "Best Python libraries",
-        "Data science tutorials",
-        "How to use BeautifulSoup",
-        "Web scraping with Python",
-        "Deep learning frameworks",
-        "Natural language processing Python",
-        "Python automation tools",
-        "Open source Python projects",
-        "Stack Overflow most popular questions",
-        "How to use ChatGPT API",
-        "arXiv latest AI papers",
-        "arXiv search machine learning",
-        "Python list comprehensions explained",
-        "GitHub trending repositories",
-        "Best practices for REST APIs",
-        "Python vs JavaScript for web development",
-        "How to deploy Flask app",
-        "Pandas dataframe manipulation",
-        "arXiv code search",
-        "Stack Overflow Python answers",
-        "ChatGPT prompt engineering",
-        "arXiv deep learning survey",
-        "Python unittest examples",
-        "How to use requests library",
-        "arXiv NLP review",
-        "Stack Overflow error debugging",
-        "ChatGPT for code generation",
-        "arXiv reinforcement learning",
-        "Python asyncio tutorial"
-    ]
-
-    all_results = {}
-
-    for query in queries*5:
-        print(f"Searching: {query}")
-        results = search_google(query, max_results=5)
-        all_results[query] = results
-        with open("results.json", "w", encoding="utf-8") as f:
-            json.dump(all_results, f, ensure_ascii=False, indent=2)
+    mcp.run()

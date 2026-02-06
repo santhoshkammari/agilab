@@ -5,9 +5,9 @@ from fastmcp import FastMCP
 
 # Default directories to include for system access
 INCLUDE_DIRECTORIES = ['/home', '/tmp', '/etc', '/var', '/opt']
-
+mcp_names = "['RunSubAgents', 'MultiRead', 'MultiGrep', 'qwen-agent', 'qwen-parallel-agents', 'MultiEdit', 'playwright']"
 def qwen_stream(args: List[str]) -> Iterator[Dict[str, Any]]:
-    cmd = ['qwen', '-y', '--output-format', 'stream-json']
+    cmd = ['qwen', '-y','--allowed-mcp-server-names', mcp_names, '--output-format', 'stream-json']
 
     # Add default include directories
     for directory in INCLUDE_DIRECTORIES:
