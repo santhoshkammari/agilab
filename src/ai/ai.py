@@ -265,7 +265,17 @@ class Predict:
         # Initialize DSPy adapter if signature provided
         self._adapter = None
         self._signature_obj = None
+        self._kwarg_remap = {}  # user kwarg name -> internal DSPy field name
         if signature and DSPY_AVAILABLE:
+            # DSPy reserves some field names (e.g. "instructions") on Signature.
+            # Remap them internally so users can still use natural names.
+            _RESERVED = {"instructions": "inst"}
+            if isinstance(signature, str):
+                import re
+                for reserved, alias in _RESERVED.items():
+                    if re.search(rf'\b{reserved}\b', signature):
+                        signature = re.sub(rf'\b{reserved}\b', alias, signature)
+                        self._kwarg_remap[reserved] = alias
             self._signature_obj = ensure_signature(signature)
             self._adapter = ChatAdapter()
 
@@ -396,7 +406,9 @@ class Predict:
                     if key in ['temperature', 'seed', 'max_tokens', 'top_p', 'top_k']:
                         llm_params[key] = value
                     else:
-                        signature_fields[key] = value
+                        # Remap reserved names (e.g. instructions -> inst)
+                        mapped = self._kwarg_remap.get(key, key)
+                        signature_fields[mapped] = value
 
                 # Format with DSPy adapter
                 formatted = self._adapter.format(self._signature_obj, [], signature_fields)

@@ -19,3 +19,6 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+exp/kg-traverse-exp/mds
+exp/kg-traverse-exp/pdfs
