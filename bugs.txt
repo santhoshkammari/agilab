@@ -1,0 +1,20 @@
+AI.PY - CRITICAL BUGS AND PRODUCTION ISSUES
+
+1. Line 182: `stream()` doesn't validate `resp.status` before reading; can hang on errors
+2. Line 182: `json.loads(line[6:])` unhandled - malformed JSON crashes without try/catch
+3. Line 75: Regex pattern `rf'\[\[\s*##\s*{field_name}\s*##\s*\]\]\s*\n?(.*?)(?:\[\[|$)'` is greedy and breaks on nested brackets
+4. Line 315: `json.loads(arguments)` in `_execute_tool()` crashes on bad JSON with no error handling
+5. Line 554: Postprocess errors silently printed instead of raised; pipeline continues with wrong data
+6. Line 503: `asyncio.gather(*[tool_futures[...]])` result order not guaranteed to match tool_calls order - can mismatch
+7. Line 414: `ChatAdapter.format(..., [])` with empty history can fail; fallback unguarded
+8. Line 419-422: String replace on system message replaces ALL occurrences, not first; IndexError if empty
+9. Line 285: `get_json_schema(t)` crashes on lambdas, built-ins, or non-annotated functions
+10. Line 180: `resp.raise_for_status()` checked after reading stream body - slow fail on 404/500
+11. Line 259: Tool dict silently overwrites if two tools have same `__name__`
+12. Line 406: Hardcoded LLM param whitelist `['temperature', 'seed', 'max_tokens', 'top_p', 'top_k']` ignores new params silently
+13. Line 431-434: History injection assumes exactly 2+ messages; crashes with IndexError if fewer
+14. Line 374: `asyncio.create_task()` can be garbage-collected if no strong reference held
+15. Line 503: Assumes `tc['id']` exists without validation; KeyError on malformed tool_calls
+16. Line 538: No timeout on `run()` loop - max_iterations only limits count, not total runtime
+17. Dual-mode `__call__()` (sync/async) breaks type hints and IDE autocomplete; confusing API
+18. Line 750-756: Cache key uses `json.dumps(example.get('input'))` - collision risk if two inputs have identical JSON representation
