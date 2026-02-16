@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+	sys.path.insert(0, str(ROOT))
+
 import ai
 lm = ai.LM(api_base="http://192.168.170.76:8000")
 pred = ai.Predict("q -> classify:bool", lm=lm)

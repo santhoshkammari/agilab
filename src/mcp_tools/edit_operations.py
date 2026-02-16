@@ -1,5 +1,6 @@
 from fastmcp import FastMCP
 import os
+import re
 from typing import Optional, Literal
 
 def read_file_lines(file_path: str):
@@ -249,6 +250,52 @@ def move_lines_impl(
     except Exception as e:
         return f"Error: {str(e)}"
 
+def remove_lines_by_pattern_impl(
+    file_path: str,
+    pattern: str,
+    dry_run: bool = False
+) -> str:
+    """
+    Remove all lines matching a regex pattern from a file.
+
+    Args:
+        file_path: Path to the file
+        pattern: Regex pattern to match against each line
+        dry_run: If True, only report what would be removed without modifying the file
+    """
+    try:
+        lines = read_file_lines(file_path)
+        total_lines = len(lines)
+
+        regex = re.compile(pattern)
+
+        removed = []
+        kept = []
+        for i, line in enumerate(lines, 1):
+            if regex.search(line):
+                removed.append((i, line.rstrip('\n')))
+            else:
+                kept.append(line)
+
+        if not removed:
+            return f"No lines matched pattern '{pattern}' in '{file_path}'. File unchanged ({total_lines} lines)."
+
+        if dry_run:
+            preview = "\n".join(f"  L{num}: {text}" for num, text in removed[:20])
+            suffix = f"\n  ... and {len(removed) - 20} more" if len(removed) > 20 else ""
+            return f"[DRY RUN] Would remove {len(removed)} line(s) from '{file_path}' ({total_lines} -> {len(kept)}):\n{preview}{suffix}"
+
+        write_file_lines(file_path, kept)
+
+        preview = "\n".join(f"  L{num}: {text}" for num, text in removed[:20])
+        suffix = f"\n  ... and {len(removed) - 20} more" if len(removed) > 20 else ""
+        return f"Removed {len(removed)} line(s) matching '{pattern}' from '{file_path}' ({total_lines} -> {len(kept)} lines).\nRemoved lines:\n{preview}{suffix}"
+
+    except re.error as e:
+        return f"Error: Invalid regex pattern: {e}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 # Create FastMCP server
 mcp = FastMCP("Edit Operations Server")
 
@@ -350,11 +397,42 @@ def move_lines(
     """
     return move_lines_impl(file_path, source_start, source_end, target_line)
 
+@mcp.tool
+def remove_lines_by_pattern(
+    file_path: str,
+    pattern: str,
+    dry_run: bool = False
+) -> str:
+    """
+    Remove all lines matching a regex pattern from a file.
+    Reads the file line-by-line, filters out matching lines, writes back the rest.
+
+    Args:
+        file_path: Path to the file
+        pattern: Regex pattern to match against each line (e.g., "logger\\.debug\\(", "^\\s*#.*TODO")
+        dry_run: If True, only preview what would be removed without modifying the file
+
+    Example:
+        Remove all logger.debug lines:
+        remove_lines_by_pattern("app.py", "^\\s*logger\\.debug\\(")
+
+        Remove all print statements:
+        remove_lines_by_pattern("script.py", "^\\s*print\\(")
+
+        Preview removal without changing the file:
+        remove_lines_by_pattern("app.py", "^\\s*logger\\.(debug|error)\\(", dry_run=True)
+
+    Returns:
+        Summary of removed lines with line numbers and count
+    """
+    return remove_lines_by_pattern_impl(file_path, pattern, dry_run)
+
 tool_functions = {
     "copy_paste_within_file": copy_paste_within_file,
     "copy_paste_between_files": copy_paste_between_files,
     "replace_pattern_occurrences": replace_pattern_occurrences,
     "move_lines": move_lines,
+    "remove_lines_by_pattern": remove_lines_by_pattern,
 }
 
 if __name__ == "__main__":
