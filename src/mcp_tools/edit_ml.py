@@ -9,8 +9,13 @@ mcp = FastMCP("File Tools Optimized Server")
 def edit(path: str, edits: List[Dict[str, Any]]) -> str:
     """
     Replace line ranges in a file.
-    edits: [{s, e, new}] — applied bottom-to-top, 1-indexed.
-    Example: [{"s": 5, "e": 7, "new": "replacement\\n"}, {"s": 10, "e": 10, "new": "line 10\\n"}]
+
+    Args:
+        path: File path
+        edits: List of edits, each with:
+            - s (int): Start line (1-indexed)
+            - e (int): End line (1-indexed, inclusive)
+            - new (str): Replacement content
     """
     if not os.path.exists(path):
         return f"Error: File not found: '{path}'"
