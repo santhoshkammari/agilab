@@ -34,14 +34,15 @@ def edit(path: str, edits: List[Dict[str, Any]]) -> str:
         with open(path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
+        original_line_count = len(lines)
         results = []
 
         for ed in sorted_edits:
             s, e, new = ed['s'], ed['e'], ed['new']
             si, ei = s - 1, e - 1
 
-            if si >= len(lines) or ei >= len(lines):
-                return f"Error: Lines {s}-{e} out of range. File has {len(lines)} lines."
+            if si >= original_line_count or ei >= original_line_count:
+                return f"Error: Lines {s}-{e} out of range. File has {original_line_count} lines."
 
             if new:
                 if not new.endswith('\n'):
