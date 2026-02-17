@@ -1304,11 +1304,12 @@ def main():
     parser.add_argument("--api-key", default="", help="API key for the LLM provider")
     parser.add_argument("--api-base", default="http://localhost:7501/v1", help="API base URL")
     parser.add_argument("--model-type", default="chat", help="Model type (chat or text)")
+    parser.add_argument("--max-tokens", type=int, default=10000, help="Max tokens for LLM response")
 
     args = parser.parse_args()
 
     # Configure DSPy
-    lm = dspy.LM(args.model, max_tokens=4096, api_key=args.api_key, api_base=args.api_base, model_type=args.model_type)
+    lm = dspy.LM(args.model, max_tokens=args.max_tokens, api_key=args.api_key, api_base=args.api_base, model_type=args.model_type)
     dspy.configure(lm=lm)
 
     # Run the system
