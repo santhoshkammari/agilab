@@ -1297,16 +1297,18 @@ def main():
     parser = argparse.ArgumentParser(description="Multi-Agent Self-Driving Codebase")
     parser.add_argument("--repo", required=True, help="Path to the target repository")
     parser.add_argument("--instructions", required=True, help="What to build/do")
-    parser.add_argument("--model", default="openai/gpt-4o", help="LLM model to use")
+    parser.add_argument("--model", default="openai/meta-llama/Meta-Llama-3-8B-Instruct", help="LLM model to use")
     parser.add_argument("--workers", type=int, default=10, help="Max concurrent workers")
     parser.add_argument("--depth", type=int, default=3, help="Max planner recursion depth")
     parser.add_argument("--iterations", type=int, default=100, help="Max orchestration cycles")
-    parser.add_argument("--api-key", default=None, help="API key for the LLM provider")
+    parser.add_argument("--api-key", default="", help="API key for the LLM provider")
+    parser.add_argument("--api-base", default="http://localhost:7501/v1", help="API base URL")
+    parser.add_argument("--model-type", default="chat", help="Model type (chat or text)")
 
     args = parser.parse_args()
 
     # Configure DSPy
-    lm = dspy.LM(args.model, max_tokens=4096, api_key=args.api_key)
+    lm = dspy.LM(args.model, max_tokens=4096, api_key=args.api_key, api_base=args.api_base, model_type=args.model_type)
     dspy.configure(lm=lm)
 
     # Run the system
