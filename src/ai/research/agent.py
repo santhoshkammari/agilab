@@ -2,14 +2,11 @@
 Research Agent — autonomous tool-driven research using ChromaDB as working memory.
 All intelligence lives in the system prompt. Tools are generic primitives.
 
-Uses text-based tool calling (<tool_call> tags) — works with any LLM, no special
-vLLM tool-call API flags needed.
+Uses OpenAI-compatible tool calling API (vLLM with --enable-auto-tool-choice).
 """
 import sys
 import os
 import json
-import re
-import asyncio
 import inspect
 
 # Add parent paths for imports
@@ -132,64 +129,25 @@ def read_progress() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Text-based Tool Calling Engine
+# OpenAI-compatible Tool Calling Engine
 # ---------------------------------------------------------------------------
 
-def _build_tool_descriptions(tools: list) -> str:
-    """Build tool descriptions for the system prompt from function signatures."""
-    lines = []
+def _build_tool_schemas(tools: list) -> list[dict]:
+    """Build OpenAI-style tool schemas from function signatures + docstrings."""
+    from transformers.utils import get_json_schema
+    schemas = []
     for fn in tools:
-        sig = inspect.signature(fn)
-        params = []
-        for name, p in sig.parameters.items():
-            ptype = p.annotation.__name__ if p.annotation != inspect.Parameter.empty else "any"
-            default = f" = {p.default!r}" if p.default != inspect.Parameter.empty else ""
-            params.append(f"{name}: {ptype}{default}")
-        params_str = ", ".join(params)
-
-        doc = fn.__doc__ or ""
-        # Take first paragraph of docstring
-        first_para = doc.split("\n\n")[0].strip().replace("\n", " ")
-
-        lines.append(f"  {fn.__name__}({params_str})\n    {first_para}")
-    return "\n\n".join(lines)
-
-
-def _parse_tool_calls(text: str) -> list[dict]:
-    """Parse <tool_call> blocks from LLM output."""
-    pattern = r'<tool_call>\s*(\{.*?\})\s*</tool_call>'
-    matches = re.findall(pattern, text, re.DOTALL)
-    calls = []
-    for match in matches:
-        try:
-            parsed = json.loads(match)
-            calls.append(parsed)
-        except json.JSONDecodeError:
-            # Try to fix common issues
-            try:
-                # Handle single quotes
-                fixed = match.replace("'", '"')
-                parsed = json.loads(fixed)
-                calls.append(parsed)
-            except json.JSONDecodeError:
-                pass
-    return calls
-
-
-def _extract_think(text: str) -> tuple[str, str]:
-    """Separate <think>...</think> from the rest."""
-    think_match = re.search(r'<think>(.*?)</think>', text, re.DOTALL)
-    thinking = think_match.group(1).strip() if think_match else ""
-    clean = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
-    return thinking, clean
+        schema = get_json_schema(fn)
+        # Remove 'return' field — vLLM doesn't expect it
+        schema.get("function", {}).pop("return", None)
+        schemas.append(schema)
+    return schemas
 
 
 def _execute_tool(fn, arguments: dict) -> str:
     """Execute a tool function with the given arguments."""
     try:
         result = fn(**arguments)
-        if asyncio.iscoroutinefunction(fn):
-            result = asyncio.run(result)
         return str(result)
     except Exception as e:
         return f"Error: {e}"
@@ -203,85 +161,65 @@ def run_agent_cycle(
     max_turns: int = 30,
     verbose: bool = True,
 ) -> str:
-    """Run one agent cycle with text-based tool calling.
-
-    The agent generates text, we parse <tool_call> blocks, execute them,
-    feed results back, repeat until no more tool calls or max_turns.
+    """Run one agent cycle using OpenAI-compatible tool calling API.
 
     Returns:
         The agent's final text response.
     """
-    import aiohttp
+    from openai import OpenAI
 
-    # Build tool map
+    client = OpenAI(api_key=lm.api_key or "EMPTY", base_url=f"{lm.api_base}/v1")
+
+    # Get model name from server if not set
+    model = lm.model or client.models.list().data[0].id
+
     tool_map = {fn.__name__: fn for fn in tools}
-
-    # Build system prompt with tool descriptions
-    tool_desc = _build_tool_descriptions(tools)
-    full_system = f"""{system_prompt}
-
-## Available Tools
-When you want to call a tool, use this exact format (you can make multiple calls):
-<tool_call>
-{{"name": "tool_name", "arguments": {{"arg1": "value1"}}}}
-</tool_call>
-
-After each tool call, you'll receive the result. Then decide your next action.
-
-Here are your tools:
-{tool_desc}
-"""
+    tool_schemas = _build_tool_schemas(tools)
 
     messages = [
-        {"role": "system", "content": full_system},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_input},
     ]
-
-    async def _complete(msgs):
-        async with aiohttp.ClientSession(timeout=lm.timeout) as session:
-            body = {
-                "model": lm.model,
-                "messages": msgs,
-                "stream": False,
-                **lm.defaults,
-            }
-            async with session.post(
-                f"{lm.api_base}/v1/chat/completions", json=body
-            ) as resp:
-                data = await resp.json()
-                if resp.status >= 400:
-                    raise RuntimeError(f"LLM error: {data}")
-                return data["choices"][0]["message"]["content"]
 
     final_response = ""
 
     for turn in range(max_turns):
-        # Get LLM response
-        response = asyncio.run(_complete(messages))
+        # Call LLM with tools
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=tool_schemas,
+            temperature=lm.defaults.get("temperature", 0.7),
+        )
 
-        # Separate thinking from content
-        thinking, clean_response = _extract_think(response)
-        if verbose and thinking:
-            print(f"  [think] {thinking[:150]}...", file=sys.stderr)
-
-        # Parse tool calls
-        tool_calls = _parse_tool_calls(clean_response)
+        msg = response.choices[0].message
+        tool_calls = msg.tool_calls
 
         if not tool_calls:
-            # No tool calls — agent is done with this cycle
-            # Remove any tool_call tags that might have been malformed
-            final_response = re.sub(r'</?tool_call>', '', clean_response).strip()
+            # No tool calls — agent is done
+            import re
+            content = (msg.content or "").strip()
+            # Strip <think>...</think> from Qwen3 responses
+            final_response = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL).strip()
             if verbose:
                 print(f"  [turn {turn+1}] Final response (no tools)", file=sys.stderr)
             break
 
-        # Execute tool calls
-        messages.append({"role": "assistant", "content": response})
+        # Append assistant message with tool calls
+        messages.append({
+            "role": "assistant",
+            "content": msg.content or "",
+            "tool_calls": [
+                {"id": tc.id, "type": "function",
+                 "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                for tc in tool_calls
+            ],
+        })
 
-        tool_results = []
+        # Execute each tool call and append results
         for tc in tool_calls:
-            name = tc.get("name", "")
-            args = tc.get("arguments", {})
+            name = tc.function.name
+            args = json.loads(tc.function.arguments) if tc.function.arguments else {}
 
             if verbose:
                 args_preview = json.dumps(args)[:100]
@@ -296,13 +234,13 @@ Here are your tools:
             if verbose:
                 print(f"  [result] {result[:150]}", file=sys.stderr)
 
-            tool_results.append(f"<tool_response>\n{name}: {result}\n</tool_response>")
-
-        # Feed results back
-        messages.append({"role": "user", "content": "\n".join(tool_results)})
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": result,
+            })
 
     else:
-        # Max turns reached
         final_response = "Max tool-call turns reached for this cycle."
 
     return final_response
