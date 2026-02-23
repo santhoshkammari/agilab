@@ -50,15 +50,26 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
+# Logging configured later via setup_logging()
+logger = logging.getLogger("multi_agent")
+
+
+def setup_logging(verbose: bool = True, log_level: str = "INFO"):
+    """Configure logging with optional verbosity."""
+    level = getattr(logging, log_level.upper(), logging.INFO)
+    fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    handlers = [
         logging.StreamHandler(),
         logging.FileHandler("multi_agent.log"),
-    ],
-)
-logger = logging.getLogger("multi_agent")
+    ]
+    logging.basicConfig(level=level, format=fmt, handlers=handlers, force=True)
+    # DSPy internal logs can be noisy — suppress unless verbose
+    if not verbose:
+        logging.getLogger("dspy").setLevel(logging.WARNING)
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+    else:
+        logging.getLogger("dspy").setLevel(logging.DEBUG)
 
 
 # ===========================================================================
@@ -501,11 +512,24 @@ class PlannerAgent(dspy.Module):
             recent_handoffs=handoff_texts or "(no recent handoffs)",
         )
 
+        logger.info(
+            f"[PLANNER {state.id}] === ANALYSIS ===\n"
+            f"  ANALYSIS: {analysis_result.analysis[:500]}\n"
+            f"  PRIORITIES: {analysis_result.priorities[:300]}"
+        )
+
         # Step 2: Plan tasks + identify subdivision opportunities
         plan_result = self.plan(
             goal=state.goal,
             analysis=f"{analysis_result.analysis}\n\nPriorities:\n{analysis_result.priorities}",
             scratchpad=state.scratchpad or "(fresh start)",
+        )
+
+        logger.info(
+            f"[PLANNER {state.id}] === PLAN OUTPUT ===\n"
+            f"  TASKS_JSON (raw): {plan_result.tasks_json[:800]}\n"
+            f"  SUBPLANNERS_JSON (raw): {plan_result.subplanner_scopes_json[:300]}\n"
+            f"  SCRATCHPAD: {plan_result.updated_scratchpad[:300]}"
         )
 
         # Parse tasks JSON
@@ -524,6 +548,11 @@ class PlannerAgent(dspy.Module):
             f"[PLANNER {state.id}] depth={state.depth} iter={state.iteration_count} | "
             f"emitted {len(tasks)} tasks, {len(subplanner_scopes)} subplanner scopes"
         )
+        if tasks:
+            for i, t in enumerate(tasks):
+                logger.info(f"  Task[{i}]: [{t.priority.name}] {t.description[:100]}")
+        else:
+            logger.warning(f"[PLANNER {state.id}] WARNING: 0 tasks emitted! Check tasks_json above.")
 
         return tasks, subplanner_scopes, state.scratchpad
 
@@ -681,6 +710,13 @@ class WorkerAgent(dspy.Module):
                 file_tree=file_tree,
             )
 
+            logger.info(
+                f"[WORKER {worker_id}] === LLM OUTPUT ===\n"
+                f"  CODE_CHANGES (first 500): {result.code_changes[:500]}\n"
+                f"  TEST_RESULTS: {result.test_results[:200]}\n"
+                f"  HANDOFF_REPORT (first 300): {result.handoff_report[:300]}"
+            )
+
             # Apply code changes to the worker's repo copy
             files_modified = self._apply_code_changes(worker_dir, result.code_changes)
 
@@ -702,8 +738,7 @@ class WorkerAgent(dspy.Module):
             )
 
             logger.info(f"[WORKER {worker_id}] completed: {task.description[:50]}... "
-                        f"({len(files_modified)} files)")
-            return handoff
+                        f"({len(files_modified)} files, committed={committed})")
 
         except Exception as e:
             logger.error(f"[WORKER {worker_id}] FAILED: {e}")
@@ -1039,6 +1074,10 @@ class MultiAgentOrchestrator(dspy.Module):
             p for p in self.planners.values() if not p.is_complete
         ]
 
+        logger.info(
+            f"[PLANNER_PHASE] {len(active_planners)} active planner(s). "
+            f"Codebase snapshot (first 400 chars):\n{codebase_snapshot[:400]}"
+        )
         for state in active_planners:
             try:
                 # Collect pending handoffs for this planner
@@ -1305,8 +1344,14 @@ def main():
     parser.add_argument("--api-base", default="http://localhost:7501/v1", help="API base URL")
     parser.add_argument("--model-type", default="chat", help="Model type (chat or text)")
     parser.add_argument("--max-tokens", type=int, default=10000, help="Max tokens for LLM response")
+    parser.add_argument("--verbose", action="store_true", default=True, help="Enable verbose logging (default: on)")
+    parser.add_argument("--no-verbose", dest="verbose", action="store_false", help="Disable verbose logging")
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Log level")
 
     args = parser.parse_args()
+
+    # Setup logging first
+    setup_logging(verbose=args.verbose, log_level=args.log_level)
 
     # Configure DSPy
     lm = dspy.LM(args.model, max_tokens=args.max_tokens, api_key=args.api_key, api_base=args.api_base, model_type=args.model_type)

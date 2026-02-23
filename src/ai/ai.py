@@ -250,6 +250,7 @@ class Predict:
         tools: Optional[list[Callable]] = None,
         postprocess: Optional[Callable] = None,  # Post-processing function
         max_iterations: int = 10,
+        verbose: bool = False,
         **defaults
     ):
         self.signature = signature
@@ -259,6 +260,7 @@ class Predict:
         self._tools = {t.__name__: t for t in (tools or [])}
         self.postprocess = postprocess
         self.max_iterations = max_iterations
+        self.verbose = verbose
         self.defaults = defaults  # Predict-level overrides (temperature, etc.)
         self._history: list[dict] = []
 
@@ -371,6 +373,9 @@ class Predict:
         if tool_buffer:
             msg["tool_calls"] = list(tool_buffer.values())
             for tool_id, tc in tool_buffer.items():
+                if self.verbose:
+                    import sys
+                    print(f"[tool] {tc['function']['name']}({tc['function']['arguments']})", file=sys.stderr, flush=True)
                 tool_futures[tool_id] = asyncio.create_task(
                     self._execute_tool(tc['function']['name'], tc['function']['arguments'], tool_id)
                 )
@@ -508,6 +513,9 @@ class Predict:
                         "tool_call_id": result["tool_call_id"],
                         "content": result["output"]
                     }
+                    if self.verbose:
+                        import sys
+                        print(f"[result] {result['output'][:200]}", file=sys.stderr, flush=True)
                     self._history.append(tool_msg)
                     current_messages.append(tool_msg)
                     yield {"type": "tool_result", "output": result["output"]}
@@ -532,6 +540,10 @@ class Predict:
                 response = event['response']
                 iterations = event.get('iterations', 0)
                 tool_calls_count = event.get('tool_calls_count', 0)
+
+        if self.verbose:
+            import sys
+            print(f"[done] iterations={iterations} tools={tool_calls_count} response={response[:100]!r}", file=sys.stderr, flush=True)
 
         # Create Prediction object (DSPy-style)
         prediction = Prediction(response, self._signature_obj)
