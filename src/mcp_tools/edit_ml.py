@@ -40,15 +40,15 @@ def edit(path: str, edits: List[Dict[str, Any]]) -> str:
     if overlaps:
         return f"Error: Overlapping edits — " + ", ".join(overlaps)
 
+    out_of_range = [f"{ed['s']}-{ed['e']}" for ed in sorted_edits if ed['s'] > line_count or ed['e'] > line_count]
+    if out_of_range:
+        return f"Error: Out of range edits (file has {line_count} lines) — " + ", ".join(out_of_range)
+
     try:
         with open(path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
         line_count = len(lines)
-
-        out_of_range = [f"{ed['s']}-{ed['e']}" for ed in sorted_edits if ed['s'] > line_count or ed['e'] > line_count]
-        if out_of_range:
-            return f"Error: Out of range edits (file has {line_count} lines) — " + ", ".join(out_of_range)
 
         # Reconstruct file from parts
         result = []
