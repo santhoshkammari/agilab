@@ -9,15 +9,21 @@ import os
 import json
 import inspect
 
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+NO_THINK = True  # Append /no_think to system prompt (Qwen3: skip <think> block, saves tokens)
+
 # Add parent paths for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'mcp_tools'))
 
 from ai import LM, configure
 from research.memory import (
-    init as init_memory,
+    init as init_memory, _get_client,
     memory_store, memory_search, memory_exists,
-    memory_delete, memory_update
+    memory_delete, memory_update, memory_count,
+    memory_get, memory_get_all
 )
 
 # ---------------------------------------------------------------------------
@@ -90,22 +96,200 @@ def web_fetch(url: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# File tools — for progress.md
+# Markdown analysis tools (for synthesis agents)
 # ---------------------------------------------------------------------------
 
+def md_get_source_urls() -> str:
+    """List all source URLs stored in the research_data collection.
+
+    Returns:
+        Numbered list of all source URLs available for analysis.
+    """
+    items = memory_get_all("research_data")
+    if not items:
+        return "No sources in research_data."
+    lines = [f"[{i+1}] {item['id']} ({item['metadata'].get('char_count', '?')} chars)"
+             for i, item in enumerate(items)]
+    return "\n".join(lines)
+
+
+def md_get_content(url: str) -> str:
+    """Retrieve the full markdown content for a source URL from research_data.
+
+    Args:
+        url: The source URL (document ID in research_data)
+
+    Returns:
+        The full markdown content, or error if not found.
+    """
+    return memory_get("research_data", url)
+
+
+def md_analyze_structure(url: str) -> str:
+    """Analyze the markdown structure of a source: headers, word count, paragraph count, code blocks, lists, tables.
+
+    Args:
+        url: The source URL to analyze
+
+    Returns:
+        JSON string with structural analysis (headers, word count, etc.)
+    """
+    from markdown.mrkdwn_analysis import MarkdownAnalyzer
+    content = memory_get("research_data", url)
+    if content.startswith("No document found") or content.startswith("Error"):
+        return content
+    try:
+        analyzer = MarkdownAnalyzer.from_string(content)
+        stats = analyzer.analyse()
+        headers = analyzer.identify_headers().get("Header", [])
+        return json.dumps({
+            'url': url,
+            'stats': stats,
+            'headers': [{'level': h['level'], 'text': h['text']} for h in headers],
+        }, indent=2)
+    except Exception as e:
+        return f"Analysis error for {url}: {e}"
+
+
+def md_extract_headers(url: str) -> str:
+    """Extract all headers from a source's markdown content.
+
+    Args:
+        url: The source URL to extract headers from
+
+    Returns:
+        List of headers with their levels.
+    """
+    from markdown.mrkdwn_analysis import MarkdownAnalyzer
+    content = memory_get("research_data", url)
+    if content.startswith("No document found") or content.startswith("Error"):
+        return content
+    try:
+        analyzer = MarkdownAnalyzer.from_string(content)
+        headers = analyzer.identify_headers().get("Header", [])
+        lines = [f"H{h['level']}: {h['text']}" for h in headers]
+        return "\n".join(lines) if lines else "No headers found."
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def md_extract_paragraphs(url: str, max_paragraphs: int = 10) -> str:
+    """Extract paragraphs from a source's markdown content.
+
+    Args:
+        url: The source URL to extract paragraphs from
+        max_paragraphs: Maximum number of paragraphs to return (default 10)
+
+    Returns:
+        Numbered paragraphs from the source.
+    """
+    from markdown.mrkdwn_analysis import MarkdownAnalyzer
+    content = memory_get("research_data", url)
+    if content.startswith("No document found") or content.startswith("Error"):
+        return content
+    try:
+        analyzer = MarkdownAnalyzer.from_string(content)
+        paragraphs = analyzer.identify_paragraphs().get("Paragraph", [])
+        lines = [f"[{i+1}] {p[:500]}" for i, p in enumerate(paragraphs[:max_paragraphs])]
+        return "\n\n".join(lines) if lines else "No paragraphs found."
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def md_extract_links(url: str) -> str:
+    """Extract all links from a source's markdown content.
+
+    Args:
+        url: The source URL to extract links from
+
+    Returns:
+        List of links found in the markdown.
+    """
+    from markdown.mrkdwn_analysis import MarkdownAnalyzer
+    content = memory_get("research_data", url)
+    if content.startswith("No document found") or content.startswith("Error"):
+        return content
+    try:
+        analyzer = MarkdownAnalyzer.from_string(content)
+        links = analyzer.identify_links()
+        lines = []
+        for l in links.get("Text link", []):
+            lines.append(f"[{l.get('text', '')}]({l.get('url', '')})")
+        for img in links.get("Image link", []):
+            lines.append(f"![{img.get('alt_text', '')}]({img.get('url', '')})")
+        return "\n".join(lines) if lines else "No links found."
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def md_extract_code_blocks(url: str) -> str:
+    """Extract code blocks from a source's markdown content.
+
+    Args:
+        url: The source URL to extract code blocks from
+
+    Returns:
+        Code blocks with their language tags.
+    """
+    from markdown.mrkdwn_analysis import MarkdownAnalyzer
+    content = memory_get("research_data", url)
+    if content.startswith("No document found") or content.startswith("Error"):
+        return content
+    try:
+        analyzer = MarkdownAnalyzer.from_string(content)
+        blocks = analyzer.identify_code_blocks().get("Code block", [])
+        lines = []
+        for b in blocks:
+            lang = b.get('language') or 'unknown'
+            preview = b['content'][:300]
+            lines.append(f"```{lang}\n{preview}\n```")
+        return "\n\n".join(lines) if lines else "No code blocks found."
+    except Exception as e:
+        return f"Error: {e}"
+
+
+# ---------------------------------------------------------------------------
+# File tools — for answer.md and progress.md
+# ---------------------------------------------------------------------------
+
+_answer_path = "answer.md"
 _progress_path = "progress.md"
 
 
+def write_answer(content: str) -> str:
+    """Write the final research answer to answer.md. Use this to save your final deliverable.
+
+    Args:
+        content: The full answer in markdown format.
+
+    Returns:
+        Confirmation message.
+    """
+    with open(_answer_path, 'w') as f:
+        f.write(content)
+    return f"Answer written to {_answer_path} ({len(content)} chars)"
+
+
+def read_answer() -> str:
+    """Read the current answer.md file.
+
+    Returns:
+        Contents of answer.md, or message if not found.
+    """
+    try:
+        with open(_answer_path, 'r') as f:
+            return f.read()
+    except FileNotFoundError:
+        return "No answer file found yet."
+
+
 def write_progress(content: str) -> str:
-    """Write/overwrite the progress file (tqdm-style progress tracking).
+    """Write/overwrite the progress file.
 
     Args:
         content: The full progress content. Example:
-            [████████░░░░░░░░░░░░] 8/15
-            Strategy: following linked leads
-            Last: "RAG blog" ✓ unique
-            Gaps: AI safety, multimodal
-            Queue: 3 leads pending
+            # TASK: find 5 unique blogs on genai
+            [3/5]
 
     Returns:
         Confirmation message.
@@ -176,8 +360,9 @@ def run_agent_cycle(
     tool_map = {fn.__name__: fn for fn in tools}
     tool_schemas = _build_tool_schemas(tools)
 
+    sys_content = (system_prompt + "\n/no_think") if NO_THINK else system_prompt
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": sys_content},
         {"role": "user", "content": user_input},
     ]
 
@@ -250,71 +435,43 @@ def run_agent_cycle(
 # System Prompt
 # ---------------------------------------------------------------------------
 
-RESEARCH_SYSTEM_PROMPT = """You are an autonomous research agent. You work in SHORT BURSTS — do ONE meaningful cycle per invocation, then stop.
+RESEARCH_SYSTEM_PROMPT = """You are an autonomous research agent. Each invocation = ONE short cycle. You are STATELESS -- memory is ONLY in ChromaDB and progress.md.
 
-## Your Memory (ChromaDB collections)
-You have 5 collections that persist between invocations:
-- research_data: Raw fetched content (url → full markdown). web_fetch auto-stores here.
-- mind: Your observations — absorbed ideas, concepts, author stances, uniqueness notes.
-- searches: Log of every search query you've run and what it yielded.
-- queue: Leads to explore — URLs from blogs, query ideas from absorbed concepts.
-- state: Your progress metadata.
+## Collections
+- research_data: fetched page content (auto-stored by web_fetch)
+- mind: your observations per source (THIS is what counts toward the target)
+- searches: query log (prevents repeats)
+- queue: leads to follow
 
-## Each Invocation — Follow This Cycle
+## CYCLE (follow EXACTLY, keep it under ~12 tool calls)
 
-### 1. READ STATE
-- Call read_progress() to see where you are
-- If target is reached → respond with exactly "DONE" and stop
-- If this is the first run, initialize progress
+1. READ STATE (2 calls):
+   read_progress() and memory_count("mind")
+   If mind count >= target number from the task, respond "EXPLORATION_COMPLETE" and STOP.
 
-### 2. DECIDE NEXT ACTION
-- Check queue: memory_search("queue", "pending leads", n=5)
-  → If queue has leads, pick the best one
-  → If queue is empty, go to gap detection
-- Detect concept gaps: probe "mind" with different concept areas
-  → memory_search("mind", "concept X", n=5) — few/no results = GAP
-  → Generate query targeting the biggest gap
-- Before running query: memory_search("searches", your_query, n=3)
-  → If very similar query exists with poor results, modify it
+2. SEARCH (1 call):
+   web_search(query) -- vary your query each cycle, never repeat.
 
-### 3. EXECUTE
-- web_search(query) → get URLs and snippets
-- For each promising URL:
-  - web_fetch(url) → auto-stored (returns confirmation, not content)
-- Log: memory_store("searches", query_text, {"results_count": N, "new_found": N, "already_seen": N})
+3. FETCH (1-2 calls max):
+   Pick 1-2 best URLs. web_fetch(url) for each.
 
-### 4. ABSORB (for each newly fetched URL)
-- Query research_data to understand what you fetched:
-  - memory_search("research_data", "main idea of [topic]", n=2)
-  - memory_search("research_data", "links references", n=2)
-  - memory_search("research_data", "author perspective", n=2)
-- Store observations in mind:
-  memory_store("mind", "Blog by X. KEY IDEA: ... CONCEPTS: ... LINKS: ...",
-               {"source_url": "url", "concepts": "a,b,c", "type": "absorption"})
-- Extract leads into queue:
-  memory_store("queue", "lead description", {"type": "query_candidate", "emerged_from": "url", "reason": "why"})
+4. ABSORB (1-2 calls):
+   For each fetched URL, store ONE observation:
+   memory_store("mind", "Source: X | IDEA: ... | ANGLE: ... | CONCEPTS: a,b,c",
+                {"source_url": url, "type": "absorption"})
 
-### 5. ASSESS UNIQUENESS
-- memory_search("mind", "key concepts from this content", n=10)
-- High similarity to many existing → NOT unique, don't count
-- New cluster or perspective → UNIQUE, count it
-
-### 6. UPDATE PROGRESS
-- write_progress() with tqdm-style format:
-  [████░░░░░░░░░░░░░░░░] 4/15
-  Strategy: <current approach>
-  Last: "<title>" ✓ unique / ✗ duplicate
-  Gaps: <uncovered areas>
-  Queue: <N> leads pending
-- Then STOP. Respond with a brief status like "Completed cycle. 4/15."
+5. UPDATE PROGRESS and STOP (2 calls then stop):
+   Call memory_count("mind") to get the real count.
+   Call write_progress() with exactly this format:
+   # TASK: <the user's original task>
+   [COUNT/TARGET]
+   Then respond with text: "Cycle done. COUNT/TARGET." and STOP.
 
 ## Rules
-- ONE cycle per invocation. Don't try to do everything at once.
-- Always check memory_exists before fetching.
-- web_fetch auto-stores content. You never see full text in your context.
-- When queries yield diminishing returns, CHANGE STRATEGY.
-- If you can't find more after many attempts, respond "EXHAUSTED".
-- When target reached, respond "DONE"."""
+- Max 1 web_search, 2 web_fetch per cycle. NO MORE.
+- Always end with a text response. Never run out of turns silently.
+- Do NOT synthesize or summarize findings. Just collect data. Synthesis happens separately.
+- If stuck, respond "EXHAUSTED"."""
 
 
 # ---------------------------------------------------------------------------
@@ -336,8 +493,9 @@ class ResearchAgent:
         api_key: str = "-",
         chromadb_path: str = ".chromadb",
         progress_path: str = "progress.md",
+        answer_path: str = "answer.md",
         max_cycles: int = 200,
-        max_turns_per_cycle: int = 30,
+        max_turns_per_cycle: int = 20,
         temperature: float = 0.7,
         verbose: bool = True,
     ):
@@ -345,8 +503,9 @@ class ResearchAgent:
         self.max_turns_per_cycle = max_turns_per_cycle
         self.verbose = verbose
 
-        global _progress_path
+        global _progress_path, _answer_path
         _progress_path = progress_path
+        _answer_path = answer_path
 
         # Init ChromaDB
         init_memory(chromadb_path)
@@ -362,17 +521,267 @@ class ResearchAgent:
         # All tools
         self.tools = [
             memory_store, memory_search, memory_exists,
-            memory_delete, memory_update,
+            memory_delete, memory_update, memory_count,
             web_search, web_fetch,
             write_progress, read_progress,
         ]
 
-    def run(self, task: str):
-        """Run the research agent on a task."""
+    @staticmethod
+    def _parse_target(task: str) -> int:
+        """Extract the target number from the task string (e.g. 'find 5 blogs' -> 5)."""
+        import re
+        m = re.search(r'(\d+)', task)
+        return int(m.group(1)) if m else 0
+
+    def reset(self):
+        """Clear all ChromaDB collections and progress file for a fresh start."""
+        client = _get_client()
+        for name in ["research_data", "mind", "searches", "queue", "synthesis"]:
+            try:
+                client.delete_collection(name)
+            except Exception:
+                pass
+        for f in [_progress_path, _answer_path]:
+            try:
+                os.remove(f)
+            except FileNotFoundError:
+                pass
+        print("Reset: cleared all collections and progress.")
+
+    # ------------------------------------------------------------------
+    # Synthesis Pipeline (tool-calling agents)
+    # ------------------------------------------------------------------
+
+    def _synthesis_tools(self) -> list:
+        """Tools available to synthesis agents: markdown analysis + memory + file output."""
+        return [
+            md_get_source_urls, md_get_content,
+            md_analyze_structure, md_extract_headers,
+            md_extract_paragraphs, md_extract_links,
+            md_extract_code_blocks,
+            memory_search, memory_store, memory_get, memory_count,
+            write_answer, read_answer,
+        ]
+
+    def _run_analyst_for_source(self, task: str, url: str, index: int, total: int) -> str:
+        """Run one analyst agent for a single source URL. Thread-safe."""
+        analyst_prompt = f"""You are research analyst #{index}/{total}. Your job: deeply analyze ONE source.
+
+## Your assigned source
+URL: {url}
+
+## Your tools
+- md_get_content(url): Get full markdown content
+- md_analyze_structure(url): Get structural stats (headers, word count, etc.)
+- md_extract_headers(url): Extract all headers
+- md_extract_paragraphs(url): Extract key paragraphs
+- md_extract_links(url): Extract all links
+- md_extract_code_blocks(url): Extract code blocks
+- memory_store(collection, text, metadata, id): Store your analysis
+
+## Instructions
+1. Use markdown tools to deeply understand your assigned source
+2. Produce a structured summary:
+   - Source URL
+   - Key arguments / main points
+   - Unique angle (what makes this source different)
+   - Evidence / data / examples
+   - Key concepts
+3. Store your analysis: memory_store("synthesis", <your full summary>, {{"phase": "analyst", "source_url": "{url}"}})
+4. Respond with your summary text."""
+
+        tools = self._synthesis_tools()
+        return run_agent_cycle(
+            lm=self.lm,
+            system_prompt=analyst_prompt,
+            user_input=f"Analyze this source for the task: {task}",
+            tools=tools,
+            max_turns=self.max_turns_per_cycle,
+            verbose=self.verbose,
+        )
+
+    def _synthesize(self, task: str) -> str:
+        """Run the synthesis pipeline:
+        Parallel Analysts (1 per source) → Critic (with feedback loop) → Writer.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        print(f"\n{'='*60}")
+        print("PHASE 2: SYNTHESIS")
+        print(f"{'='*60}")
+
+        tools = self._synthesis_tools()
+
+        # Get all source URLs
+        source_items = memory_get_all("research_data")
+        source_urls = [item['id'] for item in source_items]
+
+        if not source_urls:
+            return "No research data found to synthesize."
+
+        total = len(source_urls)
+        print(f"\n  Sources to analyze: {total}")
+
+        # --- PARALLEL ANALYSTS (1 per source) ---
+        print(f"\n  [Analysts] Launching {total} parallel analyst agents...")
+
+        analyst_results = {}
+        with ThreadPoolExecutor(max_workers=min(total, 8)) as executor:
+            futures = {
+                executor.submit(self._run_analyst_for_source, task, url, i+1, total): url
+                for i, url in enumerate(source_urls)
+            }
+            for future in as_completed(futures):
+                url = futures[future]
+                try:
+                    result = future.result()
+                    analyst_results[url] = result
+                    print(f"  [Analyst] Done: {url[:60]}... ({len(result)} chars)")
+                except Exception as e:
+                    print(f"  [Analyst] FAILED: {url[:60]}... — {e}")
+                    analyst_results[url] = f"Analysis failed: {e}"
+
+        print(f"  [Analysts] All {len(analyst_results)}/{total} complete")
+
+        # --- CRITIC (max 2 rounds) ---
+        max_critic_rounds = 2
+        for critic_round in range(1, max_critic_rounds + 1):
+            print(f"\n  [Critic] Round {critic_round}/{max_critic_rounds}...")
+
+            critic_prompt = """You are a research critic. Multiple analyst agents have each analyzed one source. Their summaries are stored in ChromaDB.
+
+## Your tools
+- md_get_source_urls(): List all sources
+- md_get_content(url), md_analyze_structure(url), md_extract_headers(url), md_extract_paragraphs(url), md_extract_links(url): Inspect raw sources
+- memory_search("synthesis", query, n): Retrieve analyst summaries (search with relevant terms)
+- memory_search("mind", "research", n=50): See exploration observations
+- memory_store("synthesis", ..., {"phase": "critic"}): Store your critique
+
+## Instructions
+1. Search memory for all analyst summaries: memory_search("synthesis", "analyst summary", n=50)
+2. Cross-check against raw sources using markdown tools where needed
+3. Identify: themes, gaps, contradictions, source ranking by relevance
+4. Flag weak or duplicate analyses
+
+If analyses are comprehensive: respond starting with "APPROVED" followed by your thematic analysis.
+If they need revision: respond starting with "FEEDBACK:" with specific requests per source.
+
+Store your critique: memory_store("synthesis", <your critique>, {"phase": "critic"})"""
+
+            critic_output = run_agent_cycle(
+                lm=self.lm,
+                system_prompt=critic_prompt,
+                user_input=f"Critique the analyst summaries for task: {task}",
+                tools=tools,
+                max_turns=self.max_turns_per_cycle,
+                verbose=self.verbose,
+            )
+            print(f"  [Critic] Done ({len(critic_output)} chars)")
+
+            if "APPROVED" in critic_output:
+                print("  [Critic] APPROVED")
+                break
+
+            # Feedback round — re-run analysts that need revision (parallel)
+            print("  [Analysts] Revising based on critic feedback...")
+
+            revision_prompt = """You are a research analyst revising your work based on critic feedback.
+
+## Your tools
+- md_get_content(url), md_analyze_structure(url), md_extract_headers(url), md_extract_paragraphs(url), md_extract_links(url), md_extract_code_blocks(url)
+- memory_search("synthesis", "critic"): Get the critic's feedback
+- memory_search("synthesis", "analyst"): See previous analyses
+- memory_store("synthesis", ..., {"phase": "analyst"}): Store revised analysis
+
+## Instructions
+1. Read the critic's feedback from memory
+2. Use markdown tools to re-examine sources where the critic found gaps
+3. Produce revised summaries addressing all feedback
+4. Store and respond with the revised analysis."""
+
+            analyst_output = run_agent_cycle(
+                lm=self.lm,
+                system_prompt=revision_prompt,
+                user_input=f"Revise the analyses for task: {task}",
+                tools=tools,
+                max_turns=self.max_turns_per_cycle,
+                verbose=self.verbose,
+            )
+            print(f"  [Analyst revision] Done ({len(analyst_output)} chars)")
+
+        # --- WRITER ---
+        print(f"\n  [Writer] Producing final answer...")
+
+        writer_prompt = """You are a research writer producing the final deliverable. Multiple analysts have each analyzed one source, and a critic has reviewed their work. Everything is in ChromaDB.
+
+## Your tools
+- memory_search("synthesis", "analyst", n=50): Get all analyst summaries
+- memory_search("synthesis", "critic"): Get critic's thematic analysis
+- memory_search("mind", "research", n=50): See exploration observations
+- md_get_source_urls(), md_get_content(url), md_extract_paragraphs(url): Inspect sources directly for quotes
+- write_answer(content): Save the final answer to answer.md
+- read_answer(): Read the current answer.md
+
+## Instructions
+1. Retrieve ALL analyst summaries and the critic's analysis from memory
+2. Optionally inspect specific sources for quotes or details
+3. Produce a comprehensive, well-structured answer:
+   - Cohesive narrative organized by themes
+   - Cite sources with URLs
+   - Include key evidence and unique perspectives from each source
+   - End with synthesis/conclusion
+   - Use markdown formatting
+4. IMPORTANT: Call write_answer(content) to save your final answer to answer.md
+
+Respond with a brief confirmation after saving."""
+
+        final_answer = run_agent_cycle(
+            lm=self.lm,
+            system_prompt=writer_prompt,
+            user_input=task,
+            tools=tools,
+            max_turns=self.max_turns_per_cycle,
+            verbose=self.verbose,
+        )
+
+        # Prefer answer.md content (complete) over LLM text response (may be truncated)
+        try:
+            with open(_answer_path, 'r') as f:
+                saved = f.read().strip()
+            if saved:
+                final_answer = saved
+        except FileNotFoundError:
+            # Writer didn't call write_answer — save its response ourselves
+            if final_answer.strip():
+                with open(_answer_path, 'w') as f:
+                    f.write(final_answer)
+
+        print(f"  [Writer] Done ({len(final_answer)} chars)")
+        print(f"  Answer saved to: {_answer_path}")
+
+        print(f"\n{'='*60}")
+        print("SYNTHESIS COMPLETE")
+        print(f"{'='*60}")
+
+        return final_answer
+
+    # ------------------------------------------------------------------
+    # Main run loop
+    # ------------------------------------------------------------------
+
+    def run(self, task: str, fresh: bool = False):
+        """Run the research agent: Phase 1 (exploration) then Phase 2 (synthesis)."""
+        if fresh:
+            self.reset()
+
+        target = self._parse_target(task)
+
         print(f"{'='*60}")
         print(f"RESEARCH AGENT")
         print(f"Task: {task}")
-        print(f"Max cycles: {self.max_cycles}")
+        print(f"Target: {target or '?'} | Max cycles: {self.max_cycles}")
+        print(f"{'='*60}")
+        print(f"\nPHASE 1: EXPLORATION")
         print(f"{'='*60}\n")
 
         for cycle in range(1, self.max_cycles + 1):
@@ -402,21 +811,31 @@ class ResearchAgent:
             except FileNotFoundError:
                 pass
 
-            if "DONE" in response:
+            # Check completion: trust the data, not the LLM's words
+            mind_count = memory_count("mind")
+            if "EXPLORATION_COMPLETE" in response or "DONE" in response or (target and mind_count >= target):
                 print(f"\n{'='*60}")
-                print(f"COMPLETED after {cycle} cycles!")
+                print(f"EXPLORATION done after {cycle} cycles ({mind_count} observations)")
                 print(f"{'='*60}")
-                return response
+                # Phase 2: Synthesis
+                return self._synthesize(task)
 
             if "EXHAUSTED" in response:
                 print(f"\n{'='*60}")
-                print(f"EXHAUSTED after {cycle} cycles")
+                print(f"EXHAUSTED after {cycle} cycles ({mind_count} observations)")
                 print(f"{'='*60}")
+                # Still synthesize whatever we have
+                if mind_count > 0:
+                    return self._synthesize(task)
                 return response
 
         print(f"\n{'='*60}")
         print(f"Reached max cycles ({self.max_cycles})")
         print(f"{'='*60}")
+        # Synthesize whatever we collected
+        mind_count = memory_count("mind")
+        if mind_count > 0:
+            return self._synthesize(task)
         return "MAX_CYCLES_REACHED"
 
 
@@ -436,6 +855,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-cycles", type=int, default=50)
     parser.add_argument("--chromadb-path", default=".chromadb")
     parser.add_argument("--verbose", action="store_true", default=True)
+    parser.add_argument("--fresh", action="store_true", help="Clear all data and start fresh")
     args = parser.parse_args()
 
     agent = ResearchAgent(
@@ -445,4 +865,4 @@ if __name__ == "__main__":
         chromadb_path=args.chromadb_path,
         verbose=args.verbose,
     )
-    agent.run(args.task)
+    agent.run(args.task, fresh=args.fresh)

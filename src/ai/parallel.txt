@@ -1,0 +1,32 @@
+PARALLEL AGENTS ARCHITECTURE
+============================
+
+YOU: "Build a login system"
+  ↓
+Root Planner reads codebase → "Too big, splitting"
+  → Spawns Subplanner A (UI) + Subplanner B (Auth)
+
+Subplanner A reads codebase → "Manageable, spawning workers"
+  → Spawns Worker 1 (buttons) + Worker 2 (text fields)
+
+Worker 1: codes button → finds color system missing
+  → Commits to Git
+  → Sends handoff to Subplanner A ⬆️
+
+Worker 2: codes text fields → also uses hardcoded colors
+  → Commits to Git
+  → Sends handoff to Subplanner A ⬆️
+
+Subplanner A reads both handoffs → "Color system needed"
+  → Spawns Worker 3 (color system)
+  → Worker 3 codes it, commits, sends handoff ⬆️
+  → Subplanner A now satisfied → sends summary handoff to Root Planner ⬆️
+
+Subplanner B: spawns Worker 4 (login API) + Worker 5 (sessions)
+  → Worker 5 discovers cookie conflict
+  → Sends handoff to Subplanner B ⬆️
+  → Subplanner B sends summary to Root Planner ⬆️
+
+Root Planner sees everything:
+  → "Cookie conflict found by auth team — spawning Subplanner C to fix it"
+  →> Loop continues... in parallel.

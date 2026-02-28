@@ -164,3 +164,61 @@ def memory_update(collection: str, id: str, text: str, metadata: dict = {}) -> s
         metadatas=[clean_meta] if clean_meta else None
     )
     return f"Updated '{id}' in '{collection}'"
+
+
+def memory_get(collection: str, id: str) -> str:
+    """Retrieve a full document from a collection by its ID.
+
+    Args:
+        collection: Name of the collection
+        id: The document ID to retrieve
+
+    Returns:
+        The full document text, or an error message if not found.
+    """
+    col = _get_collection(collection)
+    try:
+        result = col.get(ids=[id])
+        if result['documents'] and result['documents'][0]:
+            return result['documents'][0]
+        return f"No document found with id '{id}' in '{collection}'"
+    except Exception as e:
+        return f"Error retrieving '{id}' from '{collection}': {e}"
+
+
+def memory_get_all(collection: str) -> list[dict]:
+    """Retrieve all documents from a collection.
+
+    Args:
+        collection: Name of the collection
+
+    Returns:
+        List of dicts with 'id', 'document', and 'metadata' keys.
+    """
+    col = _get_collection(collection)
+    count = col.count()
+    if count == 0:
+        return []
+
+    result = col.get()
+    items = []
+    for i, doc_id in enumerate(result['ids']):
+        items.append({
+            'id': doc_id,
+            'document': result['documents'][i],
+            'metadata': result['metadatas'][i] if result['metadatas'] else {},
+        })
+    return items
+
+
+def memory_count(collection: str) -> int:
+    """Get the number of documents in a collection.
+
+    Args:
+        collection: Name of the collection
+
+    Returns:
+        Number of documents in the collection.
+    """
+    col = _get_collection(collection)
+    return col.count()
