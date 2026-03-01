@@ -46,33 +46,17 @@ def scrapling_get(
             retry_delay=retry_delay,
             impersonate=impersonate,
         )
-        content = list(Convertor._extract_content(
-            page,
-            css_selector=css_selector,
-            extraction_type=extraction_type,
-            main_content_only=main_content_only,
-        ))
+        content = list(
+            Convertor._extract_content(
+                page,
+                css_selector=css_selector,
+                extraction_type=extraction_type,
+                main_content_only=main_content_only,
+            )
+        )
         return {"status": page.status, "content": content, "url": page.url}
     except Exception as e:
         return {"status": 0, "content": [f"Error: {str(e)}"], "url": url}
-
-
-# Removed bulk and browser-based MCP tools to keep only web_fetch
-
-
- 
-
-
- 
-
-
- 
-
-
- 
-
-
-# Removed sync wrappers for deleted async tools
 
 
 @mcp.tool
@@ -85,12 +69,20 @@ def web_fetch_content(url: str):
     """
     result = scrapling_get(url, extraction_type="markdown")
     if not result["content"] or result["status"] != 200:
-        return {"status": result.get("status", 0), "error": "Failed to fetch content", "url": url}
-    return {"status": result["status"], "url": result["url"], "markdown": "".join(result["content"]) }
+        return {
+            "status": result.get("status", 0),
+            "error": "Failed to fetch content",
+            "url": url,
+        }
+    return {
+        "status": result["status"],
+        "url": result["url"],
+        "markdown": "".join(result["content"]),
+    }
 
 
 # Only expose web_fetch in the registry
 tool_functions = {"web_fetch_content": web_fetch_content}
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     mcp.run()
