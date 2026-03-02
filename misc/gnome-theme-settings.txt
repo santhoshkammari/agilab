@@ -1,0 +1,84 @@
+# GNOME Desktop Theme & Appearance Settings
+# Saved: 2026-03-03
+# Restore using: gsettings set <schema> <key> <value>  OR  dconf load <path> < file.dconf
+
+## =====================
+## THEMES
+## =====================
+GTK Theme:    catppuccin-mocha-mauve-standard+default
+Shell Theme:  catppuccin-mocha-mauve-standard+default  (user-theme extension)
+WM Theme:     Yaru  (titlebar/mutter)
+Icon Theme:   Papirus-Dark
+Cursor Theme: DMZ-White
+Color Scheme: prefer-dark
+
+## =====================
+## FONTS
+## =====================
+System Font:    SF Pro Text Semi-Bold 11
+Document Font:  SF Pro Text Semi-Bold 11
+Monospace Font: SF Pro Text Semi-Bold 14
+Titlebar Font:  SF Pro Rounded Medium 11
+Terminal Font:  Ubuntu Mono 12
+
+Font Antialiasing: grayscale
+Font Hinting:      full
+Text Scaling Factor: 0.87
+
+## =====================
+## TERMINAL COLORS (GNOME Terminal - Catppuccin Mocha)
+## =====================
+Background:  #1E1E2E
+Foreground:  #CDD6F4
+Bold Color:  #CDD6F4  (same as fg)
+Cursor BG:   #F5E0DC
+Cursor FG:   #1E1E2E
+Highlight BG: #313244
+Highlight FG: #CDD6F4
+
+Palette (16 colors):
+  #45475A  #F38BA8  #A6E3A1  #F9E2AF
+  #89B4FA  #CBA6F7  #89DCEB  #BAC2DE
+  #585B70  #F38BA8  #A6E3A1  #F9E2AF
+  #89B4FA  #CBA6F7  #89DCEB  #A6ADC8
+
+## =====================
+## WINDOW MANAGER PREFERENCES
+## =====================
+Button Layout: :minimize,maximize,close
+Titlebar Double-Click: toggle-maximize
+Focus Mode: click
+Num Workspaces: 4
+
+## =====================
+## ENABLED GNOME EXTENSIONS
+## =====================
+ding@rastersoft.com
+ubuntu-dock@ubuntu.com
+tiling-assistant@ubuntu.com
+search-light@icedman.github.com
+Vitals@CoreCoding.com
+windowgestures@extension.amarullz.com
+clipboard-indicator@tudmotu.com
+desktop-cube@schneegans.github.com
+useless-gaps@pimsnel.com
+touchpad-gesture-customization@coooolapps.com
+user-theme@gnome-shell-extensions.gcampax.github.com
+hidetopbar@mathieu.bidon.ca
+
+## =====================
+## RESTORE COMMANDS
+## =====================
+# gsettings set org.gnome.desktop.interface gtk-theme 'catppuccin-mocha-mauve-standard+default'
+# gsettings set org.gnome.desktop.interface icon-theme 'Papirus-Dark'
+# gsettings set org.gnome.desktop.interface cursor-theme 'DMZ-White'
+# gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+# gsettings set org.gnome.desktop.interface font-name 'SF Pro Text Semi-Bold 11'
+# gsettings set org.gnome.desktop.interface document-font-name 'SF Pro Text Semi-Bold 11'
+# gsettings set org.gnome.desktop.interface monospace-font-name 'SF Pro Text Semi-Bold 14'
+# gsettings set org.gnome.desktop.interface font-antialiasing 'grayscale'
+# gsettings set org.gnome.desktop.interface font-hinting 'full'
+# gsettings set org.gnome.desktop.interface text-scaling-factor 0.87
+# gsettings set org.gnome.desktop.wm.preferences titlebar-font 'SF Pro Rounded Medium 11'
+# gsettings set org.gnome.desktop.wm.preferences theme 'Yaru'
+# gsettings set org.gnome.shell.extensions.user-theme name 'catppuccin-mocha-mauve-standard+default'
