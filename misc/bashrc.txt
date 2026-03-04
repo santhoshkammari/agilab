@@ -545,3 +545,129 @@ wreport() {
 }
 alias pycharm="snap run pycharm-community"
 alias dss='source /home/ntlpt59/main/bin/activate && cd /home/ntlpt59/master/products/dss'
+
+
+# ── ccstats: Claude Code daily usage tracker ─────────────────────────────────
+# Setup: save the script below to ~/.local/bin/ccstats and chmod +x it
+# Usage: ccstats           # last 14 days
+#        ccstats 2026-02  # filter by month
+#        ccstats all      # full history
+#
+# cat > ~/.local/bin/ccstats << 'EOF'
+#!/usr/bin/env python3
+"""Claude Code daily usage stats with active time"""
+import json, sys
+from pathlib import Path
+from datetime import datetime, timedelta, date
+from collections import defaultdict
+
+STATS_FILE = Path.home() / ".claude" / "stats-cache.json"
+PROJECTS_DIR = Path.home() / ".claude" / "projects"
+GAP_THRESHOLD = timedelta(minutes=30)
+
+def compute_time():
+    day_active = defaultdict(timedelta)
+    day_sessions = defaultdict(set)
+    for fpath in PROJECTS_DIR.rglob("*.jsonl"):
+        if "subagents" in str(fpath):
+            continue
+        session_id = fpath.stem
+        timestamps = []
+        try:
+            with open(fpath) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    ts = obj.get("timestamp")
+                    if ts and isinstance(ts, str):
+                        try:
+                            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                            timestamps.append(dt)
+                        except:
+                            pass
+        except:
+            continue
+        if not timestamps:
+            continue
+        timestamps.sort()
+        for i, dt in enumerate(timestamps):
+            d = dt.date().isoformat()
+            day_sessions[d].add(session_id)
+        for i in range(1, len(timestamps)):
+            gap = timestamps[i] - timestamps[i - 1]
+            d = timestamps[i - 1].date().isoformat()
+            day_sessions[d].add(session_id)
+            if gap <= GAP_THRESHOLD:
+                day_active[d] += gap
+            else:
+                day_active[d] += timedelta(minutes=2)
+    return day_active, day_sessions
+
+def fmt_time(td):
+    total_sec = int(td.total_seconds())
+    h, rem = divmod(total_sec, 3600)
+    m = rem // 60
+    if h > 0:
+        return f"{h}h {m:02d}m"
+    return f"   {m}m"
+
+def bar(n, max_n, width=20):
+    filled = int(n / max_n * width) if max_n > 0 else 0
+    return "█" * filled + "░" * (width - filled)
+
+def main():
+    filter_arg = sys.argv[1] if len(sys.argv) > 1 else None
+    stats_by_date = {}
+    if STATS_FILE.exists():
+        data = json.loads(STATS_FILE.read_text())
+        for d in data.get("dailyActivity", []):
+            stats_by_date[d["date"]] = d
+        total_sessions = data.get("totalSessions", "?")
+        total_messages = data.get("totalMessages", "?")
+    else:
+        total_sessions = total_messages = "?"
+    print("Computing active time from sessions...", end="\r")
+    day_active, day_sessions = compute_time()
+    print(" " * 50, end="\r")
+    all_dates = sorted(set(list(stats_by_date.keys()) + list(day_active.keys())))
+    if filter_arg == "all" or filter_arg is None:
+        if filter_arg is None:
+            cutoff = (date.today() - timedelta(days=14)).isoformat()
+            selected = [d for d in all_dates if d >= cutoff] or all_dates[-14:]
+        else:
+            selected = all_dates
+    else:
+        selected = [d for d in all_dates if d.startswith(filter_arg)]
+    if not selected:
+        print(f"No data for '{filter_arg}'")
+        sys.exit(0)
+    max_msgs = max((stats_by_date.get(d, {}).get("messageCount", 0) for d in selected), default=1)
+    print(f"\n{'Date':<12} {'Time':>8}  {'Msgs':>5} {'Sess':>5} {'Tools':>6}  Activity")
+    print("─" * 70)
+    total_time = timedelta()
+    total_msgs = total_sess = total_tools = 0
+    for d in selected:
+        s = stats_by_date.get(d, {})
+        msgs = s.get("messageCount", 0)
+        sess = s.get("sessionCount", len(day_sessions.get(d, [])))
+        tools = s.get("toolCallCount", 0)
+        td = day_active.get(d, timedelta())
+        b = bar(msgs, max_msgs)
+        print(f"{d:<12} {fmt_time(td):>8}  {msgs:>5} {sess:>5} {tools:>6}  {b}")
+        total_time += td
+        total_msgs += msgs
+        total_sess += sess
+        total_tools += tools
+    print("─" * 70)
+    print(f"{'TOTAL':<12} {fmt_time(total_time):>8}  {total_msgs:>5} {total_sess:>5} {total_tools:>6}")
+    print(f"\nAll-time: {total_sessions} sessions, {total_messages} messages")
+    print("\nUsage: ccstats           # last 14 days")
+    print("       ccstats 2026-02  # filter by month")
+    print("       ccstats all      # full history")
+
+if __name__ == "__main__":
+    main()
+# EOF
+# chmod +x ~/.local/bin/ccstats
