@@ -22,3 +22,14 @@ MANIFEST
 
 exp/kg-traverse-exp/mds
 exp/kg-traverse-exp/pdfs
+
+# ChromaDB
+.chromadb/
+**/.chromadb/
+**/.chromadb_test/
+
+# Misc/temp
+a2.md
+src/ai/ai_backup.py
+src/ai/agents/sample_test/
+src/agents/dra/

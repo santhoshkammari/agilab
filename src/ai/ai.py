@@ -1,10 +1,9 @@
 """
-Minimal dspy-style agent API with sync/async support.
+Minimal dspy-style agent API — purely async.
 Simple, Pythonic, no fancy wrappers.
 """
 import json
 import asyncio
-import inspect
 from typing import Callable, Optional, Union
 from dataclasses import dataclass
 from contextvars import ContextVar
@@ -45,9 +44,10 @@ class Prediction:
         print(result.answer)  # Access by field name
         print(str(result))     # Or convert to string
     """
-    def __init__(self, text: str, signature_obj=None):
+    def __init__(self, text: str, signature_obj=None, raw: str = None):
         self._text = text
         self._signature_obj = signature_obj
+        self.raw = raw if raw is not None else text
 
         # If we have a signature, parse output fields from text
         if signature_obj:
@@ -78,6 +78,14 @@ class Prediction:
                     value = match.group(1).strip()
                     # Remove trailing [[ ## completed ## ]] if present
                     value = re.sub(r'\s*\[\[\s*##\s*completed\s*##\s*\]\]\s*$', '', value)
+                    # Parse typed annotations (e.g. List[Instruction]) using DSPy's parse_value
+                    annotation = self._signature_obj.output_fields[field_name].annotation
+                    if annotation is not str and annotation is not None:
+                        try:
+                            from dspy.adapters.utils import parse_value
+                            value = parse_value(value, annotation)
+                        except Exception:
+                            pass
                     output_fields[field_name] = value
                     setattr(self, field_name, value)
                 else:
@@ -223,7 +231,7 @@ def configure(lm: LM):
 
 
 class Predict:
-    """Predict orchestrator with sync/async support (dspy-style).
+    """Predict orchestrator — purely async (dspy-style).
 
     Flexible predictor supporting multiple modes:
 
@@ -320,6 +328,8 @@ class Predict:
                 output = await tool_fn(**args)
             else:
                 output = tool_fn(**args)
+                if asyncio.iscoroutine(output):
+                    output = await output
 
             return {
                 "tool_call_id": tool_id,
@@ -373,11 +383,21 @@ class Predict:
         if tool_buffer:
             msg["tool_calls"] = list(tool_buffer.values())
             for tool_id, tc in tool_buffer.items():
+                args_str = tc['function']['arguments']
+                # Repair incomplete JSON from streaming truncation
+                try:
+                    json.loads(args_str)
+                except json.JSONDecodeError:
+                    # Count unclosed braces and close them
+                    open_braces = args_str.count('{') - args_str.count('}')
+                    if open_braces > 0:
+                        args_str += '}' * open_braces
+                    tc['function']['arguments'] = args_str
                 if self.verbose:
                     import sys
-                    print(f"[tool] {tc['function']['name']}({tc['function']['arguments']})", file=sys.stderr, flush=True)
+                    print(f"[tool] {tc['function']['name']}({args_str})", file=sys.stderr, flush=True)
                 tool_futures[tool_id] = asyncio.create_task(
-                    self._execute_tool(tc['function']['name'], tc['function']['arguments'], tool_id)
+                    self._execute_tool(tc['function']['name'], args_str, tool_id)
                 )
 
         # Clean up empty fields
@@ -545,8 +565,13 @@ class Predict:
             import sys
             print(f"[done] iterations={iterations} tools={tool_calls_count} response={response[:100]!r}", file=sys.stderr, flush=True)
 
+        # Strip thinking block if present (reasoning models)
+        import re as _re
+        raw_response = response
+        response = _re.sub(r"<think>.*?</think>", "", response, flags=_re.DOTALL).strip()
+
         # Create Prediction object (DSPy-style)
-        prediction = Prediction(response, self._signature_obj)
+        prediction = Prediction(response, self._signature_obj, raw=raw_response)
 
         # Apply post-processing if provided
         if self.postprocess:
@@ -575,39 +600,20 @@ class Predict:
 
         return prediction
 
-    def __call__(self, input=None, system: str = "", history: Optional[list[dict]] = None, return_result: bool = False, **kwargs):
-        """Call predict (sync or async based on context).
+    async def __call__(self, input=None, system: str = "", history: Optional[list[dict]] = None, return_result: bool = False, **kwargs):
+        """Call predict (always async).
 
         Args:
             input: Either a string prompt or list of message dicts (for raw mode)
             system: System prompt (overrides default)
-            history: Conversation history [{"role": "user", "content": "..."}, ...]
-            return_result: If True, return AgentResult object with metadata, else return string
-            **kwargs: Signature fields (query="...", context="...") or LLM parameters (temperature, seed, etc.)
+            history: Conversation history [{"role": "user", "content": "..."}]
+            return_result: If True, return AgentResult object with metadata
+            **kwargs: Signature fields or LLM parameters
 
         Returns:
-            str or AgentResult (sync) or coroutine (async)
-
-        Examples:
-            # Signature mode
-            pred = Predict("query -> answer")
-            result = pred(query="What is 2+2?")
-
-            # With history
-            result = pred(query="What's my name?", history=[{"role": "user", "content": "I'm Alice"}])
-
-            # Raw system mode
-            pred = Predict(system="You are a classifier")
-            result = pred(input="Classify this text")
+            Prediction or AgentResult
         """
-        # Check if we're in async context
-        try:
-            asyncio.get_running_loop()
-            # Already in async context - return coroutine
-            return self._arun(input, system, history, return_result, **kwargs)
-        except RuntimeError:
-            # Not in async context - run sync
-            return asyncio.run(self._arun(input, system, history, return_result, **kwargs))
+        return await self._arun(input, system, history, return_result, **kwargs)
 
     @property
     def history(self) -> list[dict]:
@@ -625,16 +631,17 @@ class Module:
     Enables composable multi-step pipelines with automatic history tracking.
 
     Example:
+    Example:
         class RAGPipeline(Module):
             def __init__(self):
                 super().__init__()
                 self.classify = Predict("query -> classification")
                 self.answer = Predict("context, query -> answer")
 
-            def forward(self, query):
-                classification = self.classify(query=query)
+            async def forward(self, query):
+                classification = await self.classify(query=query)
                 context = self.retrieve(classification.text)
-                answer = self.answer(context=context, query=query)
+                answer = await self.answer(context=context, query=query)
                 return answer.text
     """
 
@@ -642,12 +649,12 @@ class Module:
         self._compiled = False
         self.call_history = []  # Track all LLM calls
 
-    def __call__(self, *args, **kwargs):
+    async def __call__(self, *args, **kwargs):
         """Routes to forward() with automatic history tracking."""
-        result = self.forward(*args, **kwargs)
+        result = await self.forward(*args, **kwargs)
         return result
 
-    def forward(self, **kwargs):
+    async def forward(self, **kwargs):
         """Override this in subclasses to define pipeline logic."""
         raise NotImplementedError("Subclasses must implement forward()")
 
@@ -752,16 +759,15 @@ class Eval:
         """Create unique key for example."""
         return json.dumps(example.get('input', example), sort_keys=True)
 
-    def __call__(self, predict: Predict) -> dict:
+    async def __call__(self, predict: Predict) -> dict:
         """Evaluate predict on dataset with batching and caching."""
-        from concurrent.futures import ThreadPoolExecutor
         from tqdm import tqdm
 
         # Load cached results
         cached_results = self._load_cached_results()
         cached_keys = {self._create_cache_key(r['example']): r for r in cached_results}
 
-        def eval_one(example):
+        async def eval_one(example):
             # Check cache
             cache_key = self._create_cache_key(example)
             if self.save_path and cache_key in cached_keys:
@@ -769,10 +775,11 @@ class Eval:
 
             try:
                 predict.clear_history()
-                prediction = predict(example['input'])
+                prediction = await predict(example['input'])
                 score = self.metric(example, prediction)
                 return {'example': example, 'prediction': prediction, 'score': float(score)}
             except Exception as e:
+                return {'example': example, 'prediction': None, 'score': 0.0, 'error': str(e)}
                 return {'example': example, 'prediction': None, 'score': 0.0, 'error': str(e)}
 
         # Filter out cached examples
@@ -784,7 +791,6 @@ class Eval:
         all_results = list(cached_results)
 
         if not to_eval:
-            # All cached
             scores = [r['score'] for r in all_results]
             return {
                 'score': round(sum(scores) / len(scores) * 100, 2) if scores else 0.0,
@@ -800,12 +806,9 @@ class Eval:
             batch = to_eval[batch_start:batch_start + self.batch_size]
 
             if self.parallel == 1:
-                # Sequential
-                batch_results = [eval_one(ex) for ex in batch]
+                batch_results = [await eval_one(ex) for ex in batch]
             else:
-                # Parallel
-                with ThreadPoolExecutor(max_workers=self.parallel) as executor:
-                    batch_results = list(executor.map(eval_one, batch))
+                batch_results = await asyncio.gather(*[eval_one(ex) for ex in batch[:self.parallel]])
 
             all_results.extend(batch_results)
 
@@ -838,129 +841,109 @@ else:
     ]
 
 
+
 if __name__ == "__main__":
     """Usage examples showcasing signature, system prompts, history, and Module pipelines."""
+    import asyncio as _asyncio
 
-    # Configure LM once
-    print("=== Configuring LM ===")
-    lm = LM(
-        model="Qwen/Qwen3-4B-Instruct-2507",
-        api_base="http://192.168.170.76:8000",
-        temperature=0.1
-    )
-    configure(lm)  # Set global default
+    async def _main():
+        # Configure LM once
+        print("=== Configuring LM ===")
+        lm = LM(
+            model="",
+            api_base="http://192.168.170.76:8000",
+            temperature=0.1
+        )
+        configure(lm)
 
-    # Example 1: Simple Predict with signature
-    print("\n=== Example 1: Simple Predict with signature ===")
-    pred = Predict("query -> answer")
-    result = pred(query="What is 2+2?")
-    print(f"Result: {result}")
+        # Example 1: Simple Predict with signature
+        print("\n=== Example 1: Simple Predict with signature ===")
+        pred = Predict("query -> answer")
+        result = await pred(query="What is 2+2?")
+        print(f"Result: {result}")
 
-    # Example 2: Signature + System Prompt
-    print("\n=== Example 2: Signature + System Prompt ===")
-    classifier = Predict(
-        "query -> classification",
-        system="You are an expert query classifier. Return only: SQL or VECTOR"
-    )
-    result = classifier(query="Show me sales data from last month")
-    print(f"Classification: {result}")
+        # Example 2: Signature + System Prompt
+        print("\n=== Example 2: Signature + System Prompt ===")
+        classifier = Predict(
+            "query -> classification",
+            system="You are an expert query classifier. Return only: SQL or VECTOR"
+        )
+        result = await classifier(query="Show me sales data from last month")
+        print(f"Classification: {result}")
 
-    # Example 3: With Conversation History
-    print("\n=== Example 3: With Conversation History ===")
-    history = [
-        {"role": "user", "content": "My name is Alice"},
-        {"role": "assistant", "content": "Hello Alice! Nice to meet you."}
-    ]
-    pred = Predict("query -> answer")
-    result = pred(query="What's my name?", history=history)
-    print(f"Result: {result}")
+        # Example 3: With Conversation History
+        print("\n=== Example 3: With Conversation History ===")
+        history = [
+            {"role": "user", "content": "My name is Alice"},
+            {"role": "assistant", "content": "Hello Alice! Nice to meet you."}
+        ]
+        pred = Predict("query -> answer")
+        result = await pred(query="What's my name?", history=history)
+        print(f"Result: {result}")
 
-    # Example 4: With Post-processing
-    print("\n=== Example 4: With Post-processing ===")
-    def to_uppercase(pred):
-        return pred.text.upper()
+        # Example 4: With Post-processing
+        print("\n=== Example 4: With Post-processing ===")
+        def to_uppercase(pred):
+            return pred.text.upper()
 
-    pred_upper = Predict(
-        "query -> answer",
-        postprocess=to_uppercase
-    )
-    result = pred_upper(query="Say hello")
-    print(f"Result: {result}")
+        pred_upper = Predict(
+            "query -> answer",
+            postprocess=to_uppercase
+        )
+        result = await pred_upper(query="Say hello")
+        print(f"Result: {result}")
 
-    # Example 5: Raw System Prompt (no signature)
-    print("\n=== Example 5: Raw System Prompt ===")
-    raw_pred = Predict(system="You are a helpful assistant. Be concise.")
-    result = raw_pred(input="What is Python?")
-    print(f"Result: {result[:100]}...")
+        # Example 5: Raw System Prompt (no signature)
+        print("\n=== Example 5: Raw System Prompt ===")
+        raw_pred = Predict(system="You are a helpful assistant. Be concise.")
+        result = await raw_pred(input="What is Python?")
+        print(f"Result: {result.text[:100]}...")
 
-    # Example 6: Module-based RAG Pipeline
-    print("\n=== Example 6: Module-based RAG Pipeline ===")
+        # Example 6: Module-based RAG Pipeline
+        print("\n=== Example 6: Module-based RAG Pipeline ===")
 
-    class SimpleRAG(Module):
-        def __init__(self):
-            super().__init__()
+        class SimpleRAG(Module):
+            def __init__(self):
+                super().__init__()
+                self.classify = Predict(
+                    "query -> classification",
+                    system="Classify as SQL or VECTOR"
+                )
+                self.refine = Predict(
+                    "query, classification -> refined_query",
+                    system="Refine the query for better retrieval"
+                )
+                self.answer = Predict(
+                    "context, query -> answer",
+                    system="Answer based on the provided context"
+                )
 
-            # Define pipeline steps
-            self.classify = Predict(
-                "query -> classification",
-                system="Classify as SQL or VECTOR"
-            )
+            async def forward(self, query):
+                c = await self.classify(query=query)
+                c_text = c.text if hasattr(c, 'text') else c
+                print(f"[Classify] {c_text}")
 
-            self.refine = Predict(
-                "query, classification -> refined_query",
-                system="Refine the query for better retrieval"
-            )
+                r = await self.refine(query=query, classification=c_text)
+                r_text = r.text if hasattr(r, 'text') else r
+                print(f"[Refine] {r_text}")
 
-            self.answer = Predict(
-                "context, query -> answer",
-                system="Answer based on the provided context"
-            )
+                if "sql" in c_text.lower():
+                    context = "Sales data: Q4 2023 revenue was $1.2M"
+                else:
+                    context = "Customer reviews are generally positive"
 
-        def forward(self, query):
-            # Step 1: Classify
-            c = self.classify(query=query)
-            print(f"[Classify] {c}")
+                ans = await self.answer(context=context, query=r_text)
+                ans_text = ans.text if hasattr(ans, 'text') else ans
+                print(f"[Answer] {ans_text}")
+                return ans_text
 
-            # Step 2: Refine
-            r = self.refine(query=query, classification=c)
-            print(f"[Refine] {r}")
+        pipeline = SimpleRAG()
+        answer = await pipeline(query="Show me sales from Q4")
+        print(f"\nFinal Answer: {answer}")
 
-            # Step 3: Mock retrieval (not LLM)
-            if "sql" in c.lower():
-                context = "Sales data: Q4 2023 revenue was $1.2M"
-            else:
-                context = "Customer reviews are generally positive"
+        print("\n=== Pipeline History ===")
+        pipeline.inspect_history("classify")
 
-            # Step 4: Generate answer
-            ans = self.answer(context=context, query=r)
-            print(f"[Answer] {ans}")
+        print("\n=== Done ===")
 
-            return ans
-
-    pipeline = SimpleRAG()
-    answer = pipeline(query="Show me sales from Q4")
-    print(f"\nFinal Answer: {answer}")
-
-    # Inspect pipeline history
-    print("\n=== Pipeline History ===")
-    pipeline.inspect_history("classify")
-
-    # Example 7: Eval
-    print("\n=== Example 7: Eval ===")
-    def exact_match(example, prediction):
-        return "4" in prediction.strip()
-
-    dataset = [
-        {'input': 'What is 2+2?', 'output': '4'},
-    ]
-
-    evaluator = Eval(
-        metric=exact_match,
-        dataset=dataset,
-        save_path="/tmp/eval_simple.json"
-    )
-    pred_eval = Predict("query -> answer")
-    result = evaluator(pred_eval)
-    print(f"Score: {result['score']}% ({result['correct']}/{result['total']})")
-
-    print("\n✅ All examples completed!")
+    _asyncio.run(_main())
