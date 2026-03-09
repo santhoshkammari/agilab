@@ -1,3 +1,16 @@
+"""
+fetch.py - Web fetching MCP tool using Scrapling.
+
+Exposes a single MCP tool `web_fetch_content` that fetches a URL and returns
+its content as Markdown. Uses Scrapling's browser-impersonation GET fetcher
+with configurable retries, timeout, and CSS-selector-based extraction.
+
+Usage (as MCP server):
+    python fetch.py
+
+Exposed tool:
+    web_fetch_content(url) -> {"status", "url", "markdown"} | {"status", "error", "url"}
+"""
 import json
 import asyncio
 from typing import List, Dict, Optional, Tuple
