@@ -13,7 +13,9 @@ import urllib.parse
 from fastmcp import FastMCP
 
 # Configure detailed logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -35,7 +37,9 @@ class PlaywrightBrowser:
 
         if self._initialized and self.page is not None:
             try:
-                logger.debug(f"Browser already initialized, total time: {time.time() - start_time:.3f}s")
+                logger.debug(
+                    f"Browser already initialized, total time: {time.time() - start_time:.3f}s"
+                )
                 return
             except:
                 # Page/browser is closed, reinitialize
@@ -53,23 +57,31 @@ class PlaywrightBrowser:
         browser_start = time.time()
         self.browser = await self.playwright.firefox.launch(
             headless=self.headless,
-            args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled']
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+            ],
         )
         logger.debug(f"Browser launch took: {time.time() - browser_start:.3f}s")
 
         context_start = time.time()
         self.context = await self.browser.new_context(
             viewport={"width": 1280, "height": 800},
-            user_agent="Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0"
+            user_agent="Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0",
         )
         logger.debug(f"Context creation took: {time.time() - context_start:.3f}s")
 
         page_start = time.time()
         self.page = await self.context.new_page()
-        logger.debug(f"Page creation took: {type(self.page)}{time.time() - page_start:.3f}s")
+        logger.debug(
+            f"Page creation took: {type(self.page)}{time.time() - page_start:.3f}s"
+        )
 
         self._initialized = True
-        logger.debug(f"TOTAL browser initialization took: {time.time() - start_time:.3f}s")
+        logger.debug(
+            f"TOTAL browser initialization took: {time.time() - start_time:.3f}s"
+        )
 
     async def navigate_to(self, url: str, wait_until: str = "domcontentloaded"):
         """Navigate to a URL with configurable wait_until parameter"""
@@ -90,18 +102,25 @@ class PlaywrightBrowser:
 
                     goto_start = time.time()
                     await self.page.goto(url, wait_until=wait_until, timeout=5000)
-                    logger.debug(f"Page.goto with wait_until='{wait_until}' took: {time.time() - goto_start:.3f}s")
-                    logger.debug(f"Navigation attempt {attempt + 1} successful in: {time.time() - attempt_start:.3f}s")
+                    logger.debug(
+                        f"Page.goto with wait_until='{wait_until}' took: {time.time() - goto_start:.3f}s"
+                    )
+                    logger.debug(
+                        f"Navigation attempt {attempt + 1} successful in: {time.time() - attempt_start:.3f}s"
+                    )
                     break
                 except Exception as e:
                     logger.error(
-                        f"Navigation attempt {attempt + 1} failed after {time.time() - attempt_start:.3f}s: {str(e)}")
+                        f"Navigation attempt {attempt + 1} failed after {time.time() - attempt_start:.3f}s: {str(e)}"
+                    )
                     if attempt == max_retries - 1:
                         raise e
                     logger.debug(f"Retrying navigation in 2 seconds...")
                     await asyncio.sleep(2)
         except Exception as e:
-            logger.error(f"TOTAL navigation failed after {time.time() - nav_start:.3f}s: {str(e)}")
+            logger.error(
+                f"TOTAL navigation failed after {time.time() - nav_start:.3f}s: {str(e)}"
+            )
             raise e
 
         logger.debug(f"TOTAL navigation to {url} took: {time.time() - nav_start:.3f}s")
@@ -113,7 +132,8 @@ class PlaywrightBrowser:
             logger.debug("Getting page HTML content...")
             content = await self.page.content()
             logger.debug(
-                f"Getting page content took: {time.time() - content_start:.3f}s (content length: {len(content)} chars)")
+                f"Getting page content took: {time.time() - content_start:.3f}s (content length: {len(content)} chars)"
+            )
             return content
         except Exception as e:
             logger.error(f"Error getting page content: {str(e)}")
@@ -136,7 +156,9 @@ class PlaywrightBrowser:
             if self.context:
                 context_close_start = time.time()
                 await self.context.close()
-                logger.debug(f"Context close took: {time.time() - context_close_start:.3f}s")
+                logger.debug(
+                    f"Context close took: {time.time() - context_close_start:.3f}s"
+                )
         except Exception as e:
             logger.warning(f"Context close error: {str(e)}")
 
@@ -144,7 +166,9 @@ class PlaywrightBrowser:
             if self.browser:
                 browser_close_start = time.time()
                 await self.browser.close()
-                logger.debug(f"Browser close took: {time.time() - browser_close_start:.3f}s")
+                logger.debug(
+                    f"Browser close took: {time.time() - browser_close_start:.3f}s"
+                )
         except Exception as e:
             logger.warning(f"Browser close error: {str(e)}")
 
@@ -152,7 +176,9 @@ class PlaywrightBrowser:
             if self.playwright:
                 playwright_stop_start = time.time()
                 await self.playwright.stop()
-                logger.debug(f"Playwright stop took: {time.time() - playwright_stop_start:.3f}s")
+                logger.debug(
+                    f"Playwright stop took: {time.time() - playwright_stop_start:.3f}s"
+                )
         except Exception as e:
             logger.warning(f"Playwright stop error: {str(e)}")
 
@@ -172,18 +198,24 @@ class WebSearchTool:
         """Initialize the search agent"""
         self.browser = browser
 
-    async def web_search(self, query: str, search_provider: str = 'bing', max_results: int = 10) -> str:
+    async def web_search(
+        self, query: str, search_provider: str = "bing", max_results: int = 10
+    ) -> str:
         """Perform a web search and return results"""
         search_start = time.time()
-        logger.debug(f"Starting web search for query: '{query}' (num_results: {max_results})")
+        logger.debug(
+            f"Starting web search for query: '{query}' (num_results: {max_results})"
+        )
 
         try:
             encoded_query = urllib.parse.quote(query)
-            search_url = f'https://www.{search_provider}.com/search?q={encoded_query}'
+            search_url = f"https://www.{search_provider}.com/search?q={encoded_query}"
 
             navigation_start = time.time()
             await self.browser.navigate_to(search_url)
-            logger.debug(f"Navigation to search page took: {time.time() - navigation_start:.3f}s")
+            logger.debug(
+                f"Navigation to search page took: {time.time() - navigation_start:.3f}s"
+            )
             time.sleep(4)  # Wait for dynamic content to load
 
             # Get the HTML content
@@ -193,73 +225,124 @@ class WebSearchTool:
 
             # Extract search results
             extraction_start = time.time()
-            if search_provider == 'bing':
+            if search_provider == "bing":
                 logger.debug("Extracting Bing results...")
                 search_results = self.get_result_from_bing_html(html, max_results)
+            elif search_provider == "duckduckgo":
+                logger.debug("Extracting DuckDuckGo results...")
+                search_results = self.get_result_from_duckduckgo_html(html, max_results)
             else:
                 logger.warning(f"Unknown search provider: {search_provider}")
                 search_results = []
 
-            logger.debug(f"Result extraction took: {time.time() - extraction_start:.3f}s")
+            logger.debug(
+                f"Result extraction took: {time.time() - extraction_start:.3f}s"
+            )
             logger.debug(f"Found {len(search_results)} results")
 
             return search_results
 
         except Exception as e:
-            logger.error(f"Search error after {time.time() - search_start:.3f}s: {str(e)}")
+            logger.error(
+                f"Search error after {time.time() - search_start:.3f}s: {str(e)}"
+            )
             return []
-        
+
     @staticmethod
     def decode_bing_url(bing_url):
         """Decode Bing's wrapped URL to get the real URL"""
         try:
-            if '/ck/a?' in bing_url:
+            if "/ck/a?" in bing_url:
                 # Extract the 'u' parameter
                 parsed = urllib.parse.urlparse(bing_url)
                 query_params = urllib.parse.parse_qs(parsed.query)
-                if 'u' in query_params:
-                    encoded_url = query_params['u'][0]
+                if "u" in query_params:
+                    encoded_url = query_params["u"][0]
                     # Remove the prefix 'a1' and decode base64
-                    if encoded_url.startswith('a1'):
+                    if encoded_url.startswith("a1"):
                         encoded_url = encoded_url[2:]
                     try:
-                        decoded_bytes = base64.b64decode(encoded_url + '==')  # Add padding
-                        return decoded_bytes.decode('utf-8')
+                        decoded_bytes = base64.b64decode(
+                            encoded_url + "=="
+                        )  # Add padding
+                        return decoded_bytes.decode("utf-8")
                     except Exception:
                         pass
             return bing_url
         except Exception:
             return bing_url
 
-
     @staticmethod
-    def get_result_from_bing_html(html: str, max_results: int = 10) -> List[Dict[str, str]]:
+    def get_result_from_bing_html(
+        html: str, max_results: int = 10
+    ) -> List[Dict[str, str]]:
         """Extract search results from Bing HTML content"""
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         results = []
-        result_elements = soup.find_all('li', class_='b_algo')
+        result_elements = soup.find_all("li", class_="b_algo")
 
         for result_element in result_elements[:max_results]:
-            title_header = result_element.find('h2')
+            title_header = result_element.find("h2")
             if title_header:
-                title_link = title_header.find('a')
-                if title_link and title_link.get('href'):
-                    url = WebSearchTool.decode_bing_url(title_link['href'])
+                title_link = title_header.find("a")
+                if title_link and title_link.get("href"):
+                    url = WebSearchTool.decode_bing_url(title_link["href"])
                     title = title_link.get_text(strip=True)
 
                     description = ""
-                    caption_div = result_element.find('div', class_='b_caption')
+                    caption_div = result_element.find("div", class_="b_caption")
                     if caption_div:
-                        p_tag = caption_div.find('p')
+                        p_tag = caption_div.find("p")
                         if p_tag:
                             description = p_tag.get_text(strip=True)
 
-                    results.append({
-                        "url": url,
-                        "title": title,
-                        "description": description
-                    })
+                    results.append(
+                        {"url": url, "title": title, "description": description}
+                    )
+            return results
+
+    @staticmethod
+    def get_result_from_duckduckgo_html(
+        html: str, max_results: int = 10
+    ) -> List[Dict[str, str]]:
+        """Extract search results from DuckDuckGo HTML content"""
+        soup = BeautifulSoup(html, "html.parser")
+        results = []
+
+        result_elements = soup.find_all("div", class_="result__body")
+
+        for result_element in result_elements[:max_results]:
+            title_link = result_element.find("a", class_="result__a")
+            if title_link and title_link.get("href"):
+                url = title_link["href"]
+                title = title_link.get_text(strip=True)
+
+                description = ""
+                desc_element = result_element.find("a", class_="result__snippet")
+                if desc_element:
+                    description = desc_element.get_text(strip=True)
+
+                results.append({"url": url, "title": title, "description": description})
+
+        if not results:
+            legacy_results = soup.find_all("div", class_="result")
+            for result_element in legacy_results[:max_results]:
+                title_header = result_element.find("a", class_="result__a")
+                if title_header and title_header.get("href"):
+                    url = title_header["href"]
+                    title = title_header.get_text(strip=True)
+
+                    description = ""
+                    desc_div = result_element.find("div", class_="result__snippet")
+                    if desc_div:
+                        description = desc_div.get_text(strip=True)
+
+                    results.append(
+                        {"url": url, "title": title, "description": description}
+                    )
+
         return results
+
 
 # Global browser instance for reuse
 _browser_instance = None
@@ -280,7 +363,7 @@ def search_web(query: str, max_results: int = 5) -> str:
     async def _search():
         browser = await _get_browser()
         search_tool = WebSearchTool(browser)
-        return await search_tool.web_search(query, 'bing', max_results)
+        return await search_tool.web_search(query, "bing", max_results)
 
     return asyncio.run(_search())
 
@@ -297,21 +380,22 @@ async def async_web_search(query: str, max_results: int = 5):
     """
     browser = await _get_browser()
     search_tool = WebSearchTool(browser)
-    return await search_tool.web_search(query, 'bing', max_results)
+    return await search_tool.web_search(query, "bing", max_results)
 
 
 # Create FastMCP server
 mcp = FastMCP("Web Search Server")
+
 
 @mcp.tool
 async def web_search(query: str, max_results: int = 5) -> dict:
     """Perform web search and return results"""
     try:
         results = await async_web_search(query, max_results)
-        result ={"query": query, "results": results}
+        result = {"query": query, "results": results}
     except Exception as e:
-        result= {"error": str(e)}
-        
+        result = {"error": str(e)}
+
     return result
 
 
@@ -319,5 +403,5 @@ tool_functions = {
     "async_web_search": async_web_search,
 }
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     mcp.run()
