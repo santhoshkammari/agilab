@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 import urllib.parse
 from fastmcp import FastMCP
+from duckduckgo_search import DDGS
 
 # Configure detailed logging
 logging.basicConfig(
@@ -208,6 +209,20 @@ class WebSearchTool:
         )
 
         try:
+            if search_provider == "duckduckgo":
+                logger.debug("Using duckduckgo_search package for DuckDuckGo...")
+                with DDGS() as ddgs:
+                    results = []
+                    for r in ddgs.text(query, max_results=max_results):
+                        results.append(
+                            {
+                                "url": r.get("href", ""),
+                                "title": r.get("title", ""),
+                                "description": r.get("body", ""),
+                            }
+                        )
+                    return results
+
             encoded_query = urllib.parse.quote(query)
             search_url = f"https://www.{search_provider}.com/search?q={encoded_query}"
 
