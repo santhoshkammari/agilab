@@ -9,15 +9,15 @@ mcp = FastMCP("Edit Server")
 
 def _read(path: str):
     if not os.path.exists(path):
-        raise FileNotFoundError(f"File not found: '{path}'")
+        return None, f"File not found: '{path}'"
     if not os.path.isfile(path):
-        raise ValueError(f"Not a file: '{path}'")
-    with open(path, 'r', encoding='utf-8') as f:
-        return f.readlines()
+        return None, f"Not a file: '{path}'"
+    with open(path, "r", encoding="utf-8") as f:
+        return f.readlines(), None
 
 
 def _write(path: str, lines: list):
-    with open(path, 'w', encoding='utf-8') as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.writelines(lines)
 
 
@@ -38,7 +38,9 @@ def edit(path: str, s: int, e: int, new: str = "") -> str:
         Insert before line 5: edit("app.py", 5, 4, "new line here")
     """
     try:
-        lines = _read(path)
+        lines, err = _read(path)
+        if err:
+            return f"Error: {err}"
         n = len(lines)
         if s < 1:
             return "Error: s must be >= 1"
@@ -51,8 +53,8 @@ def edit(path: str, s: int, e: int, new: str = "") -> str:
         new_lines = []
         if new:
             new_lines = new.splitlines(keepends=True)
-            if not new_lines[-1].endswith('\n'):
-                new_lines[-1] += '\n'
+            if not new_lines[-1].endswith("\n"):
+                new_lines[-1] += "\n"
 
         result = lines[:si] + new_lines + lines[ei:]
         _write(path, result)
@@ -79,7 +81,9 @@ def yank(path: str, s: int, e: int, mode: Literal["copy", "cut"] = "copy") -> st
         Cut lines 5-10:   yank("app.py", 5, 10, "cut")
     """
     try:
-        lines = _read(path)
+        lines, err = _read(path)
+        if err:
+            return f"Error: {err}"
         n = len(lines)
         if s < 1 or e < s or s > n:
             return f"Error: Invalid range {s}-{e} (file has {n} lines)"
@@ -87,14 +91,16 @@ def yank(path: str, s: int, e: int, mode: Literal["copy", "cut"] = "copy") -> st
         si, ei = s - 1, min(e, n)
         yanked = lines[si:ei]
 
-        with open(CLIPBOARD, 'w', encoding='utf-8') as f:
+        with open(CLIPBOARD, "w", encoding="utf-8") as f:
             f.writelines(yanked)
 
         if mode == "cut":
             _write(path, lines[:si] + lines[ei:])
             return f"Cut {len(yanked)} line(s) from '{path}' lines {s}-{e} → clipboard"
         else:
-            return f"Copied {len(yanked)} line(s) from '{path}' lines {s}-{e} → clipboard"
+            return (
+                f"Copied {len(yanked)} line(s) from '{path}' lines {s}-{e} → clipboard"
+            )
     except Exception as ex:
         return f"Error: {ex}"
 
@@ -119,20 +125,22 @@ def put(path: str, at: int, mode: Literal["insert", "replace"] = "insert") -> st
         if not os.path.exists(CLIPBOARD):
             return "Error: Clipboard is empty. Use yank() first."
 
-        with open(CLIPBOARD, 'r', encoding='utf-8') as f:
+        with open(CLIPBOARD, "r", encoding="utf-8") as f:
             clip = f.readlines()
 
         if not clip:
             return "Error: Clipboard is empty."
 
-        lines = _read(path)
+        lines, err = _read(path)
+        if err:
+            return f"Error: {err}"
         n = len(lines)
         at_idx = max(0, min(at - 1, n))
 
         if mode == "insert":
             result = lines[:at_idx] + clip + lines[at_idx:]
         else:  # replace
-            result = lines[:at_idx] + clip + lines[at_idx + len(clip):]
+            result = lines[:at_idx] + clip + lines[at_idx + len(clip) :]
 
         _write(path, result)
         return f"Pasted {len(clip)} line(s) into '{path}' at line {at} ({mode})"
