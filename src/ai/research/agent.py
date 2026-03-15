@@ -18,7 +18,7 @@ NO_THINK = True  # Append /no_think to system prompt (Qwen3: skip <think> block,
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'mcp_tools'))
 
-from ai import LM, configure
+from ai import LM
 from research.memory import (
     init as init_memory, _get_client,
     memory_store, memory_search, memory_exists,
@@ -352,10 +352,10 @@ def run_agent_cycle(
     """
     from openai import OpenAI
 
-    client = OpenAI(api_key=lm.api_key or "EMPTY", base_url=f"{lm.api_base}/v1")
+    client = OpenAI(api_key=lm.client.api_key or "EMPTY", base_url=str(lm.client.base_url))
 
     # Get model name from server if not set
-    model = lm.model or client.models.list().data[0].id
+    model = lm.model
 
     tool_map = {fn.__name__: fn for fn in tools}
     tool_schemas = _build_tool_schemas(tools)
@@ -374,7 +374,7 @@ def run_agent_cycle(
             model=model,
             messages=messages,
             tools=tool_schemas,
-            temperature=lm.defaults.get("temperature", 0.7),
+            temperature=0.7,
         )
 
         msg = response.choices[0].message
@@ -511,12 +511,7 @@ class ResearchAgent:
         init_memory(chromadb_path)
 
         # Init LM
-        self.lm = LM(
-            model=model,
-            api_base=api_base,
-            api_key=api_key,
-            temperature=temperature,
-        )
+        self.lm = LM(url=f"{api_base}/v1", model=model, api_key=api_key)
 
         # All tools
         self.tools = [

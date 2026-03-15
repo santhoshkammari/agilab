@@ -47,12 +47,7 @@ class PandaAgent:
         set_current_task(task)
         set_answer_path(self.answer_path)
 
-        self.lm = LM(
-            model=model,
-            api_base=api_base,
-            api_key=api_key,
-            temperature=temperature,
-        )
+        self.lm = LM(url=f"{api_base}/v1", model=model, api_key=api_key)
 
         if not os.path.exists(self.scratchpad_path):
             self._init_scratchpad()
