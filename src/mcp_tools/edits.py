@@ -1,6 +1,6 @@
 from fastmcp import FastMCP
 import os
-from typing import Optional, Literal
+from typing import Optional, Literal, List, Tuple
 
 CLIPBOARD = os.path.expanduser("~/.claude_clipboard")
 
@@ -22,44 +22,46 @@ def _write(path: str, lines: list):
 
 
 @mcp.tool
-def edit(path: str, s: int, e: int, new: str = "") -> str:
+def edit(path: str, edits: List[Tuple[int, int, str]]) -> str:
     """
-    Replace lines s-e in a file with new content. To delete lines, pass new="".
+    Apply a list of edits to a file. Each edit is [s, e, new].
+    Edits are applied in reverse line order so earlier line numbers stay valid.
 
     Args:
-        path: File path
-        s: Start line (1-indexed)
-        e: End line (1-indexed, inclusive)
-        new: Replacement content (empty string = delete lines)
+        path:  File path
+        edits: List of [s, e, new] where:
+                 s   - start line (1-indexed)
+                 e   - end line (1-indexed, inclusive); use e=s-1 for pure insert
+                 new - replacement text (empty string = delete lines)
 
     Examples:
-        Replace lines 10-12:  edit("app.py", 10, 12, "x = 1\ny = 2")
-        Delete lines 5-7:     edit("app.py", 5, 7, "")
-        Insert before line 5: edit("app.py", 5, 4, "new line here")
+        Single edit:  edit("app.py", [[10, 12, "x = 1\ny = 2"]])
+        Delete lines: edit("app.py", [[5, 7, ""]])
+        Multi-edit:   edit("app.py", [[3, 3, "# header"], [10, 12, "x = 1"], [20, 19, "# insert"]])
     """
     try:
         lines, err = _read(path)
         if err:
             return f"Error: {err}"
-        n = len(lines)
-        if s < 1:
-            return "Error: s must be >= 1"
-        if e < s - 1:
-            return "Error: e must be >= s-1 (use e=s-1 for pure insert)"
 
-        si = s - 1
-        ei = min(e, n)
+        for s, e, new in edits:
+            if s < 1:
+                return f"Error: s={s} must be >= 1"
+            if e < s - 1:
+                return f"Error: e={e} must be >= s-1 for s={s}"
 
-        new_lines = []
-        if new:
-            new_lines = new.splitlines(keepends=True)
-            if not new_lines[-1].endswith("\n"):
-                new_lines[-1] += "\n"
+        for s, e, new in sorted(edits, key=lambda x: x[0], reverse=True):
+            si = s - 1
+            ei = min(e, len(lines))
+            new_lines = []
+            if new:
+                new_lines = new.splitlines(keepends=True)
+                if not new_lines[-1].endswith("\n"):
+                    new_lines[-1] += "\n"
+            lines = lines[:si] + new_lines + lines[ei:]
 
-        result = lines[:si] + new_lines + lines[ei:]
-        _write(path, result)
-        action = "inserted before" if e < s else f"replaced lines {s}-{e}"
-        return f"OK: {action} in '{path}'"
+        _write(path, lines)
+        return f"OK: applied {len(edits)} edit(s) to '{path}'"
     except Exception as ex:
         return f"Error: {ex}"
 
