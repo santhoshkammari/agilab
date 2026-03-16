@@ -1,0 +1,24 @@
+# Setup
+mkdir -p /datadrive/santhosh/qwen3.5-9b
+cd /datadrive/santhosh/qwen3.5-9b
+
+BASE="https://huggingface.co/Qwen/Qwen3.5-9B/resolve/main"
+TOKEN=""
+
+# Config & tokenizer files
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/config.json"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/tokenizer.json"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/tokenizer_config.json"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/tokenizer_config.json"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/merges.txt"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/vocab.json"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/chat_template.jinja"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/preprocessor_config.json"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/video_preprocessor_config.json"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/model.safetensors.index.json"
+
+# Model weights (4 shards ~19.3GB total)
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/model.safetensors-00001-of-00004.safetensors"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/model.safetensors-00002-of-00004.safetensors"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/model.safetensors-00003-of-00004.safetensors"
+wget -c --header="Authorization: Bearer $TOKEN" "$BASE/model.safetensors-00004-of-00004.safetensors"
