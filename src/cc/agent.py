@@ -23,7 +23,88 @@ CYAN    = "\033[36m"
 GREEN   = "\033[32m"
 YELLOW  = "\033[33m"
 MAGENTA = "\033[35m"
+RED     = "\033[31m"
 RESET   = "\033[0m"
+
+# ── permission model ───────────────────────────────────────────────────────────
+
+# Tools that are always auto-allowed (read-only, safe)
+AUTO_ALLOW_TOOLS = {"Read", "Glob", "Grep"}
+
+# Tools that require confirmation by default
+CONFIRM_TOOLS = {"Bash", "Write", "Edit", "Multiedit"}
+
+class PermissionMode:
+    DEFAULT  = "default"   # prompt for CONFIRM_TOOLS, auto-allow safe tools
+    BYPASS   = "bypass"    # allow everything without prompting (--dangerously-skip-permissions)
+    PLAN     = "plan"      # no tool execution at all — planning/read-only mode
+
+# Session state
+_permission_mode   = PermissionMode.DEFAULT
+_always_allowed    = set()   # tools the user said "always allow" this session
+
+def ask_permission(tool_name: str, args: dict) -> bool:
+    """
+    Prompt user to allow/deny a tool call.
+    Returns True if allowed, False if denied.
+    """
+    global _permission_mode
+    if _permission_mode == PermissionMode.BYPASS:
+        return True
+
+    if tool_name in AUTO_ALLOW_TOOLS:
+        return True
+
+    if _permission_mode == PermissionMode.PLAN:
+        print(f"\n{DIM}[plan mode] blocked write tool: {tool_name}{RESET}")
+        return False
+
+    if tool_name in _always_allowed:
+        print(f"  {DIM}[always allowed] {tool_name}{RESET}")
+        return True
+
+    # Show a compact summary of what will run
+    summary = _args_summary(tool_name, args)
+    print(f"\n{BOLD}{YELLOW}┌ Allow tool: {tool_name}{RESET}")
+    if summary:
+        print(f"{DIM}│ {summary}{RESET}")
+    print(f"{BOLD}{YELLOW}└{RESET} "
+          f"{GREEN}[y]es{RESET}  "
+          f"{CYAN}[a]lways{RESET}  "
+          f"{RED}[n]o{RESET}  "
+          f"{MAGENTA}[b]ypass{RESET}  "
+          f"? ", end="", flush=True)
+
+    try:
+        choice = input().strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+    if choice in ("a", "always"):
+        _always_allowed.add(tool_name)
+        print(f"  {CYAN}Always allowing {tool_name} this session{RESET}")
+        return True
+    if choice in ("b", "bypass"):
+        global _permission_mode
+        _permission_mode = PermissionMode.BYPASS
+        print(f"  {MAGENTA}Bypass mode enabled — all tools auto-allowed{RESET}")
+        return True
+    if choice in ("y", "yes", ""):
+        return True
+    # deny / anything else
+    print(f"  {RED}Denied{RESET}")
+    return False
+
+
+def _args_summary(tool_name: str, args: dict) -> str:
+    """Return a short one-line summary of tool args for the permission prompt."""
+    if tool_name == "Bash":
+        cmd = args.get("command", "")
+        return cmd[:120] + ("…" if len(cmd) > 120 else "")
+    if tool_name in ("Write", "Edit", "Multiedit"):
+        return args.get("file_path", "")
+    return ""
 
 # ── HTTP SSE streaming ────────────────────────────────────────────────────────
 
@@ -60,7 +141,14 @@ def run_tool(name: str, args: dict) -> str:
     tool = TOOLS_BY_NAME.get(name)
     if not tool:
         return f"Unknown tool: {name}"
-    result = tool["handler"](args)
+    if not ask_permission(name, args):
+        return f"[Permission denied for {name}]"
+    try:
+        result = tool["handler"](args)
+    except KeyError as e:
+        return f"Error: missing required argument {e} for {name}"
+    except Exception as e:
+        return f"Error running {name}: {e}"
     return "\n".join(p.get("text", "") for p in result.get("content", []))
 
 # ── agent turn ────────────────────────────────────────────────────────────────
@@ -140,7 +228,7 @@ def agent_turn(messages: list, enable_thinking: bool, show_thinking: bool) -> li
                     idx = tc.get("index", 0)
                     if idx not in tool_calls_raw:
                         tool_calls_raw[idx] = {"id": tc.get("id", ""), "name": "", "args": ""}
-                    if tc.get("id"):
+                    if tc.get("id") and not tool_calls_raw[idx]["id"]:
                         tool_calls_raw[idx]["id"] = tc["id"]
                     fn = tc.get("function", {})
                     if fn.get("name"):
@@ -172,15 +260,25 @@ def agent_turn(messages: list, enable_thinking: bool, show_thinking: bool) -> li
                 for v in tool_calls_raw.values()
             ]
 
-        if finish_reason == "tool_calls" and tool_calls_raw:
+        if tool_calls_raw:
+            denied_any = False
             for v in tool_calls_raw.values():
                 try:
                     args = json.loads(v["args"])
                 except Exception:
+                    print(f"{YELLOW}  warn: failed to parse args for {v['name']}: {v['args'][:100]}{RESET}")
                     args = {}
                 if v["name"] not in ("Edit", "Multiedit"):
                     print(f"{DIM}  args: {v['args'][:200]}{RESET}")
                 output = run_tool(v["name"], args)
+                if output.startswith("[Permission denied"):
+                    denied_any = True
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": v["id"],
+                        "content": output,
+                    })
+                    continue
                 if v["name"] == "Read":
                     preview = output[:300] + ("…" if len(output) > 300 else "")
                     print(f"{GREEN}  ✓ {v['name']}{RESET}: {DIM}{preview}{RESET}\n")
@@ -191,6 +289,8 @@ def agent_turn(messages: list, enable_thinking: bool, show_thinking: bool) -> li
                     "tool_call_id": v["id"],
                     "content": output,
                 })
+            if denied_any:
+                break  # stop agentic loop; model already has denial in history for next turn
             continue
 
         break
@@ -199,17 +299,37 @@ def agent_turn(messages: list, enable_thinking: bool, show_thinking: bool) -> li
 
 # ── REPL ──────────────────────────────────────────────────────────────────────
 
+def _pmode_label():
+    if _permission_mode == PermissionMode.BYPASS:
+        return f"{MAGENTA}bypass{RESET}"
+    if _permission_mode == PermissionMode.PLAN:
+        return f"{CYAN}plan{RESET}"
+    return f"{GREEN}default{RESET}"
+
 def print_help(enable_thinking, show_thinking):
     e = f"{MAGENTA}ON{RESET}" if enable_thinking else f"{DIM}OFF{RESET}"
     s = f"{MAGENTA}ON{RESET}" if show_thinking  else f"{DIM}OFF{RESET}"
+    aa = ", ".join(sorted(_always_allowed)) or "none"
     print(f"""
 {BOLD}Commands:{RESET}
-  {CYAN}/think{RESET}   — toggle model thinking [{e}]
-  {CYAN}/show{RESET}    — toggle display of thinking [{s}]
-  {CYAN}/clear{RESET}   — clear conversation history
-  {CYAN}/help{RESET}    — show this help
-  {CYAN}exit{RESET}     — quit
-  {DIM}Ctrl+C{RESET}   — interrupt generation
+  {CYAN}/think{RESET}        — toggle model thinking [{e}]
+  {CYAN}/show{RESET}         — toggle display of thinking [{s}]
+  {CYAN}/clear{RESET}        — clear conversation history
+  {CYAN}/help{RESET}         — show this help
+  {CYAN}exit{RESET}          — quit
+  {DIM}Ctrl+C{RESET}        — interrupt generation
+
+{BOLD}Permission model:{RESET} [{_pmode_label()}]
+  {CYAN}/plan{RESET}         — toggle plan mode (read-only, no tool execution)
+  {CYAN}/bypass{RESET}       — toggle bypass mode (skip all permission prompts)
+  {CYAN}/permissions{RESET}  — show current permission state
+  {DIM}always-allowed this session: {aa}{RESET}
+
+{BOLD}Per-tool prompt options:{RESET}
+  {GREEN}y / yes{RESET}      — allow once
+  {CYAN}a / always{RESET}    — always allow this tool (session)
+  {RED}n / no{RESET}        — deny
+  {MAGENTA}b / bypass{RESET}    — enable bypass mode for session
 """)
 
 def repl():
@@ -219,10 +339,13 @@ def repl():
 
     print(f"{BOLD}{CYAN}Agent ready{RESET} — type your prompt, or /help")
     print(f"Model: {DIM}{VLLM_MODEL}{RESET}")
-    print(f"cwd:   {DIM}{CWD}{RESET}\n")
+    print(f"cwd:   {DIM}{CWD}{RESET}")
+    print(f"perms: {_pmode_label()} {DIM}(use /plan, /bypass, /permissions){RESET}\n")
 
     while True:
         indicators = ""
+        if _permission_mode == PermissionMode.PLAN:   indicators += f"{CYAN}[plan]{RESET} "
+        if _permission_mode == PermissionMode.BYPASS: indicators += f"{MAGENTA}[bypass]{RESET} "
         if enable_thinking: indicators += f"{MAGENTA}[think]{RESET} "
         if show_thinking:   indicators += f"{DIM}[show]{RESET} "
         try:
@@ -249,6 +372,32 @@ def repl():
         if user_input == "/clear":
             history = []
             print(f"  {DIM}history cleared{RESET}\n")
+            continue
+
+        if user_input == "/plan":
+            global _permission_mode
+            if _permission_mode == PermissionMode.PLAN:
+                _permission_mode = PermissionMode.DEFAULT
+                print(f"  plan mode {DIM}OFF{RESET} → {GREEN}default{RESET}\n")
+            else:
+                _permission_mode = PermissionMode.PLAN
+                print(f"  plan mode {CYAN}ON{RESET} — tools will not execute\n")
+            continue
+
+        if user_input == "/bypass":
+            if _permission_mode == PermissionMode.BYPASS:
+                _permission_mode = PermissionMode.DEFAULT
+                print(f"  bypass mode {DIM}OFF{RESET} → {GREEN}default{RESET}\n")
+            else:
+                _permission_mode = PermissionMode.BYPASS
+                print(f"  bypass mode {MAGENTA}ON{RESET} — all tools auto-allowed\n")
+            continue
+
+        if user_input == "/permissions":
+            aa = ", ".join(sorted(_always_allowed)) or "none"
+            print(f"  mode: {_pmode_label()}")
+            print(f"  always-allowed: {DIM}{aa}{RESET}")
+            print(f"  auto-allow (read-only): {DIM}{', '.join(sorted(AUTO_ALLOW_TOOLS))}{RESET}\n")
             continue
 
         if user_input == "/help":
