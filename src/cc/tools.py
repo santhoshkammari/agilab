@@ -49,7 +49,33 @@ def _edit(file_path: str, old_string: str, new_string: str) -> dict:
         new_text = text.replace(old_string, new_string, 1)
         with open(file_path, "w") as f:
             f.write(new_text)
-        return _result(f"Edited {file_path}")
+        
+        # Get git diff output to show changes
+        diff_result = subprocess.run(
+            ["git", "diff", "--no-color", file_path],
+            capture_output=True, 
+            text=True,
+            timeout=10
+        )
+        
+        if diff_result.stdout:
+            colored_lines = []
+            for line in diff_result.stdout.splitlines():
+                if line.startswith("+++") or line.startswith("---"):
+                    colored_lines.append(f"\033[1m{line}\033[0m")
+                elif line.startswith("+"):
+                    colored_lines.append(f"\033[32m{line}\033[0m")
+                elif line.startswith("-"):
+                    colored_lines.append(f"\033[31m{line}\033[0m")
+                elif line.startswith("@@"):
+                    colored_lines.append(f"\033[36m{line}\033[0m")
+                else:
+                    colored_lines.append(line)
+            diff_output = "\n".join(colored_lines)
+        else:
+            diff_output = "(no changes to track)"
+
+        return _result(f"Edited {file_path}\n\n{diff_output}")
     except Exception as e:
         return _result(f"Error: {e}")
 

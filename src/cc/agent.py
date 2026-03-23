@@ -1,18 +1,4 @@
-"""
-Agent loop — Claude Code vibes, pure Python (stdlib only).
-Hits vLLM's OpenAI-compatible /v1/chat/completions endpoint with SSE streaming.
-
-Two independent toggles:
-  /think   — enable_thinking at MODEL level (model actually thinks or not)
-  /show    — show thinking tokens in terminal or hide them
-
-Slash commands:
-  /think   toggle model-level thinking (enable_thinking param)
-  /show    toggle terminal display of <think>...</think> tokens
-  /clear   reset conversation history
-  /help    show commands
-  exit     quit
-"""
+"""Simple agent loop for interacting with LLMs via vLLM endpoint."""
 
 import json
 import os
@@ -193,8 +179,11 @@ def agent_turn(messages: list, enable_thinking: bool, show_thinking: bool) -> li
                     args = {}
                 print(f"{DIM}  args: {v['args'][:200]}{RESET}")
                 output = run_tool(v["name"], args)
-                preview = output[:300] + ("…" if len(output) > 300 else "")
-                print(f"{GREEN}  ✓ {v['name']}{RESET}: {DIM}{preview}{RESET}\n")
+                if v["name"] == "Read":
+                    preview = output[:300] + ("…" if len(output) > 300 else "")
+                    print(f"{GREEN}  ✓ {v['name']}{RESET}: {DIM}{preview}{RESET}\n")
+                else:
+                    print(f"{GREEN}  ✓ {v['name']}{RESET}:\n{output}\n")
                 messages.append({
                     "role": "tool",
                     "tool_call_id": v["id"],
