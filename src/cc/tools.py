@@ -109,6 +109,69 @@ def _grep(pattern: str, path: str = ".", glob: str = "*") -> dict:
         return _result(f"Error: {e}")
 
 
+def _multiedit(file_path: str, replacements: list) -> dict:
+    try:
+        if isinstance(replacements, str):
+            # Handle backward compatible single replacement
+            replacements = [{"old_string": replacements}]
+        
+        # Validate replacements
+        for i, r in enumerate(replacements):
+            if "old_string" not in r:
+                return _result(f"Error: replacement #{i+1} missing 'old_string'")
+            if not isinstance(r.get("old_string"), str):
+                return _result(f"Error: old_string must be a string")
+        
+        with open(file_path) as f:
+            text = f.read()
+        
+        modified = False
+        for r in replacements:
+            old_string = r["old_string"]
+            new_string = r.get("new_string", "")
+            
+            if old_string not in text:
+                return _result(f"Error: {old_string!r} not found in {file_path}")
+            
+            text = text.replace(old_string, new_string, 1)
+            modified = True
+        
+        if not modified:
+            return _result("No modifications made (old_string not found)")
+        
+        with open(file_path, "w") as f:
+            f.write(text)
+        
+        # Get git diff output to show changes
+        diff_result = subprocess.run(
+            ["git", "diff", "--no-color", file_path],
+            capture_output=True, 
+            text=True,
+            timeout=10
+        )
+        
+        if diff_result.stdout:
+            colored_lines = []
+            for line in diff_result.stdout.splitlines():
+                if line.startswith("+++") or line.startswith("---"):
+                    colored_lines.append(f"\033[1m{line}\033[0m")
+                elif line.startswith("+"):
+                    colored_lines.append(f"\033[32m{line}\033[0m")
+                elif line.startswith("-"):
+                    colored_lines.append(f"\033[31m{line}\033[0m")
+                elif line.startswith("@@"):
+                    colored_lines.append(f"\033[36m{line}\033[0m")
+                else:
+                    colored_lines.append(line)
+            diff_output = "\n".join(colored_lines)
+        else:
+            diff_output = "(no changes to track)"
+
+        return _result(f"Edited {file_path}\n\n{diff_output}")
+    except Exception as e:
+        return _result(f"Error: {e}")
+
+
 # ── tool registry ─────────────────────────────────────────────────────────────
 
 TOOLS = [
@@ -192,6 +255,30 @@ TOOLS = [
             "required": ["pattern"],
         },
         "handler": lambda args: _grep(args["pattern"], args.get("path", "."), args.get("glob", "*")),
+    },
+    {
+        "name": "Multiedit",
+        "description": "Perform multiple string replacements in a file at once. Replaces the first occurrence of each old_string with corresponding new_string.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string"},
+                "replacements": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "old_string": {"type": "string", "description": "The string to find and replace"},
+                            "new_string": {"type": "string", "description": "The replacement string"}
+                        },
+                        "required": ["old_string"]
+                    },
+                    "description": "List of replacements to perform. Each object must have 'old_string', optionally with 'new_string'"
+                }
+            },
+            "required": ["file_path", "replacements"],
+        },
+        "handler": lambda args: _multiedit(args["file_path"], args["replacements"]),
     },
 ]
 

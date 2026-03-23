@@ -148,7 +148,7 @@ def agent_turn(messages: list, enable_thinking: bool, show_thinking: bool) -> li
                         print(f"\n{YELLOW}⚙ {fn['name']}{RESET}", end=" ", flush=True)
                     if fn.get("arguments"):
                         tool_calls_raw[idx]["args"] += fn["arguments"]
-                        if tool_calls_raw[idx]["name"] != "Edit":
+                        if tool_calls_raw[idx]["name"] not in ("Edit", "Multiedit"):
                             print(f"{DIM}{fn['arguments']}{RESET}", end="", flush=True)
 
         except KeyboardInterrupt:
@@ -178,7 +178,7 @@ def agent_turn(messages: list, enable_thinking: bool, show_thinking: bool) -> li
                     args = json.loads(v["args"])
                 except Exception:
                     args = {}
-                if v["name"] != "Edit":
+                if v["name"] not in ("Edit", "Multiedit"):
                     print(f"{DIM}  args: {v['args'][:200]}{RESET}")
                 output = run_tool(v["name"], args)
                 if v["name"] == "Read":
